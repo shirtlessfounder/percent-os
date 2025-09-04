@@ -1,4 +1,4 @@
-import { Transaction } from '@solana/web3.js';
+import { Transaction, PublicKey } from '@solana/web3.js';
 import { IProposal } from './proposal.interface';
 
 /**
@@ -16,8 +16,8 @@ export enum ProposalStatus {
  */
 export interface IModeratorConfig {
   proposalLength: number;                       // Duration of voting period in seconds
-  baseMint: string;                            // Public key of the base token mint
-  quoteMint: string;                           // Public key of the quote token mint
+  baseMint: PublicKey;                         // Public key of the base token mint
+  quoteMint: PublicKey;                        // Public key of the quote token mint
   twapMaxObservationChangePerUpdate: bigint;   // Maximum TWAP observation change allowed per update
   twapStartDelay: number;                      // Delay before TWAP starts recording in seconds
   passThresholdBps: number;                    // Basis points threshold for proposal to pass (e.g., 5000 = 50%)

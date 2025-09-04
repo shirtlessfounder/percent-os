@@ -1,4 +1,4 @@
-import { Transaction } from '@solana/web3.js';
+import { Transaction, PublicKey } from '@solana/web3.js';
 import { IModerator, IModeratorConfig, ProposalStatus } from './types/moderator.interface';
 import { IProposal } from './types/proposal.interface';
 import { Proposal } from './proposal';

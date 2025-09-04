@@ -1,4 +1,4 @@
-import { Transaction } from '@solana/web3.js';
+import { Transaction, PublicKey } from '@solana/web3.js';
 import { IProposal } from './types/proposal.interface';
 import { IAMM } from './types/amm.interface';
 import { IVault } from './types/vault.interface';
@@ -22,8 +22,8 @@ export class Proposal implements IProposal {
   public twapOracle: ITWAPOracle;
   public createdAt: number;
   public finalizedAt: number;
-  public baseMint: string;
-  public quoteMint: string;
+  public baseMint: PublicKey;
+  public quoteMint: PublicKey;
   private _status: ProposalStatus = ProposalStatus.Pending;
 
   /**
@@ -52,8 +52,8 @@ export class Proposal implements IProposal {
     transaction: Transaction,
     createdAt: number,
     proposalLength: number,
-    baseMint: string,
-    quoteMint: string,
+    baseMint: PublicKey,
+    quoteMint: PublicKey,
     twapMaxObservationChangePerUpdate: bigint,
     twapStartDelay: number,
     passThresholdBps: number

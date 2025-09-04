@@ -1,4 +1,4 @@
-import { Transaction } from '@solana/web3.js';
+import { Transaction, PublicKey } from '@solana/web3.js';
 import { IAMM } from './amm.interface';
 import { IVault } from './vault.interface';
 import { ITWAPOracle } from './twap-oracle.interface';
@@ -19,8 +19,8 @@ export interface IProposal {
   twapOracle: ITWAPOracle;            // Time-weighted average price oracle
   createdAt: number;                  // Timestamp when proposal was created (ms)
   finalizedAt: number;                // Timestamp when voting ends (ms)
-  baseMint: string;                   // Public key of base token mint
-  quoteMint: string;                  // Public key of quote token mint
+  baseMint: PublicKey;                // Public key of base token mint
+  quoteMint: PublicKey;               // Public key of quote token mint
   readonly status: ProposalStatus;    // Current status (Pending, Passed, Failed, Executed)
   
   /**
