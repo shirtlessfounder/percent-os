@@ -1,4 +1,4 @@
-import { Transaction, PublicKey, Keypair } from '@solana/web3.js';
+import { Transaction, PublicKey, Keypair, Connection } from '@solana/web3.js';
 import { IAMM } from './amm.interface';
 import { IVault } from './vault.interface';
 import { ITWAPOracle } from './twap-oracle.interface';
@@ -10,25 +10,27 @@ import { IExecutionResult, IExecutionConfig } from './execution.interface';
  * Manages AMMs, vaults, and TWAP oracle for price discovery
  */
 export interface IProposal {
-  id: number;                          // Unique proposal identifier
+  readonly id: number;                 // Unique proposal identifier (immutable)
   description: string;                 // Human-readable description of the proposal
   transaction: Transaction;            // Solana transaction to execute if passed
   __pAMM: IAMM | null;                // Pass AMM (initialized during proposal setup)
   __fAMM: IAMM | null;                // Fail AMM (initialized during proposal setup)
   __pVault: IVault | null;            // Pass vault for token management
   __fVault: IVault | null;            // Fail vault for token management
-  twapOracle: ITWAPOracle;            // Time-weighted average price oracle
-  createdAt: number;                  // Timestamp when proposal was created (ms)
-  finalizedAt: number;                // Timestamp when voting ends (ms)
-  baseMint: PublicKey;                // Public key of base token mint
-  quoteMint: PublicKey;               // Public key of quote token mint
+  readonly twapOracle: ITWAPOracle;   // Time-weighted average price oracle (immutable)
+  readonly createdAt: number;         // Timestamp when proposal was created (ms, immutable)
+  readonly finalizedAt: number;       // Timestamp when voting ends (ms, immutable)
+  readonly baseMint: PublicKey;       // Public key of base token mint (immutable)
+  readonly quoteMint: PublicKey;      // Public key of quote token mint (immutable)
   readonly status: ProposalStatus;    // Current status (Pending, Passed, Failed, Executed)
   
   /**
    * Initializes the proposal's blockchain components
    * Sets up AMMs, vaults, and begins TWAP recording
+   * @param connection - Solana connection for blockchain interactions
+   * @param authority - Keypair with authority to create mints and manage vaults
    */
-  initialize(): Promise<void>;
+  initialize(connection: Connection, authority: Keypair): Promise<void>;
   
   /**
    * Returns the time-to-live in seconds until proposal finalizes

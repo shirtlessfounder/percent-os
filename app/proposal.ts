@@ -1,4 +1,4 @@
-import { Transaction, PublicKey, Keypair } from '@solana/web3.js';
+import { Transaction, PublicKey, Keypair, Connection } from '@solana/web3.js';
 import { IProposal } from './types/proposal.interface';
 import { IAMM } from './types/amm.interface';
 import { IVault, VaultType } from './types/vault.interface';
@@ -15,18 +15,18 @@ import { Vault } from './vault';
  * Manages prediction markets through AMMs and vaults
  */
 export class Proposal implements IProposal {
-  public id: number;
+  public readonly id: number;
   public description: string;
   public transaction: Transaction;
   public __pAMM: IAMM | null = null;
   public __fAMM: IAMM | null = null;
   public __pVault: IVault | null = null;
   public __fVault: IVault | null = null;
-  public twapOracle: ITWAPOracle;
-  public createdAt: number;
-  public finalizedAt: number;
-  public baseMint: PublicKey;
-  public quoteMint: PublicKey;
+  public readonly twapOracle: ITWAPOracle;
+  public readonly createdAt: number;
+  public readonly finalizedAt: number;
+  public readonly baseMint: PublicKey;
+  public readonly quoteMint: PublicKey;
   private _status: ProposalStatus = ProposalStatus.Pending;
 
   /**
@@ -82,24 +82,37 @@ export class Proposal implements IProposal {
   /**
    * Initializes the proposal's blockchain components
    * Deploys AMMs, vaults, and starts TWAP oracle recording
+   * @param connection - Solana connection for blockchain interactions
+   * @param authority - Keypair with authority to create mints and manage vaults
    */
-  async initialize(): Promise<void> {
+  async initialize(connection: Connection, authority: Keypair): Promise<void> {
     // Initialize vaults for pass and fail markets
     this.__pVault = new Vault({
       proposalId: this.id,
       vaultType: VaultType.Pass,
       baseMint: this.baseMint,
-      quoteMint: this.quoteMint
+      quoteMint: this.quoteMint,
+      connection,
+      authority
     });
     
     this.__fVault = new Vault({
       proposalId: this.id,
       vaultType: VaultType.Fail,
       baseMint: this.baseMint,
-      quoteMint: this.quoteMint
+      quoteMint: this.quoteMint,
+      connection,
+      authority
     });
     
+    // Initialize vaults (creates conditional token mints and escrow accounts)
+    await this.__pVault.initialize();
+    await this.__fVault.initialize();
+    
     // TODO: Initialize AMMs using conditional token mints from vaults
+    // The AMMs will use:
+    // - pAMM: this.__pVault.conditionalBaseMint / this.__pVault.conditionalQuoteMint
+    // - fAMM: this.__fVault.conditionalBaseMint / this.__fVault.conditionalQuoteMint
     // TODO: Start TWAP oracle recording
   }
 
