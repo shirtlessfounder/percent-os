@@ -52,30 +52,36 @@ export class ExecutionService implements IExecutionService {
   /**
    * Execute a transaction on Solana
    * @param transaction - Transaction to execute
-   * @param signer - Keypair to sign the transaction
-   * @param proposalId - Optional proposal ID for logging context
+   * @param signer - Primary keypair to sign the transaction (fee payer)
+   * @param additionalSigners - Additional keypairs that need to sign the transaction
    * @returns Execution result with signature and status
    */
   async executeTx(
     transaction: Transaction,
     signer: Keypair,
-    proposalId?: number
+    additionalSigners: Keypair[] = []
   ): Promise<IExecutionResult> {
     const startTime = Date.now();
     
     try {
-      // Get recent blockhash
-      const { blockhash, lastValidBlockHeight } = 
-        await this.connection.getLatestBlockhash(this.config.commitment);
+      // Only set blockhash if not already set (for pre-signed transactions)
+      if (!transaction.recentBlockhash) {
+        const { blockhash } = 
+          await this.connection.getLatestBlockhash(this.config.commitment);
+        transaction.recentBlockhash = blockhash;
+      }
       
-      transaction.recentBlockhash = blockhash;
-      transaction.feePayer = signer.publicKey;
+      // Only set fee payer if not already set
+      if (!transaction.feePayer) {
+        transaction.feePayer = signer.publicKey;
+      }
 
-      // Send and confirm transaction
+      // Send and confirm transaction with all signers
+      const allSigners = [signer, ...additionalSigners];
       const signature = await sendAndConfirmTransaction(
         this.connection,
         transaction,
-        [signer],
+        allSigners,
         {
           commitment: this.config.commitment as Commitment,
           skipPreflight: this.config.skipPreflight,
@@ -86,13 +92,12 @@ export class ExecutionService implements IExecutionService {
       const result: IExecutionResult = {
         signature,
         status: ExecutionStatus.Success,
-        timestamp: Date.now(),
-        proposalId
+        timestamp: Date.now()
       };
 
       // Log success
       this.logExecution({
-        proposalId: proposalId || 0,
+        proposalId: 0,  // Remove proposalId from logging
         signature,
         status: 'success',
         timestamp: result.timestamp
@@ -108,13 +113,12 @@ export class ExecutionService implements IExecutionService {
         signature: '',
         status: ExecutionStatus.Failed,
         timestamp: Date.now(),
-        proposalId,
         error: errorMessage
       };
 
       // Log failure
       this.logExecution({
-        proposalId: proposalId || 0,
+        proposalId: 0,  // Remove proposalId from logging
         signature: '',
         status: 'failed',
         timestamp: result.timestamp,

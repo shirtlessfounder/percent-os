@@ -84,12 +84,10 @@ export class SPLTokenService implements ISPLTokenService {
       )
     );
 
-    // Add mint keypair signature
-    transaction.partialSign(mintKeypair);
-
     const result = await this.executionService.executeTx(
       transaction,
-      payer
+      payer,
+      [mintKeypair]  // Pass mint keypair as additional signer
     );
 
     if (result.status === 'failed') {

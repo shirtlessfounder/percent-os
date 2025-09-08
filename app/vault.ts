@@ -14,7 +14,7 @@ import {
   IEscrowInfo
 } from './types/vault.interface';
 import { SPLTokenService, AuthorityType } from './services/spl-token.service';
-import { ISPLTokenService, ITokenAccountInfo } from './types/spl-token.interface';
+import { ISPLTokenService } from './types/spl-token.interface';
 import { ExecutionService } from './services/execution.service';
 import { IExecutionService, IExecutionConfig } from './types/execution.interface';
 
@@ -283,8 +283,7 @@ export class Vault implements IVault {
     // Add authority signature to the user-signed transaction
     const result = await this.executionService.executeTx(
       tx,
-      this.authority,
-      this.proposalId
+      this.authority
     );
     
     if (result.status === 'failed') {
@@ -306,8 +305,7 @@ export class Vault implements IVault {
     // Add authority signature to the user-signed transaction
     const result = await this.executionService.executeTx(
       tx,
-      this.authority,
-      this.proposalId
+      this.authority
     );
     
     if (result.status === 'failed') {
@@ -532,8 +530,7 @@ export class Vault implements IVault {
     // Add authority signature to the user-signed transaction
     const result = await this.executionService.executeTx(
       tx,
-      this.authority,
-      this.proposalId
+      this.authority
     );
     
     if (result.status === 'failed') {
@@ -593,8 +590,7 @@ export class Vault implements IVault {
     // No authority signature needed for closing user's accounts
     const result = await this.executionService.executeTx(
       transaction,
-      this.authority,  // Just for execution service, not signing
-      this.proposalId
+      this.authority  // Just for execution service, not signing
     );
     
     if (result.status === 'failed') {

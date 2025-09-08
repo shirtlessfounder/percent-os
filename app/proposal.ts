@@ -207,8 +207,7 @@ export class Proposal implements IProposal {
     const executionService = new ExecutionService(executionConfig);
     const result = await executionService.executeTx(
       this.transaction,
-      signer,
-      this.id
+      signer
     );
     
     // Update status to Executed regardless of transaction result

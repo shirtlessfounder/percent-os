@@ -100,15 +100,15 @@ export class Moderator implements IModerator {
     const proposal = this.proposals[id];
     
     if (proposal.status === ProposalStatus.Pending) {
-      throw new Error(`Cannot execute proposal #${id} - still pending`);
+      throw new Error('Proposal has not passed');
     }
     
     if (proposal.status === ProposalStatus.Executed) {
-      throw new Error(`Proposal #${id} has already been executed`);
+      throw new Error('Proposal has already been executed');
     }
     
     if (proposal.status === ProposalStatus.Failed) {
-      throw new Error(`Cannot execute proposal #${id} - failed status`);
+      throw new Error('Proposal has not passed');
     }
 
     // Log proposal being executed

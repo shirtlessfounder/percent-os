@@ -8,14 +8,14 @@ export interface IExecutionService {
   /**
    * Executes a transaction on Solana
    * @param transaction - Transaction to execute
-   * @param signer - Keypair to sign the transaction
-   * @param proposalId - Optional proposal ID for logging context
+   * @param signer - Primary keypair to sign the transaction (fee payer)
+   * @param additionalSigners - Additional keypairs that need to sign the transaction
    * @returns Execution result with signature and status
    */
   executeTx(
     transaction: Transaction,
     signer: Keypair,
-    proposalId?: number
+    additionalSigners?: Keypair[]
   ): Promise<IExecutionResult>;
 }
 
