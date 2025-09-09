@@ -1,6 +1,5 @@
 import { Moderator } from '../../app/moderator';
 import { IModeratorConfig } from '../../app/types/moderator.interface';
-import { PublicKey } from '@solana/web3.js';
 import { TestModeConfig } from './config';
 import { TestTokenMints } from './test-tokens.service';
 

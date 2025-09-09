@@ -1,5 +1,7 @@
 #!/usr/bin/env ts-node
 
+// ONLY WORKS FOR DEVNET
+
 import dotenv from 'dotenv';
 import { Keypair, Transaction } from '@solana/web3.js';
 
@@ -89,12 +91,13 @@ async function testSwap() {
     console.log('\n2. Building swap transaction for pass market...');
     const swapRequest = {
       user: alicePublicKey,
+      market: 'pass',        // Market to swap in
       isBaseToQuote: false,  // quote -> base (buying pass tokens)
       amountIn: '1000000',   // 1 USDC worth (6 decimals)
       slippageBps: 100       // 1% slippage
     };
     
-    const buildSwapResponse = await fetch(`${API_URL}/api/swap/${proposalId}/pass/buildSwapTx`, {
+    const buildSwapResponse = await fetch(`${API_URL}/api/swap/${proposalId}/buildSwapTx`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -118,14 +121,15 @@ async function testSwap() {
     
     // Execute the signed swap transaction
     console.log('Executing swap transaction...');
-    const executeSwapResponse = await fetch(`${API_URL}/api/swap/${proposalId}/pass/executeSwapTx`, {
+    const executeSwapResponse = await fetch(`${API_URL}/api/swap/${proposalId}/executeSwapTx`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-API-KEY': API_KEY
       },
       body: JSON.stringify({
-        transaction: Buffer.from(swapTx.serialize({ requireAllSignatures: false })).toString('base64')
+        transaction: Buffer.from(swapTx.serialize({ requireAllSignatures: false })).toString('base64'),
+        market: 'pass'  // Market to execute swap in
       })
     });
     

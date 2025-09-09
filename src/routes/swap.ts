@@ -36,27 +36,34 @@ function getAMM(proposalId: number, market: string): IAMM {
 
 /**
  * Build a swap transaction for the specified AMM
- * POST /:id/:market/buildSwapTx
+ * POST /:id/buildSwapTx
  * 
  * Body:
  * - user: string - User's public key who is swapping tokens
+ * - market: string - Market to swap in ('pass' or 'fail')
  * - isBaseToQuote: boolean - Direction of swap (true: base->quote, false: quote->base)
  * - amountIn: string - Amount of input tokens to swap (as string to preserve precision)
  * - slippageBps?: number - Optional slippage tolerance in basis points (default: 50 = 0.5%)
  */
-router.post('/:id/:market/buildSwapTx', requireApiKey, async (req, res, next) => {
+router.post('/:id/buildSwapTx', requireApiKey, async (req, res, next) => {
   try {
     const proposalId = parseInt(req.params.id);
-    const market = req.params.market;
     
     // Validate request body
-    const { user, isBaseToQuote, amountIn, slippageBps } = req.body;
+    const { user, market, isBaseToQuote, amountIn, slippageBps } = req.body;
     
-    if (!user || isBaseToQuote === undefined || amountIn === undefined) {
+    if (!user || !market || isBaseToQuote === undefined || amountIn === undefined) {
       return res.status(400).json({ 
         error: 'Missing required fields',
-        required: ['user', 'isBaseToQuote', 'amountIn'],
+        required: ['user', 'market', 'isBaseToQuote', 'amountIn'],
         optional: ['slippageBps']
+      });
+    }
+    
+    // Validate market is valid
+    if (market !== 'pass' && market !== 'fail') {
+      return res.status(400).json({ 
+        error: 'Invalid market: must be "pass" or "fail"'
       });
     }
     
@@ -100,21 +107,29 @@ router.post('/:id/:market/buildSwapTx', requireApiKey, async (req, res, next) =>
 
 /**
  * Execute a pre-signed swap transaction
- * POST /:id/:market/executeSwapTx
+ * POST /:id/executeSwapTx
  * 
  * Body:
  * - transaction: string - Base64 encoded signed transaction
+ * - market: string - Market to swap in ('pass' or 'fail')
  */
-router.post('/:id/:market/executeSwapTx', requireApiKey, async (req, res, next) => {
+router.post('/:id/executeSwapTx', requireApiKey, async (req, res, next) => {
   try {
     const proposalId = parseInt(req.params.id);
-    const market = req.params.market;
     
     // Validate request body
-    const { transaction } = req.body;
-    if (!transaction) {
+    const { transaction, market } = req.body;
+    if (!transaction || !market) {
       return res.status(400).json({ 
-        error: 'Missing required field: transaction'
+        error: 'Missing required fields',
+        required: ['transaction', 'market']
+      });
+    }
+    
+    // Validate market is valid
+    if (market !== 'pass' && market !== 'fail') {
+      return res.status(400).json({ 
+        error: 'Invalid market: must be "pass" or "fail"'
       });
     }
     
