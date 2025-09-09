@@ -2,7 +2,6 @@ import { Moderator } from '../../app/moderator';
 import { IModeratorConfig } from '../../app/types/moderator.interface';
 import { PublicKey, Keypair, Connection } from '@solana/web3.js';
 import fs from 'fs';
-import path from 'path';
 
 class ModeratorService {
   private static instance: Moderator | null = null;
