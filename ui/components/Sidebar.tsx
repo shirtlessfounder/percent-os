@@ -18,7 +18,7 @@ export default function Sidebar({ selectedProposal, onSelectProposal }: SidebarP
   const avatarText = walletAddress ? walletAddress.slice(0, 2).toUpperCase() : '??';
 
   return (
-    <div className={`${isCollapsed ? 'w-16' : 'w-64'} bg-[#212121] h-screen flex flex-col transition-all duration-200`}>
+    <div className={`${isCollapsed ? 'w-16' : 'w-64'} bg-[#121212] h-screen flex flex-col transition-all duration-200`}>
       {/* Header - Same height as main page header */}
       <div className={`h-14 flex items-center ${isCollapsed ? 'justify-center' : 'justify-between px-4'}`}>
         {isCollapsed ? (
@@ -66,8 +66,8 @@ export default function Sidebar({ selectedProposal, onSelectProposal }: SidebarP
                 onClick={() => onSelectProposal(proposal.id)}
                 className={`w-full text-left p-3 rounded-lg transition cursor-pointer ${
                   selectedProposal === proposal.id
-                    ? 'bg-[#303030]'
-                    : 'hover:bg-[#3a3a3a]'
+                    ? 'bg-[#1F1F1F]'
+                    : 'hover:bg-[#2A2A2A]'
                 }`}
               >
                 <div className="text-sm font-medium text-gray-200 line-clamp-1">

@@ -59,7 +59,7 @@ export default function TradeModal({
       />
       
       {/* Modal */}
-      <div className="relative bg-[#212121] border border-gray-800 rounded-2xl p-6 w-full max-w-md shadow-2xl">
+      <div className="relative bg-[#272727] border border-gray-800 rounded-2xl p-6 w-full max-w-md shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
