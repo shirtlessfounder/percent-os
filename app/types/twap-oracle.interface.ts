@@ -14,7 +14,7 @@ export enum TWAPStatus {
  */
 export interface ITWAPConfig {
   initialTwapValue: number;                     // Initial observation value for both AMMs
-  twapMaxObservationChangePerUpdate: number;    // Maximum change allowed per update
+  twapMaxObservationChangePerUpdate: number | null;  // Maximum change allowed per update (null = no limit)
   twapStartDelay: number;                       // Delay in milliseconds before TWAP starts recording
   passThresholdBps: number;                     // Basis points threshold for proposal to pass
 }
@@ -26,7 +26,7 @@ export interface ITWAPConfig {
 export interface ITWAPOracle {
   readonly proposalId: number;                          // ID of associated proposal (immutable)
   readonly initialTwapValue: number;                    // Initial observation value (immutable)
-  readonly twapMaxObservationChangePerUpdate: number;   // Max observation change per update (immutable)
+  readonly twapMaxObservationChangePerUpdate: number | null;  // Max observation change per update (null = no limit) (immutable)
   readonly twapStartDelay: number;                      // Start delay in milliseconds (immutable)
   readonly passThresholdBps: number;                    // Pass threshold in basis points (immutable)
   readonly createdAt: number;                           // Creation timestamp in milliseconds (immutable)
