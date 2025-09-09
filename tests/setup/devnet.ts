@@ -25,6 +25,7 @@ export let connection: Connection;
 export let authorityWallet: Keypair;
 export let aliceWallet: Keypair;
 export let bobWallet: Keypair;
+export let charlieWallet: Keypair;
 
 // Global service instances
 export let tokenService: SPLTokenService;
@@ -62,11 +63,13 @@ export async function setupTestEnvironment() {
   authorityWallet = loadOrGenerateWallet('authority');
   aliceWallet = loadOrGenerateWallet('alice');
   bobWallet = loadOrGenerateWallet('bob');
+  charlieWallet = loadOrGenerateWallet('charlie');
   
   console.log('📝 Test wallets:');
   console.log(`   Authority: ${authorityWallet.publicKey.toBase58()}`);
   console.log(`   Alice: ${aliceWallet.publicKey.toBase58()}`);
   console.log(`   Bob: ${bobWallet.publicKey.toBase58()}`);
+  console.log(`   Charlie: ${charlieWallet.publicKey.toBase58()}`);
   
   // Initialize services
   executionService = new ExecutionService({
