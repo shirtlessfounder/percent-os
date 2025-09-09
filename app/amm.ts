@@ -173,10 +173,6 @@ export class AMM implements IAMM {
       throw new Error('AMM not initialized');
     }
     
-    if (this._state === AMMState.Finalized) {
-      throw new Error('AMM is finalized - cannot fetch price');
-    }
-    
     if (!this.pool) {
       throw new Error('AMM pool is uninitialized');
     }
@@ -184,6 +180,25 @@ export class AMM implements IAMM {
     // Fetch current pool state and convert sqrt price to regular price
     const poolState: PoolState = await this.cpAmm.fetchPoolState(this.pool);
     return getPriceFromSqrtPrice(poolState.sqrtPrice, this.baseDecimals, this.quoteDecimals);
+  }
+
+  /**
+   * Fetches the current liquidity from the pool
+   * @returns Current liquidity as BN
+   * @throws Error if AMM is finalized or pool uninitialized
+   */
+  async fetchLiquidity(): Promise<BN> {
+    if (this._state === AMMState.Uninitialized) {
+      throw new Error('AMM not initialized');
+    }
+    
+    if (!this.pool) {
+      throw new Error('AMM pool is uninitialized');
+    }
+    
+    // Fetch current pool state and return liquidity
+    const poolState: PoolState = await this.cpAmm.fetchPoolState(this.pool);
+    return poolState.liquidity;
   }
 
   /**
