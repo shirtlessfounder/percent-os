@@ -4,6 +4,8 @@ import { getModerator } from '../services/moderator.service';
 import { PublicKey, Transaction } from '@solana/web3.js';
 import { BN } from '@coral-xyz/anchor';
 import { IAMM } from '../../app/types/amm.interface';
+import { HistoryService } from '../../app/services/history.service';
+import { Decimal } from 'decimal.js';
 
 const router = Router();
 
@@ -13,8 +15,8 @@ const router = Router();
  * @param market - Either 'pass' or 'fail' to select the AMM
  * @returns The requested AMM instance
  */
-function getAMM(proposalId: number, market: string): IAMM {
-  const moderator = getModerator();
+async function getAMM(proposalId: number, market: string): Promise<IAMM> {
+  const moderator = await getModerator();
   
   if (proposalId < 0 || proposalId >= moderator.proposals.length) {
     throw new Error('Proposal not found');
@@ -82,7 +84,7 @@ router.post('/:id/buildSwapTx', requireApiKey, async (req, res, next) => {
     }
     
     // Get the appropriate AMM
-    const amm = getAMM(proposalId, market);
+    const amm = await getAMM(proposalId, market);
     
     // Convert values
     const userPubkey = new PublicKey(user);
@@ -112,13 +114,17 @@ router.post('/:id/buildSwapTx', requireApiKey, async (req, res, next) => {
  * Body:
  * - transaction: string - Base64 encoded signed transaction
  * - market: string - Market to swap in ('pass' or 'fail')
+ * - user: string - User's public key (for trade logging)
+ * - isBaseToQuote: boolean - Direction of swap
+ * - amountIn: string - Amount of input tokens
+ * - amountOut: string - Amount of output tokens (optional, can be calculated)
  */
 router.post('/:id/executeSwapTx', requireApiKey, async (req, res, next) => {
   try {
     const proposalId = parseInt(req.params.id);
     
     // Validate request body
-    const { transaction, market } = req.body;
+    const { transaction, market, user, isBaseToQuote, amountIn, amountOut } = req.body;
     if (!transaction || !market) {
       return res.status(400).json({ 
         error: 'Missing required fields',
@@ -134,13 +140,51 @@ router.post('/:id/executeSwapTx', requireApiKey, async (req, res, next) => {
     }
     
     // Get the appropriate AMM
-    const amm = getAMM(proposalId, market);
+    const amm = await getAMM(proposalId, market);
     
     // Deserialize the transaction
     const tx = Transaction.from(Buffer.from(transaction, 'base64'));
     
     // Execute the swap
     const signature = await amm.executeSwapTx(tx);
+    
+    // Log trade to history if we have the required data
+    if (user && isBaseToQuote !== undefined && amountIn) {
+      try {
+        const historyService = HistoryService.getInstance();
+        
+        // Get current price for the trade
+        let currentPrice: Decimal;
+        try {
+          currentPrice = await amm.fetchPrice();
+        } catch {
+          // If we can't fetch price, estimate from amounts
+          if (amountOut) {
+            const inAmount = new Decimal(amountIn);
+            const outAmount = new Decimal(amountOut);
+            currentPrice = isBaseToQuote ? outAmount.div(inAmount) : inAmount.div(outAmount);
+          } else {
+            currentPrice = new Decimal(0); // fallback
+          }
+        }
+        
+        await historyService.recordTrade({
+          proposalId,
+          market: market as 'pass' | 'fail',
+          userAddress: user,
+          isBaseToQuote: isBaseToQuote,
+          amountIn: new Decimal(amountIn),
+          amountOut: amountOut ? new Decimal(amountOut) : new Decimal(0),
+          price: currentPrice,
+          txSignature: signature,
+        });
+        
+        console.log(`Trade logged for proposal #${proposalId}, market: ${market}, user: ${user}`);
+      } catch (logError) {
+        console.error('Failed to log trade to history:', logError);
+        // Continue even if logging fails
+      }
+    }
     
     res.json({
       signature,
@@ -165,7 +209,7 @@ router.get('/:id/:market/price', async (req, res, next) => {
     const market = req.params.market;
     
     // Get the appropriate AMM
-    const amm = getAMM(proposalId, market);
+    const amm = await getAMM(proposalId, market);
     
     // Fetch current price
     const price = await amm.fetchPrice();
@@ -194,7 +238,7 @@ router.get('/:id/:market/info', async (req, res, next) => {
     const market = req.params.market;
     
     // Get the appropriate AMM
-    const amm = getAMM(proposalId, market);
+    const amm = await getAMM(proposalId, market);
     
     res.json({
       proposalId,

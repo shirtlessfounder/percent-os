@@ -8,7 +8,7 @@ const router = Router();
 
 router.get('/:id', requireApiKey, async (req, res, next) => {
   try {
-    const moderator = getModerator();
+    const moderator = await getModerator();
     const id = parseInt(req.params.id);
     
     if (isNaN(id) || id < 0 || id >= moderator.proposals.length) {

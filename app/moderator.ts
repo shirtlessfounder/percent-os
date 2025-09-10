@@ -4,6 +4,7 @@ import { IExecutionConfig, IExecutionResult } from './types/execution.interface'
 import { IProposal, IProposalConfig } from './types/proposal.interface';
 import { Proposal } from './proposal';
 import { SchedulerService } from './services/scheduler.service';
+import { PersistenceService } from './services/persistence.service';
 
 /**
  * Moderator class that manages governance proposals for the protocol
@@ -60,6 +61,17 @@ export class Moderator implements IModerator {
       this.proposals[this.proposalIdCounter] = proposal;
       this.proposalIdCounter++;  // Increment counter for next proposal
       
+      // Save to database
+      try {
+        const persistenceService = PersistenceService.getInstance();
+        await persistenceService.saveProposal(proposal);
+        await persistenceService.saveModeratorState(this.proposalIdCounter, this.config);
+        console.log(`Proposal #${proposal.id} saved to database`);
+      } catch (dbError) {
+        console.error('Failed to save proposal to database:', dbError);
+        // Continue even if database save fails
+      }
+      
       // Schedule automatic TWAP cranking (every minute)
       this.scheduler.scheduleTWAPCranking(proposal.id, 60000);
       
@@ -96,7 +108,18 @@ export class Moderator implements IModerator {
       return proposal.status;
     }
     
-    return await proposal.finalize();
+    const status = await proposal.finalize();
+    
+    // Save updated state to database
+    try {
+      const persistenceService = PersistenceService.getInstance();
+      await persistenceService.saveProposal(proposal);
+      console.log(`Proposal #${id} finalized with status ${status}, saved to database`);
+    } catch (dbError) {
+      console.error('Failed to save finalized proposal to database:', dbError);
+    }
+    
+    return status;
   }
 
   /**
@@ -135,7 +158,18 @@ export class Moderator implements IModerator {
       case ProposalStatus.Passed:
         // Log proposal being executed
         console.log(`Executing proposal #${id}: "${proposal.description}"`);
-        return await proposal.execute(signer, executionConfig);
+        const result = await proposal.execute(signer, executionConfig);
+        
+        // Save updated state to database
+        try {
+          const persistenceService = PersistenceService.getInstance();
+          await persistenceService.saveProposal(proposal);
+          console.log(`Proposal #${id} executed, saved to database`);
+        } catch (dbError) {
+          console.error('Failed to save executed proposal to database:', dbError);
+        }
+        
+        return result;
       
       default:
         throw new Error(`Unknown proposal status: ${proposal.status}`);

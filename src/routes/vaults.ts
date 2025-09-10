@@ -7,8 +7,8 @@ import { VaultType } from '../../app/types/vault.interface';
 const router = Router();
 
 // Helper function to get vault from proposal
-function getVault(proposalId: number, vaultType: string) {
-  const moderator = getModerator();
+async function getVault(proposalId: number, vaultType: string) {
+  const moderator = await getModerator();
   
   if (proposalId < 0 || proposalId >= moderator.proposals.length) {
     throw new Error('Proposal not found');
@@ -43,7 +43,7 @@ router.post('/:id/:type/buildSplitTx', requireApiKey, async (req, res, next) => 
       });
     }
     
-    const vault = getVault(proposalId, vaultType);
+    const vault = await getVault(proposalId, vaultType);
     const userPubkey = new PublicKey(user);
     const amountBigInt = BigInt(amount);
     
@@ -72,7 +72,7 @@ router.post('/:id/:type/executeSplitTx', requireApiKey, async (req, res, next) =
       });
     }
     
-    const vault = getVault(proposalId, vaultType);
+    const vault = await getVault(proposalId, vaultType);
     const tx = Transaction.from(Buffer.from(transaction, 'base64'));
     
     const signature = await vault.executeSplitTx(tx);
@@ -101,7 +101,7 @@ router.post('/:id/:type/buildMergeTx', requireApiKey, async (req, res, next) => 
       });
     }
     
-    const vault = getVault(proposalId, vaultType);
+    const vault = await getVault(proposalId, vaultType);
     const userPubkey = new PublicKey(user);
     const amountBigInt = BigInt(amount);
     
@@ -130,7 +130,7 @@ router.post('/:id/:type/executeMergeTx', requireApiKey, async (req, res, next) =
       });
     }
     
-    const vault = getVault(proposalId, vaultType);
+    const vault = await getVault(proposalId, vaultType);
     const tx = Transaction.from(Buffer.from(transaction, 'base64'));
     
     const signature = await vault.executeMergeTx(tx);
@@ -158,7 +158,7 @@ router.post('/:id/:type/buildRedeemWinningTokensTx', requireApiKey, async (req, 
       });
     }
     
-    const vault = getVault(proposalId, vaultType);
+    const vault = await getVault(proposalId, vaultType);
     const userPubkey = new PublicKey(user);
     
     const transaction = await vault.buildRedeemWinningTokensTx(userPubkey);
@@ -186,7 +186,7 @@ router.post('/:id/:type/executeRedeemWinningTokensTx', requireApiKey, async (req
       });
     }
     
-    const vault = getVault(proposalId, vaultType);
+    const vault = await getVault(proposalId, vaultType);
     const tx = Transaction.from(Buffer.from(transaction, 'base64'));
     
     const signature = await vault.executeRedeemWinningTokensTx(tx);
@@ -212,7 +212,7 @@ router.get('/:id/getUserBalances', async (req, res, next) => {
       });
     }
     
-    const moderator = getModerator();
+    const moderator = await getModerator();
     
     if (proposalId < 0 || proposalId >= moderator.proposals.length) {
       return res.status(404).json({ error: 'Proposal not found' });

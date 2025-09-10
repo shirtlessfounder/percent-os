@@ -1,6 +1,10 @@
 import { IProposal } from '../types/proposal.interface';
 import { IModerator } from '../types/moderator.interface';
 import { ISchedulerService, IScheduledTask } from '../types/scheduler.interface';
+import { HistoryService } from './history.service';
+import { PersistenceService } from './persistence.service';
+import { AMMState } from '../types/amm.interface';
+import { Decimal } from 'decimal.js';
 
 /**
  * Scheduler service for managing automatic TWAP cranking and proposal finalization
@@ -59,6 +63,39 @@ export class SchedulerService implements ISchedulerService {
 
     this.tasks.set(taskId, task);
     console.log(`Scheduled TWAP cranking for proposal #${proposalId} every ${intervalMs}ms`);
+    
+    // Also schedule price recording for this proposal
+    this.schedulePriceRecording(proposalId, intervalMs);
+  }
+  
+  /**
+   * Schedules automatic price recording for a proposal
+   * @param proposalId - The proposal ID to record prices for
+   * @param intervalMs - Interval between recordings in milliseconds (default: 60000 = 1 minute)
+   */
+  schedulePriceRecording(proposalId: number, intervalMs: number = 60000): void {
+    const taskId = `price-${proposalId}`;
+    
+    if (this.tasks.has(taskId)) {
+      console.log(`Price recording already scheduled for proposal #${proposalId}`);
+      return;
+    }
+
+    const task: IScheduledTask = {
+      id: taskId,
+      type: 'price-record',
+      proposalId,
+      interval: intervalMs,
+      nextRunTime: Date.now() + intervalMs
+    };
+
+    // Start the periodic task
+    task.timer = setInterval(async () => {
+      await this.recordPricesForProposal(proposalId);
+    }, intervalMs);
+
+    this.tasks.set(taskId, task);
+    console.log(`Scheduled price recording for proposal #${proposalId} every ${intervalMs}ms`);
   }
 
   /**
@@ -122,6 +159,7 @@ export class SchedulerService implements ISchedulerService {
       if (now >= proposal.finalizedAt) {
         console.log(`Proposal #${proposalId} has ended, stopping TWAP cranking`);
         this.cancelTask(`twap-${proposalId}`);
+        this.cancelTask(`price-${proposalId}`);
         return;
       }
 
@@ -129,8 +167,96 @@ export class SchedulerService implements ISchedulerService {
       const twapOracle = proposal.twapOracle;
       await twapOracle.crankTWAP();
       console.log(`Cranked TWAP for proposal #${proposalId}`);
+      
+      // Record TWAP data to history
+      try {
+        const historyService = HistoryService.getInstance();
+        const twapData = await twapOracle.fetchTWAP();
+        
+        await historyService.recordTWAP({
+          proposalId,
+          passTwap: new Decimal(twapData.passTwap.toString()),
+          failTwap: new Decimal(twapData.failTwap.toString()),
+          passAggregation: new Decimal(twapData.passAggregation.toString()),
+          failAggregation: new Decimal(twapData.failAggregation.toString()),
+        });
+        
+        // Save updated proposal state to database
+        const persistenceService = PersistenceService.getInstance();
+        await persistenceService.saveProposal(proposal);
+      } catch (historyError) {
+        console.error(`Error recording TWAP history for proposal #${proposalId}:`, historyError);
+      }
     } catch (error) {
       console.error(`Error cranking TWAP for proposal #${proposalId}:`, error);
+    }
+  }
+  
+  /**
+   * Records prices for a specific proposal
+   * @param proposalId - The proposal ID
+   */
+  private async recordPricesForProposal(proposalId: number): Promise<void> {
+    if (!this.moderator) {
+      console.error('Moderator not set in scheduler');
+      return;
+    }
+
+    try {
+      const proposal = this.moderator.proposals[proposalId];
+      if (!proposal) {
+        console.error(`Proposal #${proposalId} not found`);
+        this.cancelTask(`price-${proposalId}`);
+        return;
+      }
+
+      // Check if proposal has ended
+      const now = Date.now();
+      if (now >= proposal.finalizedAt) {
+        console.log(`Proposal #${proposalId} has ended, stopping price recording`);
+        this.cancelTask(`price-${proposalId}`);
+        return;
+      }
+
+      const historyService = HistoryService.getInstance();
+      
+      try {
+        const [pAMM, fAMM] = proposal.getAMMs();
+        
+        // Record pass market price if AMM is trading
+        if (pAMM && pAMM.state === AMMState.Trading) {
+          try {
+            const passPrice = await pAMM.fetchPrice();
+            await historyService.recordPrice({
+              proposalId,
+              market: 'pass',
+              price: passPrice,
+            });
+          } catch (priceError) {
+            console.warn(`Failed to fetch pass price for proposal #${proposalId}:`, priceError);
+          }
+        }
+        
+        // Record fail market price if AMM is trading
+        if (fAMM && fAMM.state === AMMState.Trading) {
+          try {
+            const failPrice = await fAMM.fetchPrice();
+            await historyService.recordPrice({
+              proposalId,
+              market: 'fail',
+              price: failPrice,
+            });
+          } catch (priceError) {
+            console.warn(`Failed to fetch fail price for proposal #${proposalId}:`, priceError);
+          }
+        }
+        
+        console.log(`Recorded prices for proposal #${proposalId}`);
+      } catch (ammError) {
+        console.warn(`AMMs not initialized for proposal #${proposalId}, skipping price recording`);
+      }
+    } catch (error) {
+      console.error(`Error recording prices for proposal #${proposalId}:`, error);
     }
   }
 
@@ -149,8 +275,9 @@ export class SchedulerService implements ISchedulerService {
       const status = await this.moderator.finalizeProposal(proposalId);
       console.log(`Proposal #${proposalId} finalized with status: ${status}`);
       
-      // Cancel TWAP cranking for this proposal
+      // Cancel TWAP cranking and price recording for this proposal
       this.cancelTask(`twap-${proposalId}`);
+      this.cancelTask(`price-${proposalId}`);
     } catch (error) {
       console.error(`Error finalizing proposal #${proposalId}:`, error);
     }
@@ -181,6 +308,7 @@ export class SchedulerService implements ISchedulerService {
    */
   cancelProposalTasks(proposalId: number): void {
     this.cancelTask(`twap-${proposalId}`);
+    this.cancelTask(`price-${proposalId}`);
     this.cancelTask(`finalize-${proposalId}`);
   }
 

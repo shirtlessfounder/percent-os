@@ -14,7 +14,7 @@ router.get('/:proposalId', optionalApiKey, async (req, res) => {
       return res.status(400).json({ error: 'Invalid proposal ID' });
     }
 
-    const moderator = getModerator();
+    const moderator = await getModerator();
     const proposal = moderator.proposals[proposalId];
     
     if (!proposal) {
@@ -53,7 +53,7 @@ router.post('/:proposalId/crank', requireApiKey, async (req, res) => {
       return res.status(400).json({ error: 'Invalid proposal ID' });
     }
 
-    const moderator = getModerator();
+    const moderator = await getModerator();
     const proposal = moderator.proposals[proposalId];
     
     if (!proposal) {
