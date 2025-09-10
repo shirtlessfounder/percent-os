@@ -1,7 +1,6 @@
 import { Pool } from 'pg';
-import dotenv from 'dotenv';
-
-dotenv.config();
+// Note: dotenv should be configured at the application entry point (server.ts or server.test.ts)
+// not in individual service files
 
 let pool: Pool | null = null;
 

@@ -1,9 +1,5 @@
 import { Keypair, Connection } from '@solana/web3.js';
-import * as dotenv from 'dotenv';
-import * as path from 'path';
-
-// Load test environment variables
-dotenv.config({ path: '.env.test' });
+// Remove dotenv.config() here - it should be loaded in server.test.ts before imports
 
 export interface TestWallets {
   authority: Keypair;
