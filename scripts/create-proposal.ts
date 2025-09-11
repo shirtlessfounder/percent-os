@@ -1,7 +1,7 @@
 #!/usr/bin/env ts-node
 
 import { CreateProposalRequest } from '../src/types/api';
-import dotenv from 'dotenv';
+import * as dotenv from 'dotenv';
 
 dotenv.config();
 
@@ -30,7 +30,7 @@ async function createProposal() {
   
   const request: CreateProposalRequest = {
     description: 'Test Proposal',
-    proposalLength: 300,
+    proposalLength: 600, // 10 minutes to allow thorough battle testing
     twap: {
       initialTwapValue: ammPrice, // Decimal-adjusted price (0.1)
       twapMaxObservationChangePerUpdate: null,
