@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import WalletContextProvider from "@/providers/WalletProvider";
+import PrivyProviderWrapper from "@/providers/PrivyProvider";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
 const inter = Inter({
@@ -34,9 +35,11 @@ export default function RootLayout({
         className={`${inter.variable} ${ibmPlexMono.variable} font-sans antialiased bg-gray-950 text-white`}
       >
         <ErrorBoundary>
-          <WalletContextProvider>
-            {children}
-          </WalletContextProvider>
+          <PrivyProviderWrapper>
+            <WalletContextProvider>
+              {children}
+            </WalletContextProvider>
+          </PrivyProviderWrapper>
         </ErrorBoundary>
       </body>
     </html>

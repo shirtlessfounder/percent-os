@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { X, Copy, ExternalLink, AlertCircle, Shield, Zap, DollarSign } from 'lucide-react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { usePrivy } from '@privy-io/react-auth';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -12,6 +13,7 @@ interface SettingsModalProps {
 
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { connected, disconnect, publicKey } = useWallet();
+  const { authenticated, user, logout, login } = usePrivy();
   const [copied, setCopied] = useState(false);
   const [selectedTab, setSelectedTab] = useState<'wallet' | 'trading' | 'claims'>('wallet');
   
@@ -47,8 +49,23 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   
   if (!isOpen) return null;
   
-  const walletAddress = publicKey?.toBase58() || '';
+  // Prioritize Privy user's wallet, fallback to Solana adapter
+  const privyWalletAddress = useMemo(() => {
+    if (user?.wallet?.address) {
+      return user.wallet.address;
+    }
+    if (user?.linkedAccounts) {
+      const solanaWallet = user.linkedAccounts.find(account => account.type === 'wallet' && account.chainType === 'solana');
+      if (solanaWallet && 'address' in solanaWallet) {
+        return solanaWallet.address;
+      }
+    }
+    return null;
+  }, [user]);
+  
+  const walletAddress = privyWalletAddress || publicKey?.toBase58() || '';
   const shortAddress = walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : '';
+  const isConnected = authenticated || connected;
   
   const handleCopy = () => {
     if (walletAddress) {
@@ -122,7 +139,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         <div className="p-6 max-h-[500px] overflow-y-auto">
           {selectedTab === 'wallet' && (
             <div className="space-y-4">
-              {connected ? (
+              {isConnected ? (
                 <>
                   {/* Wallet Address Card */}
                   <div className="bg-gradient-to-r from-orange-500/10 to-orange-600/10 border border-orange-500/20 rounded-lg p-4">
@@ -162,7 +179,14 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       </div>
                     </div>
                     <button
-                      onClick={() => disconnect()}
+                      onClick={() => {
+                        if (authenticated) {
+                          logout();
+                        }
+                        if (connected) {
+                          disconnect();
+                        }
+                      }}
                       className="w-full mt-2 px-3 py-2 text-sm text-rose-400 hover:bg-rose-400/10 border border-rose-400/20 rounded transition-colors cursor-pointer"
                     >
                       Disconnect Wallet
@@ -227,7 +251,12 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   </div>
                   <h3 className="text-lg font-medium text-white mb-2">Connect Your Wallet</h3>
                   <p className="text-sm text-[#AFAFAF] mb-4">Connect your Solana wallet to start trading prediction markets</p>
-                  <WalletMultiButton className="!bg-orange-500 hover:!bg-orange-600 !h-10 !text-sm !font-medium !w-full" />
+                  <button
+                    onClick={() => login()}
+                    className="w-full h-10 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded transition-colors cursor-pointer"
+                  >
+                    Connect Wallet
+                  </button>
                 </div>
               )}
             </div>

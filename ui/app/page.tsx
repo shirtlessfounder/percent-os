@@ -3,6 +3,7 @@
 import { useState, useMemo, useCallback, useEffect, memo } from 'react';
 import dynamic from 'next/dynamic';
 import { useWallet } from '@solana/wallet-adapter-react';
+import { usePrivy } from '@privy-io/react-auth';
 import Sidebar from '@/components/Sidebar';
 import TradingInterface from '@/components/TradingInterface';
 import SettingsModal from '@/components/SettingsModal';
@@ -58,13 +59,27 @@ CountdownTimer.displayName = 'CountdownTimer';
 
 export default function HomePage() {
   const { publicKey } = useWallet();
+  const { ready, authenticated, user, login, logout } = usePrivy();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const { proposals, loading, refetch } = useProposals();
   
-  // Wallet info
-  const walletAddress = useMemo(() => publicKey?.toBase58() || '', [publicKey]);
+  // Wallet info - prioritize Privy user's wallet, fallback to Solana adapter
+  const privyWalletAddress = useMemo(() => {
+    if (user?.wallet?.address) {
+      return user.wallet.address;
+    }
+    if (user?.linkedAccounts) {
+      const solanaWallet = user.linkedAccounts.find(account => account.type === 'wallet' && account.chainType === 'solana');
+      if (solanaWallet && 'address' in solanaWallet) {
+        return solanaWallet.address;
+      }
+    }
+    return null;
+  }, [user]);
+  
+  const walletAddress = useMemo(() => privyWalletAddress || publicKey?.toBase58() || '', [privyWalletAddress, publicKey]);
   const shortAddress = useMemo(() => 
-    walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : 'CONNECT WALLET',
+    walletAddress ? walletAddress.slice(0, 6) : 'CONNECT WALLET',
     [walletAddress]
   );
   const avatarText = useMemo(() => 
@@ -223,7 +238,13 @@ export default function HomePage() {
             
             {/* Wallet Button */}
             <button 
-              onClick={() => setIsSettingsOpen(true)}
+              onClick={() => {
+                if (authenticated) {
+                  setIsSettingsOpen(true);
+                } else {
+                  login();
+                }
+              }}
               className="group flex items-center gap-2 transition cursor-pointer"
             >
               <span className="text-sm text-[#AFAFAF] group-hover:text-orange-500 transition-colors">{shortAddress}</span>

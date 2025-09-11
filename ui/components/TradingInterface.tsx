@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useMemo, memo, useEffect } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
+import { usePrivy } from '@privy-io/react-auth';
 import { useTokenPrices } from '@/hooks/useTokenPrices';
 import { formatNumber, formatCurrency } from '@/lib/formatters';
 
@@ -23,6 +24,8 @@ const TradingInterface = memo(({
   proposalStatus = 'Pending'
 }: TradingInterfaceProps) => {
   const { connected } = useWallet();
+  const { authenticated, login } = usePrivy();
+  const isConnected = authenticated || connected;
   const { sol: solPrice, oogway: oogwayPrice } = useTokenPrices();
   const [tradeType] = useState<'buy' | 'sell'>('buy');
   const [amount, setAmount] = useState('');
@@ -74,8 +77,8 @@ const TradingInterface = memo(({
   }, [amount, currentPrice, inputMode]);
 
   const handleTrade = useCallback(() => {
-    if (!connected) {
-      alert('Please connect your wallet first');
+    if (!isConnected) {
+      login();
       return;
     }
     
@@ -86,7 +89,7 @@ const TradingInterface = memo(({
       amount,
       estimatedCost
     });
-  }, [connected, proposalId, selectedMarket, tradeType, amount, estimatedCost]);
+  }, [isConnected, login, proposalId, selectedMarket, tradeType, amount, estimatedCost]);
   
 
   // Quick amount buttons
@@ -252,8 +255,8 @@ const TradingInterface = memo(({
             {/* Submit Button */}
             <button
               onClick={() => {
-                if (!connected) {
-                  alert('Please connect your wallet first');
+                if (!isConnected) {
+                  login();
                   return;
                 }
                 console.log('Claiming position:', reducePercent, '%');
@@ -485,8 +488,8 @@ const TradingInterface = memo(({
         {/* Submit Button */}
         <button
           onClick={() => {
-            if (!connected) {
-              alert('Please connect your wallet first');
+            if (!isConnected) {
+              login();
               return;
             }
             console.log('Reducing position by', reducePercent, '%');
