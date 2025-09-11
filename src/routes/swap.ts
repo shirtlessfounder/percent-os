@@ -18,11 +18,12 @@ const router = Router();
 async function getAMM(proposalId: number, market: string): Promise<IAMM> {
   const moderator = await getModerator();
   
-  if (proposalId < 0 || proposalId >= moderator.proposals.length) {
+  // Get proposal from database (always fresh data)
+  const proposal = await moderator.getProposal(proposalId);
+  
+  if (!proposal) {
     throw new Error('Proposal not found');
   }
-  
-  const proposal = moderator.proposals[proposalId];
   
   // Use the proposal's getAMMs() method which handles initialization checks
   const [pAMM, fAMM] = proposal.getAMMs();

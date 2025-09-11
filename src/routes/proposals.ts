@@ -95,7 +95,7 @@ router.post('/', requireApiKey, async (req, res, next) => {
       transaction = new Transaction().add({
         programId: new PublicKey(MEMO_PROGRAM_ID),
         keys: [],
-        data: Buffer.from(`Proposal #${moderator.proposals.length}: ${body.description}`)
+        data: Buffer.from(`Proposal #${moderator.proposalIdCounter}: ${body.description}`)
       });
     }
     
@@ -136,11 +136,16 @@ router.post('/:id/execute', requireApiKey, async (req, res, next) => {
     const moderator = await getModerator();
     const id = parseInt(req.params.id);
     
-    if (isNaN(id) || id < 0 || id >= moderator.proposals.length) {
-      return res.status(404).json({ error: 'Proposal not found' });
+    if (isNaN(id) || id < 0) {
+      return res.status(400).json({ error: 'Invalid proposal ID' });
     }
     
-    const proposal = moderator.proposals[id];
+    // Get proposal from database (always fresh data)
+    const proposal = await moderator.getProposal(id);
+    
+    if (!proposal) {
+      return res.status(404).json({ error: 'Proposal not found' });
+    }
 
     
     // Execute the proposal using the moderator's authority

@@ -27,6 +27,7 @@ async function getVault(proposalId: number, vaultType: string) {
   }
 }
 
+
 // Build split transaction
 router.post('/:id/:type/buildSplitTx', requireApiKey, async (req, res, next) => {
   try {

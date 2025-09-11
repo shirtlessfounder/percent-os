@@ -37,12 +37,10 @@ class ModeratorService {
         console.log('Loading moderator state from database...');
         ModeratorService.instance = new Moderator(savedState.config);
         
-        // Load all proposals from database
-        const proposals = await persistenceService.loadAllProposals();
-        ModeratorService.instance.proposals = proposals;
-        (ModeratorService.instance as any).proposalIdCounter = savedState.proposalCounter;
+        // Load proposal counter from database
+        ModeratorService.instance.proposalIdCounter = savedState.proposalCounter;
         
-        console.log(`Loaded ${proposals.length} proposals from database`);
+        console.log(`Loaded moderator state with proposal counter ${savedState.proposalCounter}`);
       } else {
         console.log('No saved state found, initializing new moderator...');
         

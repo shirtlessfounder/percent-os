@@ -194,8 +194,7 @@ export class SchedulerService implements ISchedulerService {
     const persistenceService = PersistenceService.getInstance();
     await persistenceService.saveProposal(proposal);
     
-    // Invalidate cache so next access gets fresh TWAP state
-    this.moderator.invalidateCache(proposalId);
+    // Database is now the source of truth - no cache to invalidate
   }
   
   /**

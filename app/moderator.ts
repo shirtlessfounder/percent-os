@@ -12,8 +12,7 @@ import { PersistenceService } from './services/persistence.service';
  */
 export class Moderator implements IModerator {
   public config: IModeratorConfig;                         // Configuration parameters for the moderator
-  private proposalCache: Map<number, IProposal> = new Map(); // In-memory cache for active proposals
-  private proposalIdCounter: number = 0;                   // Auto-incrementing ID counter for proposals
+  private _proposalIdCounter: number = 0;                  // Auto-incrementing ID counter for proposals
   private scheduler: SchedulerService;                     // Scheduler for automatic tasks
   private persistenceService: PersistenceService;          // Database persistence service
 
@@ -29,76 +28,28 @@ export class Moderator implements IModerator {
   }
   
   /**
-   * Getter for proposals array (for backwards compatibility)
-   * @deprecated Use getProposal() or database queries instead
+   * Getter for the current proposal ID counter
    */
-  get proposals(): IProposal[] {
-    return Array.from(this.proposalCache.values());
+  get proposalIdCounter(): number {
+    return this._proposalIdCounter;
   }
   
   /**
-   * Setter for proposals array (for backwards compatibility with startup loading)
-   * @deprecated Use cacheProposal() instead
+   * Setter for proposal ID counter (for loading from database)
    */
-  set proposals(proposals: IProposal[]) {
-    this.proposalCache.clear();
-    proposals.forEach(proposal => {
-      this.proposalCache.set(proposal.id, proposal);
-    });
+  set proposalIdCounter(value: number) {
+    this._proposalIdCounter = value;
   }
   
   /**
-   * Get a proposal by ID from cache (for internal operations like scheduling)
+   * Get a proposal by ID from database (always fresh data)
    * @param id - Proposal ID
    * @returns Promise resolving to proposal or null if not found
    */
   async getProposal(id: number): Promise<IProposal | null> {
-    // Check cache first
-    if (this.proposalCache.has(id)) {
-      return this.proposalCache.get(id)!;
-    }
-    
-    // Load from database and cache it for future internal operations
-    const proposal = await this.persistenceService.loadProposal(id);
-    if (proposal) {
-      this.proposalCache.set(id, proposal);
-    }
-    
-    return proposal;
-  }
-  
-  /**
-   * Get a proposal by ID directly from database (for API routes - always fresh)
-   * @param id - Proposal ID  
-   * @returns Promise resolving to proposal or null if not found
-   */
-  async getProposalFresh(id: number): Promise<IProposal | null> {
     return await this.persistenceService.loadProposal(id);
   }
   
-  /**
-   * Invalidate cached proposal (call after state changes)
-   * @param id - Proposal ID to invalidate
-   */
-  private invalidateProposalCache(id: number): void {
-    this.proposalCache.delete(id);
-  }
-  
-  /**
-   * Public method to invalidate cache (for external services like scheduler)
-   * @param id - Proposal ID to invalidate
-   */
-  public invalidateCache(id: number): void {
-    this.invalidateProposalCache(id);
-  }
-  
-  /**
-   * Cache a proposal in memory (for active operations)
-   * @param proposal - Proposal to cache
-   */
-  private cacheProposal(proposal: IProposal): void {
-    this.proposalCache.set(proposal.id, proposal);
-  }
 
   /**
    * Creates a new governance proposal
@@ -110,7 +61,7 @@ export class Moderator implements IModerator {
     try {
       // Create proposal config from moderator config and params
       const proposalConfig: IProposalConfig = {
-        id: this.proposalIdCounter,
+        id: this._proposalIdCounter,
         description: params.description,
         transaction: params.transaction,
         createdAt: Date.now(),
@@ -133,11 +84,9 @@ export class Moderator implements IModerator {
       
       // Save to database FIRST (database is source of truth)
       await this.persistenceService.saveProposal(proposal);
-      this.proposalIdCounter++;  // Increment counter for next proposal
-      await this.persistenceService.saveModeratorState(this.proposalIdCounter, this.config);
+      this._proposalIdCounter++;  // Increment counter for next proposal
+      await this.persistenceService.saveModeratorState(this._proposalIdCounter, this.config);
       
-      // Cache proposal for active operations
-      this.cacheProposal(proposal);
       
       console.log(`Proposal #${proposal.id} created and saved to database`);
       
@@ -150,7 +99,7 @@ export class Moderator implements IModerator {
       
       return proposal;
     } catch (error) {
-      console.error(`Failed to create proposal #${this.proposalIdCounter}:`, error);
+      console.error(`Failed to create proposal #${this._proposalIdCounter}:`, error);
       throw error;
     }
   }
@@ -181,9 +130,6 @@ export class Moderator implements IModerator {
     
     // Save updated state to database (database is source of truth)
     await this.persistenceService.saveProposal(proposal);
-    
-    // Invalidate cache so next access gets fresh data
-    this.invalidateProposalCache(id);
     
     console.log(`Proposal #${id} finalized with status ${status}, saved to database`);
     
@@ -231,8 +177,6 @@ export class Moderator implements IModerator {
         // Save updated state to database (database is source of truth)
         await this.persistenceService.saveProposal(proposal);
         
-        // Invalidate cache so next access gets fresh data
-        this.invalidateProposalCache(id);
         
         console.log(`Proposal #${id} executed, saved to database`);
         

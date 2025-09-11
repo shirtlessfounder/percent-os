@@ -43,15 +43,11 @@ class TestModeratorService {
 
       TestModeratorService.instance = new Moderator(config);
       
-      // Load existing proposals from database
-      const persistenceService = PersistenceService.getInstance();
-      const proposals = await persistenceService.loadAllProposals();
-      TestModeratorService.instance.proposals = proposals;
-      
       // Load proposal counter from database
+      const persistenceService = PersistenceService.getInstance();
       const savedState = await persistenceService.loadModeratorState();
       if (savedState) {
-        (TestModeratorService.instance as any).proposalIdCounter = savedState.proposalCounter;
+        TestModeratorService.instance.proposalIdCounter = savedState.proposalCounter;
       }
     }
 

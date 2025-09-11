@@ -17,7 +17,7 @@ router.get('/:id', requireApiKey, async (req, res, next) => {
     }
     
     // Load proposal fresh from database to ensure we have the latest state
-    const proposal = await moderator.getProposalFresh(id);
+    const proposal = await moderator.getProposal(id);
     
     if (!proposal) {
       return res.status(404).json({ error: 'Proposal not found' });

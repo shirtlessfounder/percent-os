@@ -3,6 +3,7 @@ import { getModerator } from '../services/moderator.service';
 import { ProposalStatus } from '../../app/types/moderator.interface';
 import { SchedulerService } from '../../app/services/scheduler.service';
 import { requireApiKey, optionalApiKey } from '../middleware/auth';
+import { PersistenceService } from '../../app/services/persistence.service';
 
 const router = Router();
 
@@ -15,7 +16,8 @@ router.get('/:proposalId', optionalApiKey, async (req, res) => {
     }
 
     const moderator = await getModerator();
-    const proposal = moderator.proposals[proposalId];
+    // Get proposal from database (always fresh data)
+    const proposal = await moderator.getProposal(proposalId);
     
     if (!proposal) {
       return res.status(404).json({ error: 'Proposal not found' });
@@ -54,7 +56,8 @@ router.post('/:proposalId/crank', requireApiKey, async (req, res) => {
     }
 
     const moderator = await getModerator();
-    const proposal = moderator.proposals[proposalId];
+    // Get proposal from database (always fresh data)
+    const proposal = await moderator.getProposal(proposalId);
     
     if (!proposal) {
       return res.status(404).json({ error: 'Proposal not found' });
@@ -66,6 +69,10 @@ router.post('/:proposalId/crank', requireApiKey, async (req, res) => {
 
     const twapOracle = proposal.twapOracle;
     await twapOracle.crankTWAP();
+
+    // Save updated proposal state to database (TWAP state changed)
+    const persistenceService = PersistenceService.getInstance();
+    await persistenceService.saveProposal(proposal);
 
     res.json({
       proposalId,
