@@ -126,17 +126,12 @@ export default function HomePage() {
                 </svg>
               </a>
               <a 
-                href="https://axiom.trade/discover" 
+                href="https://axiom.trade/meme/2FCqTyvFcE4uXgRL1yh56riZ9vdjVgoP6yknZW3f8afX" 
                 target="_blank" 
                 rel="noopener noreferrer"
-                className="w-7 h-7 bg-[#272727] hover:bg-[#303030] rounded-md transition-colors mb-0.5 flex items-center justify-center"
+                className="px-2 h-7 bg-[#272727] hover:bg-[#303030] rounded-md transition-colors mb-0.5 flex items-center justify-center"
               >
-                <img 
-                  src="/percent-logo.svg" 
-                  alt="Axiom Trade" 
-                  className="h-3 w-3"
-                  style={{ filter: 'brightness(0) saturate(100%) invert(71%) sepia(5%) saturate(166%) hue-rotate(315deg) brightness(85%) contrast(84%)' }}
-                />
+                <span className="text-xs text-[#AFAFAF]">$oogway</span>
               </a>
             </div>
           </div>
