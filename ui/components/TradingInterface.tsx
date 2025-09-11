@@ -282,13 +282,13 @@ const TradingInterface = memo(({
           Fail
         </div>
       </div>
-      <div className="flex flex-row flex-1 min-h-[40px] max-h-[40px] gap-[2px] bg-[#2A2A2A] p-[3px] justify-center items-center rounded-full mb-2">
+      <div className="flex flex-row flex-1 min-h-[40px] max-h-[40px] gap-[2px] p-[3px] justify-center items-center rounded-full mb-2 border border-[#2A2A2A]">
         <button
           onClick={() => onMarketChange('pass')}
           className={`flex flex-row flex-1 min-h-[34px] max-h-[34px] px-4 justify-center items-center rounded-full transition cursor-pointer ${
             selectedMarket === 'pass'
               ? 'bg-emerald-500 text-[#181818] font-bold'
-              : 'bg-transparent text-gray-400 font-medium hover:bg-[#303030]'
+              : 'bg-transparent text-gray-400 font-medium hover:text-gray-300'
           }`}
         >
           <span className="text-[12px] leading-[16px]">Pass</span>
@@ -298,7 +298,7 @@ const TradingInterface = memo(({
           className={`flex flex-row flex-1 min-h-[34px] max-h-[34px] px-4 justify-center items-center rounded-full transition cursor-pointer ${
             selectedMarket === 'fail'
               ? 'bg-rose-500 text-[#181818] font-bold'
-              : 'bg-transparent text-gray-400 font-medium hover:bg-[#303030]'
+              : 'bg-transparent text-gray-400 font-medium hover:text-gray-300'
           }`}
         >
           <span className="text-[12px] leading-[16px]">Fail</span>
