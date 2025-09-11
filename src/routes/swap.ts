@@ -278,4 +278,48 @@ router.get('/:id/:market/info', async (req, res, next) => {
   }
 });
 
+/**
+ * Get current prices from both AMMs (pass and fail)
+ * GET /:id/prices
+ * 
+ * Returns prices for both pass and fail markets
+ */
+router.get('/:id/prices', async (req, res, next) => {
+  try {
+    const proposalId = parseInt(req.params.id);
+    
+    if (isNaN(proposalId) || proposalId < 0) {
+      return res.status(400).json({ error: 'Invalid proposal ID' });
+    }
+    
+    // Get both AMMs
+    const passAMM = await getAMM(proposalId, 'pass');
+    const failAMM = await getAMM(proposalId, 'fail');
+    
+    // Fetch prices from both AMMs in parallel
+    const [passPrice, failPrice] = await Promise.all([
+      passAMM.fetchPrice(),
+      failAMM.fetchPrice()
+    ]);
+    
+    res.json({
+      proposalId,
+      pass: {
+        market: 'pass',
+        price: passPrice.toString(),
+        baseMint: passAMM.baseMint.toString(),
+        quoteMint: passAMM.quoteMint.toString()
+      },
+      fail: {
+        market: 'fail',
+        price: failPrice.toString(),
+        baseMint: failAMM.baseMint.toString(),
+        quoteMint: failAMM.quoteMint.toString()
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export default router;
