@@ -126,10 +126,11 @@ router.post('/:id/executeSwapTx', requireApiKey, async (req, res, next) => {
     
     // Validate request body
     const { transaction, market, user, isBaseToQuote, amountIn, amountOut } = req.body;
-    if (!transaction || !market) {
+    if (!transaction || !market || !user || isBaseToQuote === undefined || !amountIn) {
       return res.status(400).json({ 
         error: 'Missing required fields',
-        required: ['transaction', 'market']
+        required: ['transaction', 'market', 'user', 'isBaseToQuote', 'amountIn'],
+        optional: ['amountOut']
       });
     }
     
@@ -157,42 +158,52 @@ router.post('/:id/executeSwapTx', requireApiKey, async (req, res, next) => {
       console.log(`Proposal #${proposalId} state saved after swap execution`);
     }
     
-    // Log trade to history if we have the required data
-    if (user && isBaseToQuote !== undefined && amountIn) {
+    // Log trade to history (required parameters are now validated above)
+    try {
+      const historyService = HistoryService.getInstance();
+      
+      // Get current price for the trade
+      let currentPrice: Decimal;
       try {
-        const historyService = HistoryService.getInstance();
-        
-        // Get current price for the trade
-        let currentPrice: Decimal;
-        try {
-          currentPrice = await amm.fetchPrice();
-        } catch {
-          // If we can't fetch price, estimate from amounts
-          if (amountOut) {
-            const inAmount = new Decimal(amountIn);
-            const outAmount = new Decimal(amountOut);
-            currentPrice = isBaseToQuote ? outAmount.div(inAmount) : inAmount.div(outAmount);
-          } else {
-            currentPrice = new Decimal(0); // fallback
-          }
+        currentPrice = await amm.fetchPrice();
+      } catch {
+        // If we can't fetch price, estimate from amounts
+        if (amountOut) {
+          const inAmount = new Decimal(amountIn);
+          const outAmount = new Decimal(amountOut);
+          currentPrice = isBaseToQuote ? outAmount.div(inAmount) : inAmount.div(outAmount);
+        } else {
+          currentPrice = new Decimal(0); // fallback
         }
-        
-        await historyService.recordTrade({
-          proposalId,
-          market: market as 'pass' | 'fail',
-          userAddress: user,
-          isBaseToQuote: isBaseToQuote,
-          amountIn: new Decimal(amountIn),
-          amountOut: amountOut ? new Decimal(amountOut) : new Decimal(0),
-          price: currentPrice,
-          txSignature: signature,
-        });
-        
-        console.log(`Trade logged for proposal #${proposalId}, market: ${market}, user: ${user}`);
-      } catch (logError) {
-        console.error('Failed to log trade to history:', logError);
-        // Continue even if logging fails
       }
+      
+      // Convert raw amounts to human-readable amounts using token decimals
+      const baseDecimals = amm.baseDecimals;
+      const quoteDecimals = amm.quoteDecimals;
+      
+      // Determine which decimals to use based on trade direction
+      const inputDecimals = isBaseToQuote ? baseDecimals : quoteDecimals;
+      const outputDecimals = isBaseToQuote ? quoteDecimals : baseDecimals;
+      
+      // Convert to human-readable amounts
+      const amountInDecimal = new Decimal(amountIn).div(Math.pow(10, inputDecimals));
+      const amountOutDecimal = amountOut ? new Decimal(amountOut).div(Math.pow(10, outputDecimals)) : new Decimal(0);
+      
+      await historyService.recordTrade({
+        proposalId,
+        market: market as 'pass' | 'fail',
+        userAddress: user,
+        isBaseToQuote: isBaseToQuote,
+        amountIn: amountInDecimal,
+        amountOut: amountOutDecimal,
+        price: currentPrice,
+        txSignature: signature,
+      });
+      
+      console.log(`Trade logged for proposal #${proposalId}, market: ${market}, user: ${user}`);
+    } catch (logError) {
+      console.error('Failed to log trade to history:', logError);
+      // Continue even if logging fails
     }
     
     res.json({

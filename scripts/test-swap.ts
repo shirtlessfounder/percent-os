@@ -129,7 +129,10 @@ async function testSwap() {
       },
       body: JSON.stringify({
         transaction: Buffer.from(swapTx.serialize({ requireAllSignatures: false })).toString('base64'),
-        market: 'pass'  // Market to execute swap in
+        market: 'pass',  // Market to execute swap in
+        user: alicePublicKey,  // User public key for trade logging
+        isBaseToQuote: false,  // Direction of swap for trade logging
+        amountIn: '500000000000'  // Amount in for trade logging
       })
     });
     
