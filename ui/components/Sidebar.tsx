@@ -86,7 +86,6 @@ const Sidebar = memo(({ selectedProposal, onSelectProposal, proposals, loading }
                   <div className="text-sm font-medium text-gray-200 whitespace-nowrap pr-6">
                     {proposal.description.length > 40 ? proposal.description.substring(0, 40) + '...' : proposal.description}
                   </div>
-                  <div className="text-xs text-gray-500 mt-0.5">Proposal #{proposal.id}</div>
                   <div 
                     className="absolute top-0 right-0 h-full w-10 pointer-events-none"
                     style={{
