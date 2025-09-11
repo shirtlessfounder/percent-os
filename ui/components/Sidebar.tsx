@@ -1,19 +1,22 @@
 'use client';
 
 import { useState, useMemo, memo } from 'react';
-import { mockProposals } from '@/lib/mock-data';
+import { ProposalListSkeleton } from '@/components/ProposalSkeleton';
+import type { ProposalListItem } from '../../src/types/api';
 
 interface SidebarProps {
   selectedProposal: number;
   onSelectProposal: (id: number) => void;
+  proposals: ProposalListItem[];
+  loading: boolean;
 }
 
-const Sidebar = memo(({ selectedProposal, onSelectProposal }: SidebarProps) => {
+const Sidebar = memo(({ selectedProposal, onSelectProposal, proposals, loading }: SidebarProps) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   
   const sortedProposals = useMemo(() => 
-    [...mockProposals].sort((a, b) => b.endsAt.getTime() - a.endsAt.getTime()),
-    []
+    [...proposals].sort((a, b) => b.finalizedAt - a.finalizedAt),
+    [proposals]
   );
 
   return (
@@ -60,6 +63,14 @@ const Sidebar = memo(({ selectedProposal, onSelectProposal }: SidebarProps) => {
           <div className="px-2 pb-2 text-sm text-gray-400">
             $oogway Proposals
           </div>
+          {loading ? (
+            <ProposalListSkeleton />
+          ) : sortedProposals.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 px-4">
+              <div className="text-gray-500 text-sm text-center">No active proposals</div>
+              <div className="text-gray-600 text-xs text-center mt-1">Check back later for new governance proposals</div>
+            </div>
+          ) : (
           <div className="space-y-1">
             {sortedProposals.map((proposal) => (
               <button
@@ -73,8 +84,9 @@ const Sidebar = memo(({ selectedProposal, onSelectProposal }: SidebarProps) => {
               >
                 <div className="relative overflow-hidden">
                   <div className="text-sm font-medium text-gray-200 whitespace-nowrap pr-6">
-                    {proposal.title}
+                    {proposal.description.length > 40 ? proposal.description.substring(0, 40) + '...' : proposal.description}
                   </div>
+                  <div className="text-xs text-gray-500 mt-0.5">Proposal #{proposal.id}</div>
                   <div 
                     className="absolute top-0 right-0 h-full w-10 pointer-events-none"
                     style={{
@@ -98,7 +110,9 @@ const Sidebar = memo(({ selectedProposal, onSelectProposal }: SidebarProps) => {
                       ? 'bg-orange-400/20 text-orange-400 animate-pulse'
                       : proposal.status === 'Passed'
                       ? 'bg-emerald-400/20 text-emerald-400'
-                      : 'bg-rose-400/20 text-rose-400'
+                      : proposal.status === 'Failed'
+                      ? 'bg-rose-400/20 text-rose-400'
+                      : 'bg-gray-400/20 text-gray-400'
                   }`}>
                     {proposal.status === 'Pending' ? 'Live' : proposal.status}
                     {proposal.status === 'Pending' && (
@@ -119,12 +133,13 @@ const Sidebar = memo(({ selectedProposal, onSelectProposal }: SidebarProps) => {
                     )}
                   </span>
                   <span className="text-xs text-gray-500">
-                    {proposal.endsAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    {new Date(proposal.finalizedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                   </span>
                 </div>
               </button>
             ))}
           </div>
+          )}
         </div>
       )}
     </div>

@@ -1,40 +1,36 @@
-import { useState, useEffect } from 'react';
-import { api, ProposalResponse } from '@/lib/api';
-import { mockProposals } from '@/lib/mock-data';
+import { useState, useEffect, useCallback } from 'react';
+import { api } from '@/lib/api';
+import type { ProposalListItem, ProposalDetailResponse } from '../../src/types/api';
 
 export function useProposals() {
-  const [proposals, setProposals] = useState<any[]>([]);
+  const [proposals, setProposals] = useState<ProposalListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function fetchProposals() {
-      try {
-        setLoading(true);
-        const data = await api.getProposals();
-        
-        if (data && data.length > 0) {
-          setProposals(data);
-        } else {
-          setProposals(mockProposals);
-        }
-      } catch (err) {
-        console.error('Error fetching proposals:', err);
-        setError('Failed to fetch proposals');
-        setProposals(mockProposals);
-      } finally {
-        setLoading(false);
-      }
+  const fetchProposals = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await api.getProposals();
+      setProposals(data);
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching proposals:', err);
+      setError('Failed to fetch proposals');
+      setProposals([]);
+    } finally {
+      setLoading(false);
     }
-
-    fetchProposals();
   }, []);
 
-  return { proposals, loading, error };
+  useEffect(() => {
+    fetchProposals();
+  }, [fetchProposals]);
+
+  return { proposals, loading, error, refetch: fetchProposals };
 }
 
 export function useProposal(id: number) {
-  const [proposal, setProposal] = useState<any>(null);
+  const [proposal, setProposal] = useState<ProposalDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,18 +39,11 @@ export function useProposal(id: number) {
       try {
         setLoading(true);
         const data = await api.getProposal(id);
-        
-        if (data) {
-          setProposal(data);
-        } else {
-          const mockProposal = mockProposals.find(p => p.id === id);
-          setProposal(mockProposal || mockProposals[0]);
-        }
+        setProposal(data);
       } catch (err) {
         console.error('Error fetching proposal:', err);
         setError('Failed to fetch proposal');
-        const mockProposal = mockProposals.find(p => p.id === id);
-        setProposal(mockProposal || mockProposals[0]);
+        setProposal(null);
       } finally {
         setLoading(false);
       }

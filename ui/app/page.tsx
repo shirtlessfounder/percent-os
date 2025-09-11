@@ -6,7 +6,7 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import Sidebar from '@/components/Sidebar';
 import TradingInterface from '@/components/TradingInterface';
 import SettingsModal from '@/components/SettingsModal';
-import { mockProposals } from '@/lib/mock-data';
+import { useProposals } from '@/hooks/useProposals';
 import { IoMdStopwatch } from 'react-icons/io';
 
 const TradingViewChart = dynamic(() => import('@/components/TradingViewChart'), {
@@ -18,16 +18,22 @@ const TradingViewChart = dynamic(() => import('@/components/TradingViewChart'), 
   )
 });
 
-const CountdownTimer = memo(({ endsAt }: { endsAt: Date }) => {
+const CountdownTimer = memo(({ endsAt, onTimerEnd, isPending }: { endsAt: number; onTimerEnd?: () => void; isPending?: boolean }) => {
   const [timeLeft, setTimeLeft] = useState('');
+  const [hasEnded, setHasEnded] = useState(false);
 
   useEffect(() => {
     const calculateTimeLeft = () => {
-      const now = new Date();
-      const diff = endsAt.getTime() - now.getTime();
+      const now = Date.now();
+      const diff = endsAt - now;
       
       if (diff <= 0) {
         setTimeLeft('00:00:00');
+        // Only trigger onTimerEnd if proposal is pending and we haven't already triggered
+        if (!hasEnded && isPending) {
+          setHasEnded(true);
+          onTimerEnd?.();
+        }
         return;
       }
       
@@ -42,7 +48,7 @@ const CountdownTimer = memo(({ endsAt }: { endsAt: Date }) => {
     const interval = setInterval(calculateTimeLeft, 1000);
     
     return () => clearInterval(interval);
-  }, [endsAt]);
+  }, [endsAt, hasEnded, onTimerEnd, isPending]);
 
   return <>{timeLeft}</>;
 });
@@ -52,6 +58,7 @@ CountdownTimer.displayName = 'CountdownTimer';
 export default function HomePage() {
   const { publicKey } = useWallet();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const { proposals, loading, refetch } = useProposals();
   
   // Wallet info
   const walletAddress = useMemo(() => publicKey?.toBase58() || '', [publicKey]);
@@ -66,16 +73,23 @@ export default function HomePage() {
   
   // Memoize sorted proposals
   const sortedProposals = useMemo(() => 
-    [...mockProposals].sort((a, b) => b.endsAt.getTime() - a.endsAt.getTime()),
-    []
+    [...proposals].sort((a, b) => b.finalizedAt - a.finalizedAt),
+    [proposals]
   );
   
-  const [selectedProposalId, setSelectedProposalId] = useState(sortedProposals[0].id);
+  const [selectedProposalId, setSelectedProposalId] = useState<number | null>(null);
   const [selectedMarket, setSelectedMarket] = useState<'pass' | 'fail'>('pass');
   
+  // Set initial selected proposal when proposals load
+  useEffect(() => {
+    if (sortedProposals.length > 0 && selectedProposalId === null) {
+      setSelectedProposalId(sortedProposals[0].id);
+    }
+  }, [sortedProposals, selectedProposalId]);
+  
   const proposal = useMemo(() => 
-    mockProposals.find(p => p.id === selectedProposalId) || sortedProposals[0],
-    [selectedProposalId, sortedProposals]
+    proposals.find(p => p.id === selectedProposalId) || sortedProposals[0] || null,
+    [selectedProposalId, proposals, sortedProposals]
   );
   
   const handleSelectProposal = useCallback((id: number) => {
@@ -86,12 +100,60 @@ export default function HomePage() {
     setSelectedMarket(market);
   }, []);
 
+  const handleTimerEnd = useCallback(() => {
+    // Wait 5 seconds after timer ends to refetch proposals
+    setTimeout(() => {
+      refetch();
+    }, 5000);
+  }, [refetch]);
+
+  if (loading) {
+    return (
+      <div className="flex h-screen bg-[#181818]">
+        {/* Sidebar with skeleton */}
+        <Sidebar 
+          selectedProposal={0}
+          onSelectProposal={handleSelectProposal}
+          proposals={proposals}
+          loading={loading}
+        />
+        {/* Main content skeleton */}
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-gray-500">Loading...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!proposal || proposals.length === 0) {
+    return (
+      <div className="flex h-screen bg-[#181818]">
+        {/* Sidebar */}
+        <Sidebar 
+          selectedProposal={0}
+          onSelectProposal={handleSelectProposal}
+          proposals={proposals}
+          loading={loading}
+        />
+        {/* Empty state */}
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <h2 className="text-2xl font-semibold text-gray-400 mb-2">No Active Proposals</h2>
+            <p className="text-gray-500">Check back later for new governance proposals</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen bg-[#181818]">
       {/* Sidebar */}
       <Sidebar 
-        selectedProposal={selectedProposalId}
+        selectedProposal={selectedProposalId || 0}
         onSelectProposal={handleSelectProposal}
+        proposals={proposals}
+        loading={loading}
       />
 
       {/* Main Content */}
@@ -181,7 +243,9 @@ export default function HomePage() {
                     ? 'bg-orange-400/20 text-orange-400 animate-pulse'
                     : proposal.status === 'Passed'
                     ? 'bg-emerald-400/20 text-emerald-400'
-                    : 'bg-rose-400/20 text-rose-400'
+                    : proposal.status === 'Failed'
+                    ? 'bg-rose-400/20 text-rose-400'
+                    : 'bg-gray-400/20 text-gray-400'
                 }`}>
                   {proposal.status === 'Pending' ? 'Live' : proposal.status}
                   {proposal.status === 'Pending' && (
@@ -203,20 +267,22 @@ export default function HomePage() {
                 </span>
                 <span className="w-px h-4 bg-[#3D3D3D]"></span>
                 <span className="text-xs text-gray-500">
-                  {proposal.endsAt.toLocaleDateString('en-US', { 
+                  {new Date(proposal.finalizedAt).toLocaleDateString('en-US', { 
                     month: 'long', 
                     day: 'numeric', 
                     year: 'numeric'
-                  })} at {proposal.endsAt.toLocaleTimeString('en-US', {
+                  })} at {new Date(proposal.finalizedAt).toLocaleTimeString('en-US', {
                     hour: '2-digit',
                     minute: '2-digit'
                   })}
                 </span>
               </div>
-              <h1 className="text-3xl font-semibold mb-4">
-                {proposal.title}
-              </h1>
-              <p className="text-gray-400 text-sm leading-relaxed">{proposal.description}</p>
+              <div className="mb-4">
+                <h1 className="text-3xl font-semibold">
+                  {proposal.description}
+                </h1>
+                <p className="text-sm text-gray-500 mt-1">Proposal #{proposal.id}</p>
+              </div>
             </div>
 
             {/* Progress Bar Component */}
@@ -235,12 +301,12 @@ export default function HomePage() {
                             ? 'bg-rose-500'
                             : 'bg-emerald-500'
                         }`}
-                        style={{ width: `${proposal.status === 'Passed' ? 100 : Math.max(proposal.passPrice * 100, 8)}%` }}
+                        style={{ width: `${proposal.status === 'Passed' ? 100 : proposal.status === 'Failed' ? 0 : 50}%` }}
                       >
-                        {/* Percentage Text inside progress - hidden for Passed status */}
-                        {proposal.status !== 'Passed' && (
+                        {/* Percentage Text inside progress - hidden for Passed/Failed status */}
+                        {proposal.status === 'Pending' && (
                           <span className="text-base font-bold text-white">
-                            {(proposal.passPrice * 100).toFixed(0)}%
+                            50%
                           </span>
                         )}
                       </div>
@@ -264,7 +330,11 @@ export default function HomePage() {
                     {/* Stopwatch Icon */}
                     <IoMdStopwatch className="w-6 h-6 text-gray-400 flex-shrink-0" />
                     <div className="text-2xl font-mono text-white">
-                      <CountdownTimer endsAt={proposal.endsAt} />
+                      <CountdownTimer 
+                      endsAt={proposal.finalizedAt} 
+                      onTimerEnd={handleTimerEnd}
+                      isPending={proposal.status === 'Pending'}
+                    />
                     </div>
                   </div>
                 </div>
@@ -429,8 +499,8 @@ export default function HomePage() {
                 proposalId={proposal.id}
                 selectedMarket={selectedMarket}
                 onMarketChange={handleMarketChange}
-                passPrice={proposal.passPrice}
-                failPrice={proposal.failPrice}
+                passPrice={0.5}
+                failPrice={0.5}
                 proposalStatus={proposal.status as 'Pending' | 'Passed' | 'Failed'}
               />
             </div>
