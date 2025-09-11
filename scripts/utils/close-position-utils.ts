@@ -350,7 +350,10 @@ async function executeMarketSwap(
     },
     body: JSON.stringify({
       transaction: Buffer.from(swapTx.serialize({ requireAllSignatures: false })).toString('base64'),
-      market: market
+      market: market,
+      user: userKeypair.publicKey.toBase58(),
+      isBaseToQuote: isBaseToQuote,
+      amountIn: amountIn
     })
   });
   
