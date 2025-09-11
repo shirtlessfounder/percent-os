@@ -237,7 +237,7 @@ export default function HomePage() {
         <div className="flex-1 flex overflow-hidden">
           <div className="flex-1 p-8 pr-10 overflow-y-auto border-r border-[#2A2A2A]">
             <div className="mb-8">
-              <div className="flex items-center gap-3 mb-2">
+              <div className="flex items-center gap-3 mb-4">
                 <span className={`text-xs px-2 py-1 rounded-full inline-flex items-center gap-1 ${
                   proposal.status === 'Pending'
                     ? 'bg-orange-400/20 text-orange-400 animate-pulse'
@@ -279,7 +279,7 @@ export default function HomePage() {
                 <h1 className="text-3xl font-semibold">
                   {proposal.description}
                 </h1>
-                <p className="text-sm text-gray-500 mt-1">Proposal #{proposal.id}</p>
+                <p className="text-sm text-gray-500 mt-4">Proposal #{proposal.id}</p>
               </div>
             </div>
 
