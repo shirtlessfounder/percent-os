@@ -1,5 +1,5 @@
 import { Connection } from '@solana/web3.js';
-import type { ProposalListResponse, ProposalListItem, ProposalDetailResponse } from '../../src/types/api';
+import type { ProposalListResponse, ProposalListItem, ProposalDetailResponse, UserBalancesResponse } from '../../src/types/api';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
@@ -30,6 +30,17 @@ class GovernanceAPI {
       return await response.json();
     } catch (error) {
       console.error('Error fetching proposal:', error);
+      return null;
+    }
+  }
+
+  async getUserBalances(proposalId: number, userAddress: string): Promise<UserBalancesResponse | null> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/vaults/${proposalId}/getUserBalances?user=${userAddress}`);
+      if (!response.ok) throw new Error('Failed to fetch user balances');
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching user balances:', error);
       return null;
     }
   }

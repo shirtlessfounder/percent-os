@@ -143,3 +143,18 @@ export interface CreateProposalResponse {
   finalizedAt: number;
   transactionHash?: string;
 }
+
+export interface UserBalancesResponse {
+  proposalId: number;
+  user: string;
+  base: {
+    regular: string;
+    passConditional: string;
+    failConditional: string;
+  };
+  quote: {
+    regular: string;
+    passConditional: string;
+    failConditional: string;
+  };
+}
