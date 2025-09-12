@@ -64,7 +64,7 @@ const CountdownTimer = memo(({ endsAt, onTimerEnd, isPending }: { endsAt: number
 CountdownTimer.displayName = 'CountdownTimer';
 
 export default function HomePage() {
-  const { ready, authenticated, user, walletAddress, login, logout } = usePrivyWallet();
+  const { ready, authenticated, user, walletAddress } = usePrivyWallet();
   const { proposals, loading, refetch } = useProposals();
   const [livePrices, setLivePrices] = useState<{ pass: number | null; fail: number | null }>({ pass: null, fail: null });
   
@@ -154,7 +154,6 @@ export default function HomePage() {
           <Header 
             walletAddress={walletAddress}
             authenticated={authenticated}
-            login={login}
             solBalance={solBalance}
             oogwayBalance={oogwayBalance}
           />
@@ -162,7 +161,7 @@ export default function HomePage() {
           {/* Empty state */}
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
-              <h2 className="text-2xl font-semibold text-gray-400 mb-2">No Active Proposals</h2>
+              <h2 className="text-2xl font-semibold text-gray-400 mb-2">No Proposals</h2>
               <p className="text-gray-500">Check back later for new governance proposals</p>
             </div>
           </div>
@@ -187,7 +186,6 @@ export default function HomePage() {
         <Header 
           walletAddress={walletAddress}
           authenticated={authenticated}
-          login={login}
           solBalance={solBalance}
           oogwayBalance={oogwayBalance}
         />
