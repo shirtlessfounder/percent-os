@@ -1,11 +1,12 @@
 import { Keypair, Connection } from '@solana/web3.js';
+import bs58 from 'bs58';
 // Remove dotenv.config() here - it should be loaded in server.test.ts before imports
 
 export interface TestWallets {
   authority: Keypair;
   alice: Keypair;
   bob: Keypair;
-  charlie: Keypair;
+  aelix: Keypair;
 }
 
 export interface TestModeConfig {
@@ -36,11 +37,26 @@ export function getTestModeConfig(): TestModeConfig {
   const rpcUrl = process.env.SOLANA_RPC_URL || 'https://api.devnet.solana.com';
   
   // Load test wallets (same as in tests/setup/devnet.ts)
+  // Load aelix wallet from environment variable if available
+  let aelixWallet: Keypair;
+  if (process.env.TEST_WALLET_PRIVATE_KEY) {
+    try {
+      const privateKeyBytes = bs58.decode(process.env.TEST_WALLET_PRIVATE_KEY);
+      aelixWallet = Keypair.fromSecretKey(privateKeyBytes);
+    } catch (error) {
+      console.warn('⚠️ Failed to load TEST_WALLET_PRIVATE_KEY, generating deterministic wallet:', error);
+      aelixWallet = loadOrGenerateWallet('aelix');
+    }
+  } else {
+    console.warn('⚠️ No TEST_WALLET_PRIVATE_KEY, generating deterministic wallet');
+    aelixWallet = loadOrGenerateWallet('aelix');
+  }
+
   const wallets: TestWallets = {
     authority: loadOrGenerateWallet('authority'),
     alice: loadOrGenerateWallet('alice'),
     bob: loadOrGenerateWallet('bob'),
-    charlie: loadOrGenerateWallet('charlie')
+    aelix: aelixWallet
   };
 
   // Create connection with confirmed commitment
@@ -67,6 +83,6 @@ export function logTestModeInfo(config: TestModeConfig): void {
   console.log(`   Authority: ${config.wallets.authority.publicKey.toBase58()}`);
   console.log(`   Alice:     ${config.wallets.alice.publicKey.toBase58()}`);
   console.log(`   Bob:       ${config.wallets.bob.publicKey.toBase58()}`);
-  console.log(`   Charlie:   ${config.wallets.charlie.publicKey.toBase58()}`);
+  console.log(`   Aelix:     ${config.wallets.aelix.publicKey.toBase58()}`);
   console.log('═══════════════════════════════════════════\n');
 }

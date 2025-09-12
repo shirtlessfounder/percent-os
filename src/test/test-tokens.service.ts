@@ -65,7 +65,7 @@ export class TestTokenSetupService {
       { name: 'Authority', keypair: this.wallets.authority, baseAmount: 1000000n, quoteAmount: 1000n },
       { name: 'Alice', keypair: this.wallets.alice, baseAmount: 500000n, quoteAmount: 500n },
       { name: 'Bob', keypair: this.wallets.bob, baseAmount: 500000n, quoteAmount: 500n },
-      { name: 'Charlie', keypair: this.wallets.charlie, baseAmount: 500000n, quoteAmount: 500n }
+      { name: 'Aelix', keypair: this.wallets.aelix, baseAmount: 500000n, quoteAmount: 500n }
     ];
 
     for (const wallet of walletList) {
@@ -117,7 +117,7 @@ export class TestTokenSetupService {
       { name: 'Authority', keypair: this.wallets.authority },
       { name: 'Alice', keypair: this.wallets.alice },
       { name: 'Bob', keypair: this.wallets.bob },
-      { name: 'Charlie', keypair: this.wallets.charlie }
+      { name: 'Aelix', keypair: this.wallets.aelix }
     ];
 
     for (const wallet of walletList) {
