@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { X, Copy, ExternalLink, AlertCircle, Shield, Zap, DollarSign } from 'lucide-react';
+import { X, Copy, ExternalLink, AlertCircle, Shield, Zap, DollarSign, Key } from 'lucide-react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { usePrivy } from '@privy-io/react-auth';
+import { useSolanaWallets } from '@privy-io/react-auth/solana';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -14,6 +15,7 @@ interface SettingsModalProps {
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { connected, disconnect, publicKey } = useWallet();
   const { authenticated, user, logout, login } = usePrivy();
+  const { exportWallet } = useSolanaWallets();
   const [copied, setCopied] = useState(false);
   const [selectedTab, setSelectedTab] = useState<'wallet' | 'trading' | 'claims'>('wallet');
   
@@ -191,6 +193,15 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     >
                       Disconnect Wallet
                     </button>
+                    {authenticated && (
+                      <button
+                        onClick={() => exportWallet()}
+                        className="w-full mt-2 px-3 py-2 text-sm text-orange-400 hover:bg-orange-400/10 border border-orange-400/20 rounded transition-colors cursor-pointer flex items-center justify-center gap-2"
+                      >
+                        <Key size={14} />
+                        Export Private Key
+                      </button>
+                    )}
                   </div>
                   
                   {/* Portfolio Overview */}
