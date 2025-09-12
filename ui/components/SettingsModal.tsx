@@ -47,8 +47,6 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     };
   }, [isOpen]);
   
-  if (!isOpen) return null;
-  
   // Prioritize Privy user's wallet, fallback to Solana adapter
   const privyWalletAddress = useMemo(() => {
     if (user?.wallet?.address) {
@@ -62,6 +60,8 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     }
     return null;
   }, [user]);
+  
+  if (!isOpen) return null;
   
   const walletAddress = privyWalletAddress || publicKey?.toBase58() || '';
   const shortAddress = walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : '';
