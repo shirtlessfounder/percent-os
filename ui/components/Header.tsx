@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import SettingsModal from './SettingsModal';
+import { useTokenPrices } from '@/hooks/useTokenPrices';
 
 interface HeaderProps {
   walletAddress: string | null;
@@ -12,7 +13,8 @@ interface HeaderProps {
 
 export default function Header({ walletAddress, authenticated, solBalance, oogwayBalance }: HeaderProps) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  
+  const { sol: solPrice, oogway: oogwayPrice } = useTokenPrices();
+
   const shortAddress = walletAddress ? walletAddress.slice(0, 6) : 'CONNECT WALLET';
   const avatarText = walletAddress ? walletAddress.slice(0, 2).toUpperCase() : '??';
 
@@ -95,9 +97,13 @@ export default function Header({ walletAddress, authenticated, solBalance, oogwa
       </div>
       
       {/* Settings Modal */}
-      <SettingsModal 
+      <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
+        solBalance={solBalance}
+        oogwayBalance={oogwayBalance}
+        solPrice={solPrice}
+        oogwayPrice={oogwayPrice}
       />
     </>
   );
