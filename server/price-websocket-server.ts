@@ -2,6 +2,7 @@ import { WebSocketServer } from 'ws';
 import type { WebSocket } from 'ws';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { getDevnetPriceService } from './devnet-price-service';
+import { getMainnetPriceService } from './mainnet-price-service';
 import { Client } from 'pg';
 import { Pool } from 'pg';
 
@@ -9,7 +10,7 @@ interface PriceData {
   tokenAddress: string;
   price: number;
   timestamp: number;
-  source?: 'dexscreener' | 'devnet-amm';
+  source?: 'dexscreener' | 'devnet-amm' | 'mainnet-amm';
 }
 
 interface ClientSubscription {
@@ -38,7 +39,9 @@ class PriceWebSocketServer {
   private priceUpdateInterval: NodeJS.Timeout | null = null;
   private subscribedTokens: Set<string> = new Set();
   private devnetService = getDevnetPriceService();
+  private mainnetService = getMainnetPriceService();
   private devnetTokens: Set<string> = new Set(); // Track which tokens are on devnet
+  private mainnetPools: Set<string> = new Set(); // Track which pools are on mainnet
   private poolMonitors: Map<string, number> = new Map(); // poolAddress -> subscriptionId
   private pgClient: Client | null = null;
   private subscribedProposals: Set<number> = new Set();
@@ -201,16 +204,27 @@ class PriceWebSocketServer {
 
   private async fetchTokenPrice(tokenAddress: string, poolAddress?: string) {
     try {
-      // Check if this is a devnet token (pass/fail tokens)
-      const isDevnetToken = this.devnetTokens.has(tokenAddress) || poolAddress;
-      
-      if (isDevnetToken && poolAddress) {
-        // Fetch from devnet AMM
-        const ammPrice = await this.devnetService.getTokenPrice(tokenAddress, poolAddress);
-        if (ammPrice && !isNaN(ammPrice.price) && isFinite(ammPrice.price)) {
+      // If we already know the pool is on mainnet, fetch from mainnet directly
+      if (poolAddress && this.mainnetPools.has(poolAddress)) {
+        const mainnetPrice = await this.mainnetService.getTokenPrice(tokenAddress, poolAddress);
+        if (mainnetPrice && !isNaN(mainnetPrice.price) && isFinite(mainnetPrice.price)) {
           this.updatePrice({
             tokenAddress,
-            price: ammPrice.price,
+            price: mainnetPrice.price,
+            timestamp: Date.now(),
+            source: 'mainnet-amm'
+          });
+          return;
+        }
+      }
+
+      // If we already know it's a devnet token, fetch from devnet directly
+      if (this.devnetTokens.has(tokenAddress) && poolAddress) {
+        const devnetPrice = await this.devnetService.getTokenPrice(tokenAddress, poolAddress);
+        if (devnetPrice && !isNaN(devnetPrice.price) && isFinite(devnetPrice.price)) {
+          this.updatePrice({
+            tokenAddress,
+            price: devnetPrice.price,
             timestamp: Date.now(),
             source: 'devnet-amm'
           });
@@ -251,16 +265,28 @@ class PriceWebSocketServer {
           }
         }
       } else if (response.status === 404) {
-        // Token not found on mainnet, mark as devnet token
-        this.devnetTokens.add(tokenAddress);
-        
-        // Try to fetch from devnet if we have a pool address
+        // Token not found on DexScreener, try AMM pools
         if (poolAddress) {
-          const ammPrice = await this.devnetService.getTokenPrice(tokenAddress, poolAddress);
-          if (ammPrice && !isNaN(ammPrice.price) && isFinite(ammPrice.price)) {
+          // First try mainnet (most common)
+          const mainnetPrice = await this.mainnetService.getTokenPrice(tokenAddress, poolAddress);
+          if (mainnetPrice && !isNaN(mainnetPrice.price) && isFinite(mainnetPrice.price)) {
+            this.mainnetPools.add(poolAddress);
             this.updatePrice({
               tokenAddress,
-              price: ammPrice.price,
+              price: mainnetPrice.price,
+              timestamp: Date.now(),
+              source: 'mainnet-amm'
+            });
+            return; // Exit early if found on mainnet
+          }
+
+          // If not on mainnet, try devnet
+          const devnetPrice = await this.devnetService.getTokenPrice(tokenAddress, poolAddress);
+          if (devnetPrice && !isNaN(devnetPrice.price) && isFinite(devnetPrice.price)) {
+            this.devnetTokens.add(tokenAddress);
+            this.updatePrice({
+              tokenAddress,
+              price: devnetPrice.price,
               timestamp: Date.now(),
               source: 'devnet-amm'
             });
