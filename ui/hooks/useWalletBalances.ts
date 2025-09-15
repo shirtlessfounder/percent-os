@@ -22,10 +22,13 @@ export function useWalletBalances(walletAddress: string | null): WalletBalances 
 
   const fetchBalances = useCallback(async (address: string) => {
     setBalances(prev => ({ ...prev, loading: true, error: null }));
-    
+
     try {
-      // Use the RPC URL from environment or default to devnet
-      const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
+      // Use Helius RPC for better reliability
+      const heliusKey = process.env.NEXT_PUBLIC_HELIUS_API_KEY;
+      const rpcUrl = heliusKey
+        ? `https://mainnet.helius-rpc.com/?api-key=${heliusKey}`
+        : (process.env.NEXT_PUBLIC_RPC_URL || 'https://api.mainnet-beta.solana.com');
       const connection = new Connection(rpcUrl, 'confirmed');
       const pubKey = new PublicKey(address);
 
@@ -41,13 +44,12 @@ export function useWalletBalances(walletAddress: string | null): WalletBalances 
               oogwayMint,
               pubKey
             );
-            
+
             const oogwayAccount = await getAccount(connection, oogwayATA);
             // Assuming $oogway has 9 decimals like most SPL tokens
             oogwayAmount = Number(oogwayAccount.amount) / 1e9;
         } catch (error) {
-          // Token account might not exist if user has 0 balance
-          console.log('No $oogway token account found or error fetching:', error);
+          // Token account might not exist if user has 0 balance - this is normal
         }
 
       setBalances({
@@ -57,7 +59,6 @@ export function useWalletBalances(walletAddress: string | null): WalletBalances 
         error: null,
       });
     } catch (error) {
-      console.error('Error fetching balances:', error);
       setBalances({
         sol: 0,
         oogway: 0,
@@ -82,7 +83,10 @@ export function useWalletBalances(walletAddress: string | null): WalletBalances 
     fetchBalances(walletAddress);
 
     // Set up WebSocket subscriptions for real-time updates
-    const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
+    const heliusKey = process.env.NEXT_PUBLIC_HELIUS_API_KEY;
+    const rpcUrl = heliusKey
+      ? `https://mainnet.helius-rpc.com/?api-key=${heliusKey}`
+      : (process.env.NEXT_PUBLIC_RPC_URL || 'https://api.mainnet-beta.solana.com');
     const connection = new Connection(rpcUrl, 'confirmed');
     const pubKey = new PublicKey(walletAddress);
     
@@ -112,7 +116,7 @@ export function useWalletBalances(walletAddress: string | null): WalletBalances 
           'confirmed'
         );
       } catch (error) {
-        console.log('Could not subscribe to $oogway account changes:', error);
+        // Could not subscribe to $oogway account changes - this is normal if account doesn't exist
       }
     })();
     
