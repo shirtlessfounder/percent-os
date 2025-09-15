@@ -244,7 +244,7 @@ export default function HomePage() {
                     </svg>
                   )}
                 </span>
-                <span className="w-px h-4 bg-[#3D3D3D]"></span>
+                <span className="w-px h-4 bg-[#282828]"></span>
                 <span className="text-xs text-gray-500">
                   {new Date(proposal.finalizedAt).toLocaleDateString('en-US', { 
                     month: 'long', 
@@ -266,7 +266,7 @@ export default function HomePage() {
 
             {/* Progress Bar Component */}
             <div>
-              <div className="bg-[#0F0F0F] border-t border-l border-r border-[#3D3D3D] px-4 py-4">
+              <div className="border-t border-l border-r border-[#282828] px-4 py-4">
                 <div className="flex items-center gap-6">
                   {/* Progress Bar */}
                   <div className="relative flex-1">
@@ -355,7 +355,7 @@ export default function HomePage() {
             </div>
 
             {/* Trading History Table */}
-            <div className="bg-[#0F0F0F] border-b border-l border-r border-[#3D3D3D]">
+            <div className="border-b border-l border-r border-[#282828]">
               {/* Table Header */}
               <div className="grid gap-4 px-4 py-3 text-xs text-[#9C9D9E] font-medium border-b border-[#2A2A2A]" style={{ gridTemplateColumns: '1.5fr 0.7fr 0.7fr 0.7fr 1.5fr 1.5fr 1.5fr 0.7fr' }}>
                 <div>Trader</div>

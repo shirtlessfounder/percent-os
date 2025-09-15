@@ -32,7 +32,7 @@ export const TokenPriceBox: React.FC<TokenPriceBoxProps> = ({
     }
   };
   const getTypeStyles = () => {
-    const baseStyles = 'bg-[#0F0F0F] border-t border-l border-b border-[#3D3D3D]';
+    const baseStyles = 'border-t border-l border-b border-[#282828]';
     switch (tokenType) {
       case 'governance':
         return baseStyles;
@@ -91,7 +91,7 @@ export const TokenPriceBox: React.FC<TokenPriceBoxProps> = ({
   };
 
   return (
-    <div className={`p-4 transition-all hover:border-[#3D3D3D] ${getTypeStyles()}`}>
+    <div className={`p-4 transition-all hover:border-[#282828] ${getTypeStyles()}`}>
       <div className="flex items-center justify-between mb-2">
         <div 
           className={`flex items-center gap-2 ${tokenAddress ? 'group cursor-pointer' : ''}`}
