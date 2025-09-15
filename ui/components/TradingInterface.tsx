@@ -297,11 +297,11 @@ const TradingInterface = memo(({
 
   return (
     <div>
-      {/* Payouts Section - Only show if pending OR if user has a position when closed */}
-      {(proposalStatus === 'Pending' || ((proposalStatus === 'Passed' || proposalStatus === 'Failed') && userPosition)) && (
+      {/* Payouts Section - Only show if user has a position */}
+      {userPosition && (
         <div className="mb-8">
           <div className="text-xs text-gray-400 mb-2">
-            {proposalStatus === 'Pending' ? (userPosition ? 'Your Position' : 'Expected Payouts') : 'Payout'}
+            {proposalStatus === 'Pending' ? 'Your Position' : 'Payout'}
           </div>
           <div className="space-y-2">
             {/* Show user position if they have one, otherwise show expected payouts */}
@@ -593,7 +593,7 @@ const TradingInterface = memo(({
               }
             }}
             placeholder="0.0"
-            className="w-full px-3 py-3 pr-20 bg-[#2a2a2a] rounded-t-lg text-white placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-600 border-t border-l border-r border-[#2A2A2A]"
+            className="w-full px-3 py-3 pr-20 bg-[#2a2a2a] rounded-t-lg text-white placeholder-gray-600 focus:outline-none border-t border-l border-r border-[#2A2A2A]"
             style={{ WebkitAppearance: 'none', MozAppearance: 'textfield' }}
           />
           <button
@@ -712,7 +712,7 @@ const TradingInterface = memo(({
                   }
                 }}
                 placeholder="100"
-                className="w-full px-3 py-3 pr-20 bg-[#2a2a2a] rounded-t-lg text-white placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-gray-600 border-t border-l border-r border-[#2A2A2A]"
+                className="w-full px-3 py-3 pr-20 bg-[#2a2a2a] rounded-t-lg text-white placeholder-gray-600 focus:outline-none border-t border-l border-r border-[#2A2A2A]"
                 style={{ WebkitAppearance: 'none', MozAppearance: 'textfield' }}
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
