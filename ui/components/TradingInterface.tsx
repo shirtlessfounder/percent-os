@@ -619,7 +619,7 @@ const TradingInterface = memo(({
             }}
             className={`flex flex-row flex-1 min-h-[34px] max-h-[34px] px-4 justify-center items-center rounded-full transition cursor-pointer ${
               positionMode === 'decrease'
-                ? 'bg-red-500 text-[#181818] font-bold'
+                ? 'bg-rose-500 text-[#181818] font-bold'
                 : 'bg-transparent text-gray-400 font-medium hover:text-gray-300'
             }`}
           >
@@ -769,7 +769,7 @@ const TradingInterface = memo(({
             ) : (
               // Decrease mode
               amount && parseFloat(amount) > 0
-                ? 'bg-red-500 hover:bg-red-600 text-[#181818]'
+                ? 'bg-rose-500 hover:bg-rose-600 text-[#181818]'
                 : 'bg-[#2a2a2a] text-gray-600 cursor-not-allowed'
             )
           ) : (

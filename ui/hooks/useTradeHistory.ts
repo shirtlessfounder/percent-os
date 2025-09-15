@@ -1,7 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useTokenPrices } from './useTokenPrices';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const WS_URL = 'ws://localhost:9091';
+const RECONNECT_DELAY = 3000;
+const MAX_RECONNECT_ATTEMPTS = 5;
 
 export interface Trade {
   id: number;
@@ -22,13 +25,18 @@ interface TradeHistoryResponse {
   data: Trade[];
 }
 
+type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
+
 export function useTradeHistory(proposalId: number | null) {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [wsStatus, setWsStatus] = useState<ConnectionStatus>('disconnected');
   const { sol: solPrice, oogway: oogwayPrice } = useTokenPrices();
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const proposalIdRef = useRef(proposalId);
 
   const fetchTrades = useCallback(async () => {
     if (proposalId === null) return;
@@ -56,20 +64,36 @@ export function useTradeHistory(proposalId: number | null) {
     }
   }, [proposalId]);
 
+  // Update proposalId ref
+  useEffect(() => {
+    proposalIdRef.current = proposalId;
+  }, [proposalId]);
+
   // WebSocket connection for real-time trade updates
   const connectWebSocket = useCallback(() => {
-    if (!proposalId) return;
+    if (!proposalIdRef.current || wsRef.current?.readyState === WebSocket.OPEN) return;
+
+    // Clear any existing reconnect timeout
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
 
     try {
-      const ws = new WebSocket('ws://localhost:9091');
+      setWsStatus('connecting');
+      const ws = new WebSocket(WS_URL);
       wsRef.current = ws;
 
       ws.onopen = () => {
         console.log('Trade WebSocket connected');
+        setWsStatus('connected');
+        setError(null);
+        reconnectAttemptsRef.current = 0;
+
         // Subscribe to trades for this proposal
         ws.send(JSON.stringify({
           type: 'SUBSCRIBE_TRADES',
-          proposalId: proposalId
+          proposalId: proposalIdRef.current
         }));
       };
 
@@ -77,10 +101,10 @@ export function useTradeHistory(proposalId: number | null) {
         try {
           const data = JSON.parse(event.data);
 
-          if (data.type === 'TRADE') {
+          if (data.type === 'TRADE' && data.proposalId === proposalIdRef.current) {
             // New trade received, add to the beginning of the array
             const newTrade: Trade = {
-              id: Date.now(), // Generate a temporary ID
+              id: data.id || Date.now(),
               timestamp: data.timestamp,
               proposalId: data.proposalId,
               market: data.market,
@@ -93,13 +117,18 @@ export function useTradeHistory(proposalId: number | null) {
             };
 
             setTrades(prevTrades => {
-              // Check if trade already exists (by signature)
-              if (data.txSignature && prevTrades.some(t => t.txSignature === data.txSignature)) {
-                return prevTrades;
-              }
-              // Add new trade to the beginning
-              return [newTrade, ...prevTrades];
+              // Check if trade already exists (by signature or id)
+              const exists = data.txSignature
+                ? prevTrades.some(t => t.txSignature === data.txSignature)
+                : prevTrades.some(t => t.id === newTrade.id);
+
+              if (exists) return prevTrades;
+
+              // Add new trade to the beginning and limit to 100 trades
+              return [newTrade, ...prevTrades].slice(0, 100);
             });
+          } else if (data.type === 'TRADES_SUBSCRIBED') {
+            console.log('Successfully subscribed to trades for proposal', data.proposalId);
           }
         } catch (err) {
           console.error('Error parsing WebSocket message:', err);
@@ -108,45 +137,69 @@ export function useTradeHistory(proposalId: number | null) {
 
       ws.onerror = (error) => {
         console.error('Trade WebSocket error:', error);
+        setWsStatus('error');
+        setError('WebSocket connection error');
       };
 
       ws.onclose = () => {
         console.log('Trade WebSocket disconnected');
         wsRef.current = null;
+        setWsStatus('disconnected');
 
-        // Reconnect after 3 seconds
-        if (reconnectTimeoutRef.current) {
-          clearTimeout(reconnectTimeoutRef.current);
+        // Attempt reconnection if we haven't exceeded max attempts
+        if (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS && proposalIdRef.current) {
+          reconnectAttemptsRef.current++;
+          const delay = RECONNECT_DELAY * Math.min(reconnectAttemptsRef.current, 3);
+          console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current})`);
+
+          reconnectTimeoutRef.current = setTimeout(() => {
+            connectWebSocket();
+          }, delay);
+        } else if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
+          setError('Unable to maintain WebSocket connection');
         }
-        reconnectTimeoutRef.current = setTimeout(() => {
-          connectWebSocket();
-        }, 3000);
       };
     } catch (err) {
       console.error('Failed to connect trade WebSocket:', err);
+      setWsStatus('error');
+      setError('Failed to connect to trade updates');
     }
-  }, [proposalId]);
+  }, []);
 
-  // Disconnect WebSocket when component unmounts or proposal changes
+  // Disconnect WebSocket
   const disconnectWebSocket = useCallback(() => {
-    if (wsRef.current) {
-      if (proposalId && wsRef.current.readyState === WebSocket.OPEN) {
-        // Unsubscribe from trades
-        wsRef.current.send(JSON.stringify({
-          type: 'UNSUBSCRIBE_TRADES',
-          proposalId: proposalId
-        }));
-      }
-      wsRef.current.close();
-      wsRef.current = null;
-    }
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
-  }, [proposalId]);
+
+    if (wsRef.current) {
+      // Send unsubscribe if connected
+      if (proposalIdRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        try {
+          wsRef.current.send(JSON.stringify({
+            type: 'UNSUBSCRIBE_TRADES',
+            proposalId: proposalIdRef.current
+          }));
+        } catch (err) {
+          console.error('Error unsubscribing from trades:', err);
+        }
+      }
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+
+    setWsStatus('disconnected');
+    reconnectAttemptsRef.current = 0;
+  }, []);
 
   useEffect(() => {
+    if (!proposalId) {
+      setTrades([]);
+      disconnectWebSocket();
+      return;
+    }
+
     // Fetch initial trades
     fetchTrades();
 
@@ -156,14 +209,15 @@ export function useTradeHistory(proposalId: number | null) {
     return () => {
       disconnectWebSocket();
     };
-  }, [fetchTrades, connectWebSocket, disconnectWebSocket]);
+  }, [proposalId, fetchTrades, connectWebSocket, disconnectWebSocket]);
 
-  // Helper function to format time ago
-  const getTimeAgo = (timestamp: string) => {
+  // Memoized helper function to format time ago
+  const getTimeAgo = useCallback((timestamp: string) => {
     const now = Date.now();
     const then = new Date(timestamp).getTime();
     const diff = now - then;
 
+    const seconds = Math.floor(diff / 1000);
     const minutes = Math.floor(diff / (1000 * 60));
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
@@ -171,18 +225,19 @@ export function useTradeHistory(proposalId: number | null) {
     if (days > 0) return `${days}d`;
     if (hours > 0) return `${hours}h`;
     if (minutes > 0) return `${minutes}m`;
+    if (seconds > 0) return `${seconds}s`;
     return 'now';
-  };
+  }, []);
 
-  // Helper function to format address - show first 6 characters
-  const formatAddress = (address: string) => {
+  // Memoized helper function to format address - show first 6 characters
+  const formatAddress = useCallback((address: string) => {
     if (!address) return '';
     if (address.length <= 6) return address;
     return address.slice(0, 6);
-  };
+  }, []);
 
-  // Helper function to determine token used
-  const getTokenUsed = (isBaseToQuote: boolean, market: 'pass' | 'fail') => {
+  // Memoized helper function to determine token used
+  const getTokenUsed = useCallback((isBaseToQuote: boolean, market: 'pass' | 'fail') => {
     // For pass market: base is oogway, quote is SOL
     // For fail market: base is SOL, quote is oogway
     if (market === 'pass') {
@@ -190,10 +245,10 @@ export function useTradeHistory(proposalId: number | null) {
     } else {
       return isBaseToQuote ? 'SOL' : '$oogway';
     }
-  };
+  }, []);
 
-  // Helper function to calculate volume in USD
-  const calculateVolume = (amountIn: string, isBaseToQuote: boolean, market: 'pass' | 'fail') => {
+  // Memoized helper function to calculate volume in USD
+  const calculateVolume = useCallback((amountIn: string, isBaseToQuote: boolean, market: 'pass' | 'fail') => {
     const amount = parseFloat(amountIn);
     const token = getTokenUsed(isBaseToQuote, market);
 
@@ -202,12 +257,13 @@ export function useTradeHistory(proposalId: number | null) {
     } else {
       return amount * oogwayPrice;
     }
-  };
+  }, [solPrice, oogwayPrice, getTokenUsed]);
 
   return {
     trades,
     loading,
     error,
+    wsStatus,
     refetch: fetchTrades,
     getTimeAgo,
     formatAddress,

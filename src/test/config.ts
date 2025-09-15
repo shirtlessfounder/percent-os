@@ -7,6 +7,7 @@ export interface TestWallets {
   alice: Keypair;
   bob: Keypair;
   aelix: Keypair;
+  dylan: Keypair;
 }
 
 export interface TestModeConfig {
@@ -52,11 +53,27 @@ export function getTestModeConfig(): TestModeConfig {
     aelixWallet = loadOrGenerateWallet('aelix');
   }
 
+  // Load Dylan's wallet from environment variable if available
+  let dylanWallet: Keypair;
+  if (process.env.DYLAN_WALLET_PRIVATE_KEY) {
+    try {
+      const privateKeyBytes = bs58.decode(process.env.DYLAN_WALLET_PRIVATE_KEY);
+      dylanWallet = Keypair.fromSecretKey(privateKeyBytes);
+    } catch (error) {
+      console.warn('⚠️ Failed to load DYLAN_WALLET_PRIVATE_KEY, generating deterministic wallet:', error);
+      dylanWallet = loadOrGenerateWallet('dylan');
+    }
+  } else {
+    console.warn('⚠️ No DYLAN_WALLET_PRIVATE_KEY, generating deterministic wallet');
+    dylanWallet = loadOrGenerateWallet('dylan');
+  }
+
   const wallets: TestWallets = {
     authority: loadOrGenerateWallet('authority'),
     alice: loadOrGenerateWallet('alice'),
     bob: loadOrGenerateWallet('bob'),
-    aelix: aelixWallet
+    aelix: aelixWallet,
+    dylan: dylanWallet
   };
 
   // Create connection with confirmed commitment
@@ -84,5 +101,6 @@ export function logTestModeInfo(config: TestModeConfig): void {
   console.log(`   Alice:     ${config.wallets.alice.publicKey.toBase58()}`);
   console.log(`   Bob:       ${config.wallets.bob.publicKey.toBase58()}`);
   console.log(`   Aelix:     ${config.wallets.aelix.publicKey.toBase58()}`);
+  console.log(`   Dylan:     ${config.wallets.dylan.publicKey.toBase58()}`);
   console.log('═══════════════════════════════════════════\n');
 }
