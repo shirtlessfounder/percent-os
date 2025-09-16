@@ -2,7 +2,7 @@
 
 import { useState, useMemo, memo } from 'react';
 import { ProposalListSkeleton } from '@/components/ProposalSkeleton';
-import type { ProposalListItem } from '../../src/types/api';
+import type { ProposalListItem } from '@/types/api';
 
 interface SidebarProps {
   selectedProposal: number;

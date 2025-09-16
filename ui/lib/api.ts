@@ -1,5 +1,5 @@
 import { Connection } from '@solana/web3.js';
-import type { ProposalListResponse, ProposalListItem, ProposalDetailResponse, UserBalancesResponse } from '../../src/types/api';
+import type { ProposalListResponse, ProposalListItem, ProposalDetailResponse, UserBalancesResponse } from '@/types/api';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';

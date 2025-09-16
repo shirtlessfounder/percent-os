@@ -2,8 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { api } from '@/lib/api';
 import { useProposals } from './useProposals';
 import { useTokenPrices } from './useTokenPrices';
-import type { UserBalancesResponse } from '../../src/types/api';
-import type { ProposalListItem } from '../../src/types/api';
+import type { UserBalancesResponse, ProposalListItem } from '@/types/api';
 
 export interface ClaimablePosition {
   proposalId: number;

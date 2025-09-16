@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
-import type { ProposalListItem, ProposalDetailResponse } from '../../src/types/api';
+import type { ProposalListItem, ProposalDetailResponse } from '@/types/api';
 
 export function useProposals() {
   const [proposals, setProposals] = useState<ProposalListItem[]>([]);

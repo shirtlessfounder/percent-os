@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
-import type { UserBalancesResponse } from '../../src/types/api';
+import type { UserBalancesResponse } from '@/types/api';
 
 interface UserBalances {
   data: UserBalancesResponse | null;
