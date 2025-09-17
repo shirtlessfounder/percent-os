@@ -2,8 +2,15 @@
 
 import React from 'react';
 import { PrivyProvider } from '@privy-io/react-auth';
+import { toSolanaWalletConnectors } from '@privy-io/react-auth/solana';
 
 const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID || 'YOUR-PRIVY-APP-ID';
+
+// Initialize Solana wallet connectors
+const solanaConnectors = toSolanaWalletConnectors({
+  // Disable auto-connect to prevent wallet pop-ups on page load
+  shouldAutoConnect: false,
+});
 
 export default function PrivyProviderWrapper({ children }: { children: React.ReactNode }) {
   if (!PRIVY_APP_ID || PRIVY_APP_ID === 'YOUR-PRIVY-APP-ID') {
@@ -31,6 +38,12 @@ export default function PrivyProviderWrapper({ children }: { children: React.Rea
           // Solana-specific configuration
           solana: {
             createOnLogin: 'all-users', // Always create embedded Solana wallets
+          },
+        },
+        // External wallets configuration - Enable Solana wallet connections
+        externalWallets: {
+          solana: {
+            connectors: solanaConnectors,
           },
         },
       }}

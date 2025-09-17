@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { X, Copy, Shield, Zap, DollarSign, Key } from 'lucide-react';
 import { usePrivyWallet } from '@/hooks/usePrivyWallet';
-import { useSolanaWallets } from '@privy-io/react-auth/solana';
+import { useSolanaWallets, useFundWallet } from '@privy-io/react-auth/solana';
 import { useAllUserPositions } from '@/hooks/useAllUserPositions';
 import { useClaimablePositions } from '@/hooks/useClaimablePositions';
 import { formatNumber } from '@/lib/formatters';
@@ -29,6 +29,7 @@ export default function SettingsModal({
 }: SettingsModalProps) {
   const { authenticated, user, walletAddress, logout, login } = usePrivyWallet();
   const { wallets, exportWallet } = useSolanaWallets();
+  const { fundWallet } = useFundWallet();
   const { positions, totalValue: positionsTotalValue } = useAllUserPositions(walletAddress);
   const { positions: claimablePositions, totalClaimableValue } = useClaimablePositions(walletAddress);
   const [copied, setCopied] = useState(false);
@@ -300,6 +301,32 @@ export default function SettingsModal({
                         </button>
                       )}
                     </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => {
+                        if (walletAddress) {
+                          // Call fundWallet for Solana wallet - Privy should handle Solana funding properly
+                          fundWallet(walletAddress).catch((error) => {
+                            console.error('Funding error:', error);
+                            toast.error('Unable to open funding options. Please check your Privy dashboard configuration.');
+                          });
+                        }
+                      }}
+                      className="px-4 py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-sm font-semibold rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-2 border border-emerald-500/20"
+                    >
+                      <DollarSign size={16} />
+                      Deposit
+                    </button>
+                    <button
+                      onClick={logout}
+                      className="px-4 py-2.5 bg-[#272727] hover:bg-[#303030] text-[#AFAFAF] hover:text-white text-sm font-semibold rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-2 border border-[#3D3D3D]"
+                    >
+                      <Shield size={16} />
+                      Log Out
+                    </button>
                   </div>
                   
                   {/* Portfolio Overview */}
