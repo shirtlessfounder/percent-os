@@ -44,7 +44,7 @@ export function useWalletBalances(walletAddress: string | null): WalletBalances 
 
             const oogwayAccount = await getAccount(connection, oogwayATA);
             // Assuming $oogway has 9 decimals like most SPL tokens
-            oogwayAmount = Number(oogwayAccount.amount) / 1e9;
+            oogwayAmount = Number(oogwayAccount.amount) / 1e6;
         } catch (error) {
           // Token account might not exist if user has 0 balance - this is normal
         }
