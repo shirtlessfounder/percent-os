@@ -549,11 +549,21 @@ export class Vault implements IVault {
     }
     
     const tx = new Transaction();
-    
+
     // Get user's token accounts
     const userRegularAccount = await getAssociatedTokenAddress(this.regularMint, user);
     const userWinningAccount = await getAssociatedTokenAddress(winningMint, user);
-    
+
+    // Ensure user's regular token account exists (create if needed)
+    const createAccountIx = await this.tokenService.buildCreateAssociatedTokenAccountIxIfNeeded(
+      this.regularMint,
+      user,
+      user
+    );
+    if (createAccountIx) {
+      tx.add(createAccountIx);
+    }
+
     // Burn all winning conditional tokens
     const burnIx = this.tokenService.buildBurnIx(
       winningMint,
@@ -562,7 +572,7 @@ export class Vault implements IVault {
       user
     );
     tx.add(burnIx);
-    
+
     // Transfer regular tokens from escrow 1:1
     const transferIx = this.tokenService.buildTransferIx(
       this.escrow,
