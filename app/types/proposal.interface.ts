@@ -55,13 +55,7 @@ export interface IProposal {
    * Uses connection, authority, and decimals from constructor config
    */
   initialize(): Promise<void>;
-  
-  /**
-   * Returns the time-to-live in seconds until proposal finalizes
-   * @returns Remaining seconds (0 if expired)
-   */
-  fetchTTL(): number;
-  
+
   /**
    * Gets both AMMs for the proposal
    * @returns Tuple of [pAMM, fAMM]

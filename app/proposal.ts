@@ -217,16 +217,6 @@ export class Proposal implements IProposal {
   }
 
   /**
-   * Calculates remaining time until proposal voting ends
-   * @returns Time-to-live in seconds (0 if expired)
-   */
-  fetchTTL(): number {
-    const remaining = this.finalizedAt - Date.now();
-    return Math.max(0, Math.floor(remaining / 1000));
-  }
-
-
-  /**
    * Returns both AMMs for the proposal
    * @returns Tuple of [pAMM, fAMM]
    * @throws Error if AMMs are not initialized
