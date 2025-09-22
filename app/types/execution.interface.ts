@@ -10,13 +10,13 @@ export interface IExecutionService {
   /**
    * Executes a transaction on Solana
    * @param transaction - Transaction to execute
-   * @param signer - Primary keypair to sign the transaction (fee payer)
+   * @param signer - Optional keypair to sign the transaction (if not already signed)
    * @param additionalSigners - Additional keypairs that need to sign the transaction
    * @returns Execution result with signature and status
    */
   executeTx(
     transaction: Transaction,
-    signer: Keypair,
+    signer?: Keypair,
     additionalSigners?: Keypair[]
   ): Promise<IExecutionResult>;
 }
