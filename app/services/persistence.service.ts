@@ -8,7 +8,6 @@ import { Proposal } from '../proposal';
 import { PublicKey, Keypair, Connection, Transaction } from '@solana/web3.js';
 import { BN } from '@coral-xyz/anchor';
 import fs from 'fs';
-import path from 'path';
 
 // Type definitions based on database schema and private field access requirements
 type ProposalPrivateAccess = {

@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import { Connection } from '@solana/web3.js';
+import { getNetworkFromConnection } from '../../app/utils/network';
 
 const router = Router();
 
@@ -11,9 +13,10 @@ const router = Router();
 router.get('/', async (_req, res, next) => {
   try {
     const rpcUrl = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
-    
-    // Determine network from RPC URL - simplified to just devnet or mainnet
-    const network = rpcUrl.includes('devnet') ? 'devnet' : 'mainnet';
+    const connection = new Connection(rpcUrl);
+
+    // Determine network from connection using utility
+    const network = getNetworkFromConnection(connection);
     
     res.json({
       network

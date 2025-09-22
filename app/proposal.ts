@@ -10,6 +10,7 @@ import { IExecutionResult, IExecutionConfig } from './types/execution.interface'
 import { Vault } from './vault';
 import { AMM } from './amm';
 import { SPLTokenService, NATIVE_MINT } from './services/spl-token.service';
+import { getNetworkFromConnection, Network } from './utils/network';
 
 /**
  * Proposal class representing a governance proposal in the protocol
@@ -82,7 +83,7 @@ export class Proposal implements IProposal {
       connection: this.config.connection,
       authority: this.config.authority
     });
-    
+
     this.__quoteVault = new Vault({
       proposalId: this.id,
       vaultType: VaultType.Quote,
@@ -113,7 +114,7 @@ export class Proposal implements IProposal {
       this.config.authority,
       executionConfig
     );
-    
+
     // Initialize fail AMM (trades fBase/fQuote tokens)
     this.__fAMM = new AMM(
       this.__baseVault.failConditionalMint,
@@ -139,7 +140,7 @@ export class Proposal implements IProposal {
     
     // For quote vault on mainnet, we need to wrap SOL first
     let quoteSplitTx: Transaction;
-    const isMainnet = !this.config.connection.rpcEndpoint.includes('devnet');
+    const isMainnet = getNetworkFromConnection(this.config.connection) === Network.MAINNET;
     const isQuoteWrappedSol = this.quoteMint.equals(NATIVE_MINT);
     
     if (isMainnet && isQuoteWrappedSol) {

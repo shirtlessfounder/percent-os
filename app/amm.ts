@@ -40,7 +40,7 @@ export class AMM implements IAMM {
   /**
    * Creates a new AMM instance
    * @param baseMint - Public key of the base token mint
-   * @param quoteMint - Public key of the quote token mint  
+   * @param quoteMint - Public key of the quote token mint
    * @param baseDecimals - Number of decimals for base token
    * @param quoteDecimals - Number of decimals for quote token
    * @param authority - Keypair with authority to manage the AMM

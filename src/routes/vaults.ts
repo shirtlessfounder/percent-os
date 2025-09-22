@@ -3,13 +3,14 @@ import { getModerator } from '../services/moderator.service';
 import { PublicKey, Transaction } from '@solana/web3.js';
 import { SPLTokenService, NATIVE_MINT } from '../../app/services/spl-token.service';
 import { getAssociatedTokenAddress, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import { getNetworkFromConnection, Network } from '../../app/utils/network';
 
 const router = Router();
 
 // Helper function to check if we're on mainnet
-function isMainnet(): boolean {
-  const rpcUrl = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
-  return !rpcUrl.includes('devnet');
+async function isMainnet(): Promise<boolean> {
+  const moderator = await getModerator();
+  return getNetworkFromConnection(moderator.config.connection) === Network.MAINNET;
 }
 
 // Helper function to get vault from proposal
@@ -55,7 +56,7 @@ router.post('/:id/:type/buildSplitTx', async (req, res, next) => {
     
     let transaction;
     // Check if we need to wrap SOL (mainnet + quote vault)
-    if (isMainnet() && vaultType === 'quote') {
+    if ((await isMainnet()) && vaultType === 'quote') {
       // Get the moderator to access the connection
       const moderator = await getModerator();
       const connection = moderator.config.connection;
@@ -169,7 +170,7 @@ router.post('/:id/:type/buildMergeTx', async (req, res, next) => {
     
     let transaction = await vault.buildMergeTx(userPubkey, amountBigInt);
     // Check if we need to unwrap SOL (mainnet + quote vault)
-    if (isMainnet() && vaultType === 'quote') {
+    if ((await isMainnet()) && vaultType === 'quote') {
       // Get the user's wrapped SOL account
       const wrappedSolAccount = await getAssociatedTokenAddress(
         NATIVE_MINT,
@@ -279,7 +280,7 @@ router.post('/:id/:type/buildRedeemWinningTokensTx', async (req, res, next) => {
     let transaction = await vault.buildRedeemWinningTokensTx(userPubkey);
     
     // Check if we need to unwrap SOL (mainnet + quote vault)
-    if (isMainnet() && vaultType === 'quote') {
+    if ((await isMainnet()) && vaultType === 'quote') {
       // Get the user's wrapped SOL account
       const wrappedSolAccount = await getAssociatedTokenAddress(
         NATIVE_MINT,
