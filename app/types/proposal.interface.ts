@@ -85,7 +85,16 @@ export interface IProposal {
    * @returns The final status after checking time and votes
    */
   finalize(): Promise<ProposalStatus>;
-  
+
+  /**
+   * Finalizes the proposal using Jito bundles for atomic execution
+   * Removes liquidity from AMMs and redeems authority's winning tokens
+   * All operations execute atomically in a single bundle
+   * Only works on mainnet where Jito is available
+   * @returns The final status after checking time and votes
+   */
+  finalizeViaBundle(): Promise<ProposalStatus>;
+
   /**
    * Executes the proposal's transaction
    * @param signer - Keypair to sign and execute the transaction
