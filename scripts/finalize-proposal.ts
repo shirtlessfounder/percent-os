@@ -8,12 +8,11 @@ async function finalizeProposal(proposalId?: number) {
   const API_URL = process.env.API_URL || 'http://localhost:3000';
   
   // Get proposal ID from command line argument or environment variable
-  const id = proposalId ?? parseInt(process.argv[2] || process.env.PROPOSAL_ID || '');
+  const id = proposalId ?? parseInt(process.argv[2] || '');
   
   if (isNaN(id) || id < 0) {
     console.error('Valid proposal ID is required');
     console.error('Usage: ts-node scripts/finalize-proposal.ts <proposal-id>');
-    console.error('Or set PROPOSAL_ID environment variable');
     process.exit(1);
   }
   
