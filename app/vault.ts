@@ -2,9 +2,9 @@ import { PublicKey, Keypair, Connection, Transaction } from '@solana/web3.js';
 import * as crypto from 'crypto';
 import {
   getAssociatedTokenAddress,
-  createAssociatedTokenAccountInstruction,
   TOKEN_PROGRAM_ID,
-  ASSOCIATED_TOKEN_PROGRAM_ID
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  createAssociatedTokenAccountIdempotentInstruction
 } from '@solana/spl-token';
 import {
   IVault,
@@ -45,8 +45,6 @@ export class Vault implements IVault {
   private _escrow!: PublicKey;
   private _state: VaultState = VaultState.Uninitialized;
   private _proposalStatus: ProposalStatus = ProposalStatus.Pending;
-  private _passMintKeypair: Keypair | null = null;
-  private _failMintKeypair: Keypair | null = null;
 
   // Public readonly getters
   get passConditionalMint(): PublicKey { return this._passConditionalMint; }
@@ -135,11 +133,9 @@ export class Vault implements IVault {
     const passMintKeypair = Keypair.generate();
     const failMintKeypair = Keypair.generate();
 
-    // Store public keys and keypairs
+    // Store public keys
     this._passConditionalMint = passMintKeypair.publicKey;
     this._failConditionalMint = failMintKeypair.publicKey;
-    this._passMintKeypair = passMintKeypair;
-    this._failMintKeypair = failMintKeypair;
 
     // Build single transaction with all instructions
     const transaction = new Transaction();
@@ -168,16 +164,17 @@ export class Vault implements IVault {
       this.escrowKeypair.publicKey
     );
 
-    // Check if escrow account needs to be created
-    const escrowAccountIx = await this.tokenService.buildCreateAssociatedTokenAccountIxIfNeeded(
-      this.regularMint,
-      this.escrowKeypair.publicKey,
-      this.authority.publicKey
-    );
-
-    if (escrowAccountIx) {
-      transaction.add(escrowAccountIx);
-    }
+    // Create escrow account if needed (idempotent)
+    transaction.add(
+      createAssociatedTokenAccountIdempotentInstruction(
+        this.authority.publicKey, // payer
+        this.escrow,
+        this.escrowKeypair.publicKey, // owner
+        this.regularMint,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      )
+    )
 
     // Add memo for transaction identification
     const memoMessage = `%[Initialize] Vault ${this.vaultType} | Proposal #${this.proposalId} | Authority: ${this.authority.publicKey.toBase58()}`;
@@ -287,35 +284,29 @@ export class Vault implements IVault {
     const userPassAccount = await getAssociatedTokenAddress(this.passConditionalMint, user);
     const userFailAccount = await getAssociatedTokenAddress(this.failConditionalMint, user);
 
-    // Check if pass conditional account needs to be created
-    const passAccountInfo = await this.tokenService.getTokenAccountInfo(userPassAccount);
-    if (!passAccountInfo) {
-      tx.add(
-        createAssociatedTokenAccountInstruction(
-          user, // payer
-          userPassAccount,
-          user, // owner
-          this.passConditionalMint,
-          TOKEN_PROGRAM_ID,
-          ASSOCIATED_TOKEN_PROGRAM_ID
-        )
-      );
-    }
-    
-    // Check if fail conditional account needs to be created
-    const failAccountInfo = await this.tokenService.getTokenAccountInfo(userFailAccount);
-    if (!failAccountInfo) {
-      tx.add(
-        createAssociatedTokenAccountInstruction(
-          user, // payer
-          userFailAccount,
-          user, // owner
-          this.failConditionalMint,
-          TOKEN_PROGRAM_ID,
-          ASSOCIATED_TOKEN_PROGRAM_ID
-        )
-      );
-    }
+    // Create pass conditional account if needed (idempotent)
+    tx.add(
+      createAssociatedTokenAccountIdempotentInstruction(
+        user, // payer
+        userPassAccount,
+        user, // owner
+        this.passConditionalMint,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      )
+    );
+
+    // Create fail conditional account if needed (idempotent)
+    tx.add(
+      createAssociatedTokenAccountIdempotentInstruction(
+        user, // payer
+        userFailAccount,
+        user, // owner
+        this.failConditionalMint,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      )
+    )
     
     // Transfer regular tokens from user to escrow (user signs)
     const transferIx = this.tokenService.buildTransferIx(
@@ -416,14 +407,16 @@ export class Vault implements IVault {
 
     // Ensure user's regular token account exists (create if needed)
     // This is especially important for wrapped SOL which might not exist
-    const createAccountIx = await this.tokenService.buildCreateAssociatedTokenAccountIxIfNeeded(
-      this.regularMint,
-      user,
-      user
-    );
-    if (createAccountIx) {
-      tx.add(createAccountIx);
-    }
+    tx.add(
+      createAssociatedTokenAccountIdempotentInstruction(
+        user, // payer
+        userRegularAccount,
+        user, // owner
+        this.regularMint,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      )
+    )
 
     // Burn pass conditional tokens from user (user signs)
     const burnPassIx = this.tokenService.buildBurnIx(
@@ -707,14 +700,16 @@ export class Vault implements IVault {
     const userWinningAccount = await getAssociatedTokenAddress(winningMint, user);
 
     // Ensure user's regular token account exists (create if needed)
-    const createAccountIx = await this.tokenService.buildCreateAssociatedTokenAccountIxIfNeeded(
-      this.regularMint,
-      user,
-      user
-    );
-    if (createAccountIx) {
-      tx.add(createAccountIx);
-    }
+    tx.add(
+      createAssociatedTokenAccountIdempotentInstruction(
+        user, // payer
+        userRegularAccount,
+        user, // owner
+        this.regularMint,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      )
+    )
 
     // Burn all winning conditional tokens
     const burnIx = this.tokenService.buildBurnIx(
