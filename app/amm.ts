@@ -157,7 +157,7 @@ export class AMM implements IAMM {
     tx.feePayer = this.authority.publicKey;
 
     // Pre-sign the transaction with authority and position NFT keypair
-    tx.partialSign(this.authority, positionNftKeypair);
+    tx.sign(this.authority, positionNftKeypair);
 
     // Store pool and position references
     this.pool = pool;
@@ -203,12 +203,8 @@ export class AMM implements IAMM {
    * @throws Error if AMM is finalized or pool uninitialized
    */
   async fetchPrice(): Promise<Decimal> {
-    if (this._state === AMMState.Uninitialized) {
+    if (this._state === AMMState.Uninitialized || !this.pool) {
       throw new Error('AMM not initialized');
-    }
-    
-    if (!this.pool) {
-      throw new Error('AMM pool is uninitialized');
     }
     
     // Fetch current pool state and convert sqrt price to regular price
@@ -222,12 +218,8 @@ export class AMM implements IAMM {
    * @throws Error if AMM is finalized or pool uninitialized
    */
   async fetchLiquidity(): Promise<BN> {
-    if (this._state === AMMState.Uninitialized) {
+    if (this._state === AMMState.Uninitialized || !this.pool) {
       throw new Error('AMM not initialized');
-    }
-    
-    if (!this.pool) {
-      throw new Error('AMM pool is uninitialized');
     }
     
     // Fetch current pool state and return liquidity
@@ -242,16 +234,16 @@ export class AMM implements IAMM {
    * @throws Error if AMM is not initialized, already finalized, or pool uninitialized
    */
   async buildRemoveLiquidityTx(): Promise<Transaction> {
-    if (this._state === AMMState.Uninitialized) {
+    if (this._state === AMMState.Uninitialized
+       || !this.pool 
+       || !this.position 
+       || !this.positionNft
+      ) {
       throw new Error('AMM not initialized');
     }
 
     if (this._state === AMMState.Finalized) {
       throw new Error('AMM is already finalized');
-    }
-
-    if (!this.pool || !this.position || !this.positionNft) {
-      throw new Error('AMM pool is uninitialized');
     }
 
     // Fetch current pool and position states for removal operation
@@ -289,12 +281,14 @@ export class AMM implements IAMM {
   }
 
   /**
-   * Executes a pre-signed remove liquidity transaction
-   * @param tx - Transaction already pre-signed with authority
-   * @returns Transaction signature
-   * @throws Error if transaction execution fails
+   * Removes all liquidity from the pool and closes the position
+   * This action is irreversible and finalizes the AMM
+   * @throws Error if AMM is already finalized or pool uninitialized
    */
-  async executeRemoveLiquidityTx(tx: Transaction): Promise<string> {
+  async removeLiquidity(): Promise<string> {
+    // Build the pre-signed remove liquidity transaction
+    const tx = await this.buildRemoveLiquidityTx();
+
     // Execute the pre-signed transaction
     console.log('Executing transaction to remove liquidity and close position');
     const result = await this.executionService.executeTx(tx);
@@ -311,19 +305,6 @@ export class AMM implements IAMM {
     this.setState(AMMState.Finalized);
 
     return result.signature;
-  }
-
-  /**
-   * Removes all liquidity from the pool and closes the position
-   * This action is irreversible and finalizes the AMM
-   * @throws Error if AMM is already finalized or pool uninitialized
-   */
-  async removeLiquidity(): Promise<void> {
-    // Build the pre-signed remove liquidity transaction
-    const tx = await this.buildRemoveLiquidityTx();
-
-    // Execute the transaction and update state
-    await this.executeRemoveLiquidityTx(tx);
   }
 
   /**
@@ -346,7 +327,7 @@ export class AMM implements IAMM {
     totalFee: BN;
     priceImpact: number;
   }> {
-    if (this._state === AMMState.Uninitialized) {
+    if (this._state === AMMState.Uninitialized || !this.pool) {
       throw new Error('AMM not initialized');
     }
     
@@ -354,10 +335,6 @@ export class AMM implements IAMM {
       throw new Error('AMM is finalized - cannot get quote');
     }
     
-    if (!this.pool) {
-      throw new Error('AMM pool is uninitialized');
-    }
-
     // Fetch current pool state
     const poolState: PoolState = await this.cpAmm.fetchPoolState(this.pool);
     
@@ -407,7 +384,7 @@ export class AMM implements IAMM {
     amountIn: BN,
     slippageBps: number = 50
   ): Promise<Transaction> {
-    if (this._state === AMMState.Uninitialized) {
+    if (this._state === AMMState.Uninitialized || !this.pool) {
       throw new Error('AMM not initialized');
     }
     
@@ -415,10 +392,6 @@ export class AMM implements IAMM {
       throw new Error('AMM is finalized - cannot execute swaps');
     }
     
-    if (!this.pool) {
-      throw new Error('AMM pool is uninitialized');
-    }
-
     // Fetch current pool state
     const poolState: PoolState = await this.cpAmm.fetchPoolState(this.pool);
     

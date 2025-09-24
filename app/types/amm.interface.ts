@@ -78,19 +78,12 @@ export interface IAMM {
   buildRemoveLiquidityTx(): Promise<Transaction>;
 
   /**
-   * Executes a pre-signed remove liquidity transaction
-   * @param tx - Transaction already pre-signed with authority
-   * @returns Transaction signature
-   * @throws Error if transaction execution fails
-   */
-  executeRemoveLiquidityTx(tx: Transaction): Promise<string>;
-
-  /**
    * Removes all liquidity and closes the position
    * Sets AMM state to finalized, preventing further operations
+   * @returns Transaction signature
    * @throws Error if already finalized or pool uninitialized
    */
-  removeLiquidity(): Promise<void>;
+  removeLiquidity(): Promise<string>;
   
   /**
    * Gets a quote for swapping tokens on the AMM
