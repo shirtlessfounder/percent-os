@@ -6,7 +6,7 @@ import {
   HistoryCallback,
   SubscribeBarsCallback,
   PeriodParams,
-} from '../../public/charting_library/charting_library';
+} from '../public/charting_library/charting_library';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -60,7 +60,8 @@ export class SpotPoolDatafeed implements IBasicDataFeed {
       session: '24x7',
       timezone: 'Etc/UTC',
       ticker: 'SPOT',
-      exchange: '',
+      exchange: 'METEORA',
+      listed_exchange: 'METEORA',
       minmov: 1,
       pricescale: 1000000, // 6 decimal places
       has_intraday: true,

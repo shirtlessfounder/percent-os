@@ -6,7 +6,7 @@ import {
   HistoryCallback,
   SubscribeBarsCallback,
   PeriodParams,
-} from '../../public/charting_library/charting_library';
+} from '../public/charting_library/charting_library';
 import { getPriceStreamService, PriceUpdate } from './price-stream.service';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -77,6 +77,7 @@ export class SpotPriceDatafeed implements IBasicDataFeed {
       timezone: 'Etc/UTC',
       ticker: 'SPOT-MARKET',
       exchange: 'METEORA',
+      listed_exchange: 'METEORA',
       minmov: 1,
       pricescale: 1, // USD market cap values
       has_intraday: true,

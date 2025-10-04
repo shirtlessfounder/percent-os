@@ -37,7 +37,7 @@ export class SolPriceService {
         return this.FALLBACK_PRICE;
       }
 
-      const data = await response.json();
+      const data = await response.json() as any;
       const pairs = data.pairs || [];
 
       if (pairs.length === 0) {

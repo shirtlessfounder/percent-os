@@ -6,7 +6,7 @@ import {
   HistoryCallback,
   SubscribeBarsCallback,
   PeriodParams,
-} from '../../public/charting_library/charting_library';
+} from '../public/charting_library/charting_library';
 import { getPriceStreamService, TradeUpdate } from './price-stream.service';
 import { BarAggregator } from '@/lib/bar-aggregator';
 
@@ -92,7 +92,8 @@ export class ProposalMarketDatafeed implements IBasicDataFeed {
       session: '24x7',
       timezone: 'Etc/UTC',
       ticker: symbolName,
-      exchange: '',
+      exchange: 'PERCENT',
+      listed_exchange: 'PERCENT',
       minmov: 1,
       pricescale: 1, // USD market cap values
       has_intraday: true,

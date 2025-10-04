@@ -8,7 +8,8 @@ interface PayoutCardProps {
   token: 'sol' | 'oogway';
   tokenPrice: number;
   isHovered: boolean;
-  onHover: (status: 'pass' | 'fail' | null) => void;
+  onHover: (id: string | null) => void;
+  hoverId: string;
 }
 
 const SolIcon = ({ className }: { className?: string }) => (
@@ -40,6 +41,7 @@ export function PayoutCard({
   tokenPrice,
   isHovered,
   onHover,
+  hoverId,
 }: PayoutCardProps) {
   const decimalAmount = toDecimal(amount, token);
   const usdValue = decimalAmount * tokenPrice;
@@ -48,7 +50,7 @@ export function PayoutCard({
   return (
     <div
       className="border border-[#2A2A2A] rounded-lg p-3 flex items-center justify-between cursor-pointer transition-colors hover:bg-[#2a2a2a]/30"
-      onMouseEnter={() => onHover(status)}
+      onMouseEnter={() => onHover(hoverId)}
       onMouseLeave={() => onHover(null)}
     >
       <div className="flex items-center gap-1">

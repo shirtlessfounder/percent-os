@@ -55,8 +55,8 @@ router.get('/:poolAddress/price', async (req, res, next) => {
     }
 
     // Extract decimals (default to standard values if not provided)
-    const tokenADecimal = poolState.tokenADecimal ?? 6;
-    const tokenBDecimal = poolState.tokenBDecimal ?? 9;
+    const tokenADecimal = (poolState as any).tokenADecimal ?? 6;
+    const tokenBDecimal = (poolState as any).tokenBDecimal ?? 9;
 
     // Calculate price from sqrt price
     const priceDecimal = getPriceFromSqrtPrice(
@@ -68,8 +68,8 @@ router.get('/:poolAddress/price', async (req, res, next) => {
     const price = priceDecimal.toNumber();
 
     // Get reserves from vaults
-    const baseReserve = poolState.tokenAAmount.toString();
-    const quoteReserve = poolState.tokenBAmount.toString();
+    const baseReserve = (poolState as any).tokenAAmount?.toString() || '0';
+    const quoteReserve = (poolState as any).tokenBAmount?.toString() || '0';
 
     res.json({
       poolAddress,

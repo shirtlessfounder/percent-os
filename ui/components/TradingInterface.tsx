@@ -39,7 +39,7 @@ const TradingInterface = memo(({
   const [amount, setAmount] = useState('');
   const [sellingToken, setSellingToken] = useState<'sol' | 'oogway'>('sol');
   const [isEditingQuickAmounts, setIsEditingQuickAmounts] = useState(false);
-  const [hoveredPayout, setHoveredPayout] = useState<'pass' | 'fail' | null>(null);
+  const [hoveredPayout, setHoveredPayout] = useState<string | null>(null);
   
   // Load saved values from localStorage or use defaults
   const [solQuickAmounts, setSolQuickAmounts] = useState(() => {
@@ -433,6 +433,7 @@ const TradingInterface = memo(({
                     tokenPrice={oogwayPrice}
                     isHovered={hoveredPayout === 'pass-oogway'}
                     onHover={setHoveredPayout}
+                    hoverId="pass-oogway"
                   />
                 )}
                 {userPosition.passSolAmount > 0 && (
@@ -444,6 +445,7 @@ const TradingInterface = memo(({
                     tokenPrice={solPrice}
                     isHovered={hoveredPayout === 'pass-sol'}
                     onHover={setHoveredPayout}
+                    hoverId="pass-sol"
                   />
                 )}
               </>
@@ -459,6 +461,7 @@ const TradingInterface = memo(({
                     tokenPrice={oogwayPrice}
                     isHovered={hoveredPayout === 'fail-oogway'}
                     onHover={setHoveredPayout}
+                    hoverId="fail-oogway"
                   />
                 )}
                 {userPosition.failSolAmount > 0 && (
@@ -470,6 +473,7 @@ const TradingInterface = memo(({
                     tokenPrice={solPrice}
                     isHovered={hoveredPayout === 'fail-sol'}
                     onHover={setHoveredPayout}
+                    hoverId="fail-sol"
                   />
                 )}
               </>

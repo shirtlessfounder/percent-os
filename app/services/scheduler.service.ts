@@ -343,8 +343,8 @@ export class SchedulerService implements ISchedulerService {
       const poolState = await cpAmm.fetchPoolState(poolPubkey);
 
       // Calculate price from sqrt price
-      const tokenADecimal = poolState.tokenADecimal ?? 6;
-      const tokenBDecimal = poolState.tokenBDecimal ?? 9;
+      const tokenADecimal = (poolState as any).tokenADecimal ?? 6;
+      const tokenBDecimal = (poolState as any).tokenBDecimal ?? 9;
       const priceDecimal = getPriceFromSqrtPrice(
         poolState.sqrtPrice,
         tokenADecimal,

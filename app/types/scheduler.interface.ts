@@ -2,7 +2,7 @@ import { IModerator } from './moderator.interface';
 
 export interface IScheduledTask {
   id: string;
-  type: 'twap-crank' | 'proposal-finalize' | 'price-record';
+  type: 'twap-crank' | 'proposal-finalize' | 'price-record' | 'spot-price-record';
   proposalId: number;
   interval?: number;
   nextRunTime: number;

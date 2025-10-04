@@ -24,6 +24,8 @@ export interface ProposalDetailResponse {
   baseMint: string;
   quoteMint: string;
   authority: string;
+  spotPoolAddress?: string;
+  totalSupply?: number;
   ammConfig: {
     initialBaseAmount: string;
     initialQuoteAmount: string;
