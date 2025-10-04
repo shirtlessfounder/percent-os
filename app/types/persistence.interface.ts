@@ -91,7 +91,11 @@ export interface IProposalDB {
     twapStartDelay: number;
     passThresholdBps: number;
   } | null;
-  
+
+  // Chart configuration
+  spot_pool_address: string | null;
+  total_supply: number;
+
   updated_at: Date;
 }
 

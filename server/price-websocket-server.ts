@@ -444,9 +444,11 @@ class PriceWebSocketServer {
       await this.pgClient.query('LISTEN new_trade');
 
       this.pgClient.on('notification', (msg) => {
+        console.log('PostgreSQL notification received:', msg.channel, msg.payload);
         if (msg.channel === 'new_trade' && msg.payload) {
           try {
             const tradeData = JSON.parse(msg.payload);
+            console.log('Parsed trade data:', tradeData);
             this.handleNewTrade(tradeData);
           } catch (error) {
             console.error('Error parsing trade notification:', error);
@@ -513,6 +515,7 @@ class PriceWebSocketServer {
       timestamp: tradeData.timestamp || new Date().toISOString()
     };
 
+    console.log('Trade timestamp from DB:', tradeData.timestamp, '→ sending:', trade.timestamp);
     this.broadcastTrade(trade);
   }
 
@@ -522,7 +525,7 @@ class PriceWebSocketServer {
         ws.send(JSON.stringify(trade));
       }
     });
-    console.log(`Trade broadcast for proposal ${trade.proposalId}: ${trade.market} ${trade.isBaseToQuote ? 'buy' : 'sell'}`);
+    console.log(`Trade broadcast for proposal ${trade.proposalId}: ${trade.market} ${trade.isBaseToQuote ? 'sell' : 'buy'}`);
   }
 
   private async fetchSolPrice() {

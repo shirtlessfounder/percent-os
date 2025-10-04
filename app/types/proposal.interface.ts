@@ -23,6 +23,8 @@ export interface IProposalConfig {
   authority: Keypair;                          // Authority keypair (payer and mint authority)
   connection: Connection;                      // Solana connection for blockchain interactions
   twap: ITWAPConfig;                           // TWAP oracle configuration
+  spotPoolAddress?: string;                    // Optional Meteora pool address for spot market price (for charts)
+  totalSupply: number;                         // Total supply of conditional tokens for market cap calculation
   ammConfig: {
     initialBaseAmount: BN;                      // Initial base token liquidity (same for both AMMs)
     initialQuoteAmount: BN;                     // Initial quote token liquidity (same for both AMMs)
@@ -48,6 +50,8 @@ export interface IProposal {
   readonly quoteMint: PublicKey;      // Public key of quote token mint (immutable)
   readonly proposalLength: number;    // Duration of voting period in seconds (immutable)
   readonly ammConfig: IProposalConfig['ammConfig']; // AMM configuration (immutable)
+  readonly spotPoolAddress?: string;  // Optional Meteora pool address for spot market price (immutable)
+  readonly totalSupply: number;       // Total supply of conditional tokens for market cap calculation (immutable)
   readonly status: ProposalStatus;    // Current status (Pending, Passed, Failed, Executed)
   
   /**

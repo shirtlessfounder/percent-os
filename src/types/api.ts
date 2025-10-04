@@ -27,6 +27,8 @@ export interface ProposalDetailResponse {
   baseMint: string;
   quoteMint: string;
   authority: string;
+  spotPoolAddress?: string;
+  totalSupply: number;
   ammConfig: {
     initialBaseAmount: string;
     initialQuoteAmount: string;
@@ -123,6 +125,8 @@ export interface CreateProposalRequest {
   description: string;
   proposalLength: number;
   transaction?: string; // Base64-encoded serialized transaction
+  spotPoolAddress?: string; // Optional Meteora pool address for spot market
+  totalSupply?: number; // Total supply of conditional tokens (defaults to 1 billion)
   twap: {
     initialTwapValue: number;
     twapMaxObservationChangePerUpdate: number | null;

@@ -34,6 +34,8 @@ export class Proposal implements IProposal {
   public readonly quoteMint: PublicKey;
   public readonly proposalLength: number;
   public readonly ammConfig: IProposalConfig['ammConfig'];
+  public readonly spotPoolAddress?: string;
+  public readonly totalSupply: number;
 
   private _status: ProposalStatus = ProposalStatus.Uninitialized;
   private readonly config: IProposalConfig;
@@ -60,7 +62,9 @@ export class Proposal implements IProposal {
     this.quoteMint = config.quoteMint;
     this.proposalLength = config.proposalLength;
     this.ammConfig = config.ammConfig;
-    
+    this.spotPoolAddress = config.spotPoolAddress;
+    this.totalSupply = config.totalSupply;
+
     this.twapOracle = new TWAPOracle(
       config.id,
       config.twap,

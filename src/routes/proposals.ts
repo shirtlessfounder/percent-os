@@ -57,6 +57,8 @@ router.get('/:id', async (req, res, next) => {
       baseMint: proposal.base_mint,
       quoteMint: proposal.quote_mint,
       authority: proposal.authority,
+      spotPoolAddress: proposal.spot_pool_address,
+      totalSupply: proposal.total_supply,
       ammConfig: proposal.amm_config,
       passAmmState: proposal.pass_amm_state,
       failAmmState: proposal.fail_amm_state,
@@ -64,7 +66,7 @@ router.get('/:id', async (req, res, next) => {
       quoteVaultState: proposal.quote_vault_state,
       twapOracleState: proposal.twap_oracle_state,
     };
-    
+
     res.json(response);
   } catch (error) {
     next(error);
@@ -105,6 +107,8 @@ router.post('/', requireApiKey, async (req, res, next) => {
       description: body.description,
       transaction,
       proposalLength: body.proposalLength,
+      spotPoolAddress: body.spotPoolAddress, // Optional spot pool for charts
+      totalSupply: body.totalSupply || 1000000000, // Default to 1 billion tokens
       twap: {
         initialTwapValue: body.twap.initialTwapValue,
         twapMaxObservationChangePerUpdate: body.twap.twapMaxObservationChangePerUpdate,

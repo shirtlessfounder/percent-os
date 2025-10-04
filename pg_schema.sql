@@ -7,28 +7,32 @@ CREATE TABLE IF NOT EXISTS proposals (
   finalized_at TIMESTAMPTZ NOT NULL,
   proposal_length BIGINT NOT NULL,
   transaction_data JSONB NOT NULL,
-  
+
   -- Token configuration
   base_mint VARCHAR(64) NOT NULL,
   quote_mint VARCHAR(64) NOT NULL,
   base_decimals INTEGER NOT NULL,
   quote_decimals INTEGER NOT NULL,
   authority VARCHAR(64) NOT NULL,
-  
+
   -- AMM configuration
   amm_config JSONB,
-  
+
   -- AMM states
   pass_amm_state JSONB,
   fail_amm_state JSONB,
-  
+
   -- Vault states
   base_vault_state JSONB,
   quote_vault_state JSONB,
-  
+
   -- TWAP Oracle state
   twap_oracle_state JSONB,
-  
+
+  -- Chart configuration
+  spot_pool_address VARCHAR(64),
+  total_supply BIGINT NOT NULL DEFAULT 1000000000,
+
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 

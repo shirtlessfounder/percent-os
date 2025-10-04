@@ -8,7 +8,7 @@ export interface IPriceHistory {
   id?: number;                   // Database primary key (auto-generated)
   timestamp: Date;                // Snapshot timestamp
   proposalId: number;             // Associated proposal ID
-  market: 'pass' | 'fail';        // Which AMM market (pass or fail)
+  market: 'pass' | 'fail' | 'global' | 'spot'; // Which market (pass/fail AMMs, global price, or spot pool)
   price: Decimal;                 // Current price at this point in time
   baseLiquidity?: Decimal;        // Base token liquidity in the pool (optional)
   quoteLiquidity?: Decimal;       // Quote token liquidity in the pool (optional)
@@ -47,12 +47,15 @@ export interface ITradeHistory {
 
 /**
  * Chart data point for visualization
- * Aggregated data for displaying price charts and volume
+ * OHLCV data for displaying candlestick charts
  */
 export interface IChartDataPoint {
   timestamp: number;              // Unix timestamp in milliseconds
-  passPrice?: number;             // Pass market price at this time (optional)
-  failPrice?: number;             // Fail market price at this time (optional)
+  market: 'pass' | 'fail' | 'global' | 'spot'; // Which market this data is for (pass/fail AMMs, global price, or spot pool)
+  open: number;                   // Opening price in the time bucket
+  high: number;                   // Highest price in the time bucket
+  low: number;                    // Lowest price in the time bucket
+  close: number;                  // Closing price in the time bucket
   volume?: number;                // Trading volume in this time period (optional)
 }
 

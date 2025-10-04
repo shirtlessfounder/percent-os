@@ -9,9 +9,9 @@ const OOGWAY_MINT = 'C7MGcMnN8cXUkj8JQuMhkJZh6WqY2r8QnT3AUfKTkrix';
 
 export interface OpenPositionConfig {
   proposalId: number;
-  positionType: 'pass' | 'fail';
-  inputAmount: string;  // Amount in SOL or OOGWAY
-  inputCurrency: 'sol' | 'oogway';
+  market: 'pass' | 'fail';  // Which AMM market to trade on
+  inputToken: 'sol' | 'oogway';  // Which conditional token we're selling
+  inputAmount: string;  // Amount of conditional tokens to sell
   userAddress: string;
   signTransaction: (transaction: Transaction) => Promise<Transaction>;
 }
@@ -25,101 +25,47 @@ export interface ClosePositionConfig {
 }
 
 /**
- * Open a position (pass or fail) using the user's connected wallet
+ * Execute a swap on a specific market (Pass or Fail AMM)
+ * Swaps conditional tokens: e.g., Pass-OOGWAY → Pass-SOL or Fail-SOL → Fail-OOGWAY
  */
 export async function openPosition(config: OpenPositionConfig): Promise<void> {
-  const { proposalId, positionType, inputAmount, inputCurrency, userAddress, signTransaction } = config;
-  
-  const toastId = toast.loading('Opening position...');
-  
+  const { proposalId, market, inputToken, inputAmount, userAddress, signTransaction } = config;
+
+  // Determine swap direction based on inputToken
+  // inputToken 'oogway' means we're selling base (oogway conditional) for quote (SOL conditional)
+  // inputToken 'sol' means we're selling quote (SOL conditional) for base (oogway conditional)
+  const isBaseToQuote = inputToken === 'oogway';
+
+  const toastId = toast.loading(`Swapping ${market}-${inputToken.toUpperCase()}...`);
+
   try {
-    // Step 1: Calculate the 50/50 split amounts (simulate on devnet, real swap on mainnet)
-    const { baseAmount, quoteAmount } = await simulateInitialSwap(
-      inputAmount,
-      inputCurrency,
+    // Convert decimal amount to smallest units
+    const OOGWAY_DECIMALS = 6;
+    const SOL_DECIMALS = 9;
+    const decimals = inputToken === 'oogway' ? OOGWAY_DECIMALS : SOL_DECIMALS;
+    const amountInSmallestUnits = Math.floor(parseFloat(inputAmount) * Math.pow(10, decimals)).toString();
+
+    // Execute the swap on the selected market
+    await executeMarketSwap(
       proposalId,
+      market,
+      isBaseToQuote,
+      amountInSmallestUnits,
       userAddress,
       signTransaction
     );
-    
-    // Step 2: Split base tokens via vault
-    await splitTokens(
-      proposalId,
-      'base',
-      baseAmount,
-      userAddress,
-      signTransaction
-    );
-    
-    // Step 3: Split quote tokens via vault
-    await splitTokens(
-      proposalId,
-      'quote',
-      quoteAmount,
-      userAddress,
-      signTransaction
-    );
-    
-    // Step 4: Execute swaps on markets based on position type
-    if (positionType === 'pass') {
-      // Pass position: Buy pBase with quote, Sell fBase for quote
-      
-      // Swap on pass market (buy pBase with quote)
-      await executeMarketSwap(
-        proposalId,
-        'pass',
-        false, // quote to base
-        quoteAmount,
-        userAddress,
-        signTransaction
-      );
-      
-      // Swap on fail market (sell fBase for quote)
-      await executeMarketSwap(
-        proposalId,
-        'fail',
-        true, // base to quote
-        baseAmount,
-        userAddress,
-        signTransaction
-      );
-      
-    } else {
-      // Fail position: Sell pBase for quote, Buy fBase with quote
-      
-      // Swap on pass market (sell pBase for quote)
-      await executeMarketSwap(
-        proposalId,
-        'pass',
-        true, // base to quote
-        baseAmount,
-        userAddress,
-        signTransaction
-      );
-      
-      // Swap on fail market (buy fBase with quote)
-      await executeMarketSwap(
-        proposalId,
-        'fail',
-        false, // quote to base
-        quoteAmount,
-        userAddress,
-        signTransaction
-      );
-    }
-    
-    // Final success message
+
+    // Success message
+    const outputToken = inputToken === 'oogway' ? 'SOL' : 'OOGWAY';
     toast.success(
-      positionType === 'pass' 
-        ? 'PASS position opened successfully!'
-        : 'FAIL position opened successfully!',
+      `Successfully swapped ${market}-${inputToken.toUpperCase()} → ${market}-${outputToken}!`,
       { id: toastId, duration: 5000 }
     );
-    
+
   } catch (error) {
-    console.error('Error opening position:', error);
+    console.error('Error executing swap:', error);
     toast.error(
-      `Failed to open position: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      `Failed to execute swap: ${error instanceof Error ? error.message : 'Unknown error'}`,
       { id: toastId }
     );
     throw error;
@@ -622,6 +568,7 @@ async function splitTokens(
 
 /**
  * Claim winnings from a finished proposal
+ * Claims from BOTH vaults (base and quote) for the winning market
  */
 export async function claimWinnings(config: {
   proposalId: number;
@@ -630,90 +577,100 @@ export async function claimWinnings(config: {
   userAddress: string;
   signTransaction: (transaction: Transaction) => Promise<Transaction>;
 }): Promise<void> {
-  const { proposalId, proposalStatus, userPosition, userAddress, signTransaction } = config;
-  
-  if (!userPosition) {
-    throw new Error('No position to claim');
+  const { proposalId, proposalStatus, userAddress, signTransaction } = config;
+
+  // Check if user won
+  const didUserWin = (proposalStatus === 'Passed' && config.userPosition?.type === 'pass') ||
+                     (proposalStatus === 'Failed' && config.userPosition?.type === 'fail');
+
+  if (!didUserWin) {
+    throw new Error('Cannot claim - you did not win this market');
   }
-  
-  const toastId = toast.loading('Claiming winnings...');
-  
+
+  const toastId = toast.loading('Claiming winnings from both vaults...');
+
   try {
-    // Determine which vault to redeem from based on proposal outcome and user position
-    let vaultToRedeem: 'base' | 'quote';
-    
+    // Get user balances to determine which vaults have claimable tokens
+    const balances = await getUserBalances(proposalId, userAddress);
+    if (!balances) {
+      throw new Error('Failed to get user balances');
+    }
+
+    // Determine which conditional tokens the user has based on outcome
+    let hasBaseTokens = false;
+    let hasQuoteTokens = false;
+
     if (proposalStatus === 'Passed') {
-      // Proposal passed
-      if (userPosition.type === 'pass') {
-        // User bet on pass and won - redeem from base vault (gets oogway)
-        vaultToRedeem = 'base';
-      } else {
-        // User bet on fail and lost - redeem from quote vault (gets remaining SOL if any)
-        vaultToRedeem = 'quote';
-      }
+      // Proposal passed - user can claim Pass conditional tokens
+      hasBaseTokens = parseFloat(balances.base.passConditional || '0') > 0;
+      hasQuoteTokens = parseFloat(balances.quote.passConditional || '0') > 0;
     } else {
-      // Proposal failed
-      if (userPosition.type === 'fail') {
-        // User bet on fail and won - redeem from base vault (gets oogway)
-        vaultToRedeem = 'base';
-      } else {
-        // User bet on pass and lost - redeem from quote vault (gets remaining SOL if any)
-        vaultToRedeem = 'quote';
+      // Proposal failed - user can claim Fail conditional tokens
+      hasBaseTokens = parseFloat(balances.base.failConditional || '0') > 0;
+      hasQuoteTokens = parseFloat(balances.quote.failConditional || '0') > 0;
+    }
+
+    const vaultsToRedeem: ('base' | 'quote')[] = [];
+    if (hasBaseTokens) vaultsToRedeem.push('base');
+    if (hasQuoteTokens) vaultsToRedeem.push('quote');
+
+    if (vaultsToRedeem.length === 0) {
+      throw new Error('No winning tokens to claim');
+    }
+
+    // Redeem from each vault that has tokens
+    for (const vaultType of vaultsToRedeem) {
+      // Build redeem transaction
+      const redeemResponse = await fetch(
+        `${API_BASE_URL}/api/vaults/${proposalId}/${vaultType}/buildRedeemWinningTokensTx`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            user: userAddress
+          })
+        }
+      );
+
+      if (!redeemResponse.ok) {
+        const error = await redeemResponse.json();
+        throw new Error(`Failed to build ${vaultType} redeem transaction: ${error.message || JSON.stringify(error)}`);
+      }
+
+      const redeemData = await redeemResponse.json();
+
+      // Sign the transaction
+      const redeemTx = Transaction.from(Buffer.from(redeemData.transaction, 'base64'));
+      const signedRedeemTx = await signTransaction(redeemTx);
+
+      // Execute the signed redeem transaction
+      const executeRedeemResponse = await fetch(
+        `${API_BASE_URL}/api/vaults/${proposalId}/${vaultType}/executeRedeemWinningTokensTx`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            transaction: Buffer.from(signedRedeemTx.serialize({ requireAllSignatures: false })).toString('base64')
+          })
+        }
+      );
+
+      if (!executeRedeemResponse.ok) {
+        const error = await executeRedeemResponse.json();
+        throw new Error(`Failed to execute ${vaultType} redeem transaction: ${error.message || JSON.stringify(error)}`);
       }
     }
-    
-    // Build redeem transaction
-    const redeemResponse = await fetch(
-      `${API_BASE_URL}/api/vaults/${proposalId}/${vaultToRedeem}/buildRedeemWinningTokensTx`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          user: userAddress
-        })
-      }
-    );
-    
-    if (!redeemResponse.ok) {
-      const error = await redeemResponse.json();
-      throw new Error(`Failed to build redeem transaction: ${error.message || JSON.stringify(error)}`);
-    }
-    
-    const redeemData = await redeemResponse.json();
-    
-    // Sign the transaction
-    const redeemTx = Transaction.from(Buffer.from(redeemData.transaction, 'base64'));
-    const signedRedeemTx = await signTransaction(redeemTx);
-    
-    // Execute the signed redeem transaction
-    const executeRedeemResponse = await fetch(
-      `${API_BASE_URL}/api/vaults/${proposalId}/${vaultToRedeem}/executeRedeemWinningTokensTx`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          transaction: Buffer.from(signedRedeemTx.serialize({ requireAllSignatures: false })).toString('base64')
-        })
-      }
-    );
-    
-    if (!executeRedeemResponse.ok) {
-      const error = await executeRedeemResponse.json();
-      throw new Error(`Failed to execute redeem transaction: ${error.message || JSON.stringify(error)}`);
-    }
-    
-    const result = await executeRedeemResponse.json();
-    
+
     toast.success(
-      'Winnings claimed successfully!',
+      `Winnings claimed successfully from ${vaultsToRedeem.length} vault${vaultsToRedeem.length > 1 ? 's' : ''}!`,
       { id: toastId, duration: 5000 }
     );
-    
-    return result;
+
+    return;
     
   } catch (error) {
     console.error('Error claiming winnings:', error);
@@ -760,11 +717,11 @@ async function executeMarketSwap(
   }
   
   const swapTxData = await buildSwapResponse.json();
-  
+
   // Sign the swap transaction
   const swapTx = Transaction.from(Buffer.from(swapTxData.transaction, 'base64'));
   const signedSwapTx = await signTransaction(swapTx);
-  
+
   // Execute the signed swap transaction
   const executeSwapResponse = await fetch(`${API_BASE_URL}/api/swap/${proposalId}/executeSwapTx`, {
     method: 'POST',
@@ -776,7 +733,8 @@ async function executeMarketSwap(
       market: market,
       user: userAddress,
       isBaseToQuote: isBaseToQuote,
-      amountIn: amountIn
+      amountIn: amountIn,
+      amountOut: swapTxData.expectedAmountOut
     })
   });
   

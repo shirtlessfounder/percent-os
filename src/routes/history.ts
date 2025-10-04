@@ -253,12 +253,39 @@ router.get('/:id/chart', async (req, res, next) => {
       fromDate,
       toDate
     );
-    
+
+    // Get proposal to access totalSupply
+    const persistenceService = (await import('../../app/services/persistence.service')).PersistenceService.getInstance();
+    const proposal = await persistenceService.getProposalForFrontend(proposalId);
+    const totalSupply = proposal?.total_supply || 1000000000;
+
+    // Get current SOL/USD price
+    const { SolPriceService } = await import('../../app/services/sol-price.service');
+    const solPriceService = SolPriceService.getInstance();
+    const solPrice = await solPriceService.getSolPrice();
+
+    // Transform data to USD market cap (price × total supply × SOL price) and ISO strings for JSON serialization
+    // Note: Spot prices are already in USD market cap, so don't convert them
+    const formattedData = chartData.map(point => {
+      // Spot prices are already market cap USD, pass/fail need conversion
+      const multiplier = point.market === 'spot' ? 1 : (totalSupply * solPrice);
+
+      return {
+        timestamp: new Date(point.timestamp).toISOString(),
+        market: point.market,
+        open: (point.open * multiplier).toString(),
+        high: (point.high * multiplier).toString(),
+        low: (point.low * multiplier).toString(),
+        close: (point.close * multiplier).toString(),
+        volume: point.volume?.toString() || '0'
+      };
+    });
+
     res.json({
       proposalId,
       interval,
-      count: chartData.length,
-      data: chartData
+      count: formattedData.length,
+      data: formattedData
     });
   } catch (error) {
     next(error);

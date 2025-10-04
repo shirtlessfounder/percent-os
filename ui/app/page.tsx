@@ -1,16 +1,25 @@
 'use client';
 
-import { useState, useMemo, useCallback, useEffect, memo } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { usePrivyWallet } from '@/hooks/usePrivyWallet';
 import { useWalletBalances } from '@/hooks/useWalletBalances';
+import { useTokenPrices } from '@/hooks/useTokenPrices';
 import Sidebar from '@/components/Sidebar';
 import TradingInterface from '@/components/TradingInterface';
 import Header from '@/components/Header';
+import { ProposalHeader } from '@/components/ProposalHeader';
+import { MarketEntryControls } from '@/components/MarketEntryControls';
+import { TradeHistoryTable } from '@/components/TradeHistoryTable';
+import MarketChart from '@/components/MarketChart';
 import { useProposals } from '@/hooks/useProposals';
 import { useTradeHistory } from '@/hooks/useTradeHistory';
-import { IoMdStopwatch } from 'react-icons/io';
-import { formatNumber, formatCurrency, formatVolume } from '@/lib/formatters';
+import { useUserBalances } from '@/hooks/useUserBalances';
+import { useVisualFocus } from '@/hooks/useVisualFocus';
+import { formatNumber, formatVolume, formatCurrency } from '@/lib/formatters';
+import { useSolanaWallets } from '@privy-io/react-auth/solana';
+import { Transaction } from '@solana/web3.js';
+import toast from 'react-hot-toast';
 
 const LivePriceDisplay = dynamic(() => import('@/components/LivePriceDisplay').then(mod => mod.LivePriceDisplay), {
   ssr: false,
@@ -27,59 +36,37 @@ const LivePriceDisplay = dynamic(() => import('@/components/LivePriceDisplay').t
   )
 });
 
-const CountdownTimer = memo(({ endsAt, onTimerEnd, isPending }: { endsAt: number; onTimerEnd?: () => void; isPending?: boolean }) => {
-  const [timeLeft, setTimeLeft] = useState('');
-  const [hasEnded, setHasEnded] = useState(false);
-
-  useEffect(() => {
-    const calculateTimeLeft = () => {
-      const now = Date.now();
-      const diff = endsAt - now;
-      
-      if (diff <= 0) {
-        setTimeLeft('00:00:00');
-        // Only trigger onTimerEnd if proposal is pending and we haven't already triggered
-        if (!hasEnded && isPending) {
-          setHasEnded(true);
-          onTimerEnd?.();
-        }
-        return;
-      }
-      
-      const hours = Math.floor(diff / (1000 * 60 * 60));
-      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-      
-      setTimeLeft(`${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`);
-    };
-
-    calculateTimeLeft();
-    const interval = setInterval(calculateTimeLeft, 1000);
-    
-    return () => clearInterval(interval);
-  }, [endsAt, hasEnded, onTimerEnd, isPending]);
-
-  return <>{timeLeft}</>;
-});
-
-CountdownTimer.displayName = 'CountdownTimer';
-
 export default function HomePage() {
   const { ready, authenticated, user, walletAddress } = usePrivyWallet();
   const { proposals, loading, refetch } = useProposals();
   const [livePrices, setLivePrices] = useState<{ pass: number | null; fail: number | null }>({ pass: null, fail: null });
   const [twapData, setTwapData] = useState<{ passTwap: number | null; failTwap: number | null }>({ passTwap: null, failTwap: null });
-  
+  const [activeTab, setActiveTab] = useState<'trade' | 'description'>('trade');
+  const [marketMode, setMarketMode] = useState<'enter' | 'exit'>('enter');
+  const [amount, setAmount] = useState<string>('');
+  const [selectedToken, setSelectedToken] = useState<'sol' | 'oogway'>('sol');
+  const [isEntering, setIsEntering] = useState(false);
+  const [isExiting, setIsExiting] = useState(false);
+
   // Fetch wallet balances
   const { sol: solBalance, oogway: oogwayBalance } = useWalletBalances(walletAddress);
-  
+
+  // Fetch token prices for USD conversion
+  const { sol: solPrice, oogway: oogwayPrice } = useTokenPrices();
+
+  // Get Solana wallets for transaction signing
+  const { wallets } = useSolanaWallets();
+
   // Memoize sorted proposals
-  const sortedProposals = useMemo(() => 
+  const sortedProposals = useMemo(() =>
     [...proposals].sort((a, b) => b.finalizedAt - a.finalizedAt),
     [proposals]
   );
-  
+
   const [selectedProposalId, setSelectedProposalId] = useState<number | null>(null);
+
+  // Fetch user balances for the selected proposal
+  const { data: userBalances, refetch: refetchBalances } = useUserBalances(selectedProposalId, walletAddress);
   const [selectedMarket, setSelectedMarket] = useState<'pass' | 'fail'>('pass');
   
   // Set initial selected proposal when proposals load
@@ -100,8 +87,7 @@ export default function HomePage() {
     loading: tradesLoading,
     getTimeAgo,
     formatAddress,
-    getTokenUsed,
-    calculateVolume
+    getTokenUsed
   } = useTradeHistory(proposal?.id || null);
   
   const handleSelectProposal = useCallback((id: number) => {
@@ -127,6 +113,214 @@ export default function HomePage() {
     console.log('TWAP update from LivePriceDisplay:', twap);
     setTwapData(twap);
   }, []);
+
+  // Calculate if user has any position
+  const hasPosition = useMemo(() => {
+    if (!userBalances) return false;
+    return (
+      parseFloat(userBalances.base.passConditional || '0') > 0 ||
+      parseFloat(userBalances.base.failConditional || '0') > 0 ||
+      parseFloat(userBalances.quote.passConditional || '0') > 0 ||
+      parseFloat(userBalances.quote.failConditional || '0') > 0
+    );
+  }, [userBalances]);
+
+  // Visual focus states for highlighting/dimming UI elements
+  const visualFocus = useVisualFocus(hasPosition, selectedMarket);
+
+  // Handle MAX button click
+  const handleMaxClick = useCallback(() => {
+    if (marketMode === 'enter') {
+      const maxBalance = selectedToken === 'sol' ? solBalance : oogwayBalance;
+      setAmount(maxBalance?.toString() || '0');
+    } else {
+      // Exit mode: calculate min of pass and fail for selected token
+      if (userBalances) {
+        let maxExitAmount = 0;
+        if (selectedToken === 'sol') {
+          const passSol = parseFloat(userBalances.quote.passConditional || '0') / 1e9;
+          const failSol = parseFloat(userBalances.quote.failConditional || '0') / 1e9;
+          maxExitAmount = Math.min(passSol, failSol);
+        } else {
+          const passOogway = parseFloat(userBalances.base.passConditional || '0') / 1e6;
+          const failOogway = parseFloat(userBalances.base.failConditional || '0') / 1e6;
+          maxExitAmount = Math.min(passOogway, failOogway);
+        }
+        setAmount(maxExitAmount.toString());
+      }
+    }
+  }, [marketMode, selectedToken, solBalance, oogwayBalance, userBalances]);
+
+  // Handle Enter Market - Split tokens into conditional tokens
+  const handleEnterMarket = useCallback(async () => {
+    if (!authenticated || !walletAddress) {
+      toast.error('Please connect your wallet');
+      return;
+    }
+
+    if (!amount || parseFloat(amount) <= 0) {
+      toast.error('Please enter a valid amount');
+      return;
+    }
+
+    if (!selectedProposalId) {
+      toast.error('No proposal selected');
+      return;
+    }
+
+    setIsEntering(true);
+    const toastId = toast.loading('Entering market...');
+
+    try {
+      // Determine vault type based on selected token
+      const vaultType = selectedToken === 'sol' ? 'quote' : 'base';
+
+      // Convert amount to smallest units
+      const decimals = selectedToken === 'sol' ? 9 : 6; // SOL: 9, OOGWAY: 6
+      const amountInSmallestUnits = Math.floor(parseFloat(amount) * Math.pow(10, decimals));
+
+      // Build split transaction
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const buildResponse = await fetch(`${API_BASE_URL}/api/vaults/${selectedProposalId}/${vaultType}/buildSplitTx`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user: walletAddress,
+          amount: amountInSmallestUnits.toString()
+        })
+      });
+
+      if (!buildResponse.ok) {
+        const error = await buildResponse.json();
+        throw new Error(error.message || 'Failed to build split transaction');
+      }
+
+      const buildData = await buildResponse.json();
+
+      // Sign the transaction
+      const splitTx = Transaction.from(Buffer.from(buildData.transaction, 'base64'));
+      const wallet = wallets[0];
+      if (!wallet) throw new Error('No Solana wallet found');
+      const signedTx = await wallet.signTransaction(splitTx);
+
+      // Execute split transaction
+      const executeResponse = await fetch(`${API_BASE_URL}/api/vaults/${selectedProposalId}/${vaultType}/executeSplitTx`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transaction: Buffer.from(signedTx.serialize({ requireAllSignatures: false })).toString('base64')
+        })
+      });
+
+      if (!executeResponse.ok) {
+        const error = await executeResponse.json();
+        throw new Error(error.message || 'Failed to execute split transaction');
+      }
+
+      toast.success('Successfully entered market!', { id: toastId, duration: 5000 });
+
+      // Clear amount and refresh balances
+      setAmount('');
+      refetchBalances();
+
+    } catch (error) {
+      console.error('Enter market failed:', error);
+      toast.error(
+        `Failed to enter market: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        { id: toastId }
+      );
+    } finally {
+      setIsEntering(false);
+    }
+  }, [authenticated, walletAddress, amount, selectedProposalId, selectedToken, wallets, refetchBalances]);
+
+  // Handle Exit Market - Merge conditional tokens back
+  const handleExitMarket = useCallback(async () => {
+    if (!authenticated || !walletAddress) {
+      toast.error('Please connect your wallet');
+      return;
+    }
+
+    if (!amount || parseFloat(amount) <= 0) {
+      toast.error('Please enter a valid amount');
+      return;
+    }
+
+    if (!selectedProposalId) {
+      toast.error('No proposal selected');
+      return;
+    }
+
+    if (!userBalances) {
+      toast.error('Unable to get user balances');
+      return;
+    }
+
+    setIsExiting(true);
+    const toastId = toast.loading('Exiting market...');
+
+    try {
+      // Determine vault type based on selected token
+      const vaultType = selectedToken === 'sol' ? 'quote' : 'base';
+
+      // Convert amount to smallest units
+      const decimals = selectedToken === 'sol' ? 9 : 6; // SOL: 9, OOGWAY: 6
+      const amountInSmallestUnits = Math.floor(parseFloat(amount) * Math.pow(10, decimals));
+
+      // Build merge transaction
+      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const buildResponse = await fetch(`${API_BASE_URL}/api/vaults/${selectedProposalId}/${vaultType}/buildMergeTx`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user: walletAddress,
+          amount: amountInSmallestUnits.toString()
+        })
+      });
+
+      if (!buildResponse.ok) {
+        const error = await buildResponse.json();
+        throw new Error(error.message || 'Failed to build merge transaction');
+      }
+
+      const buildData = await buildResponse.json();
+
+      // Sign the transaction
+      const mergeTx = Transaction.from(Buffer.from(buildData.transaction, 'base64'));
+      const wallet = wallets[0];
+      if (!wallet) throw new Error('No Solana wallet found');
+      const signedTx = await wallet.signTransaction(mergeTx);
+
+      // Execute merge transaction
+      const executeResponse = await fetch(`${API_BASE_URL}/api/vaults/${selectedProposalId}/${vaultType}/executeMergeTx`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transaction: Buffer.from(signedTx.serialize({ requireAllSignatures: false })).toString('base64')
+        })
+      });
+
+      if (!executeResponse.ok) {
+        const error = await executeResponse.json();
+        throw new Error(error.message || 'Failed to execute merge transaction');
+      }
+
+      toast.success('Successfully exited market!', { id: toastId, duration: 5000 });
+
+      // Clear amount and refresh balances
+      setAmount('');
+      refetchBalances();
+
+    } catch (error) {
+      console.error('Exit market failed:', error);
+      toast.error(
+        `Failed to exit market: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        { id: toastId }
+      );
+    } finally {
+      setIsExiting(false);
+    }
+  }, [authenticated, walletAddress, amount, selectedProposalId, selectedToken, userBalances, wallets, refetchBalances]);
 
   // Calculate PFG percentage and passing status to match backend logic
   const { pfgPercentage, isPassing } = useMemo(() => {
@@ -217,280 +411,107 @@ export default function HomePage() {
         {/* Content Area */}
         <div className="flex-1 flex overflow-hidden">
           <div className="flex-1 p-8 pr-10 overflow-y-auto border-r border-[#2A2A2A]">
-            <div className="mb-8">
-              <div className="flex items-center gap-3 mb-4">
-                <span className={`text-xs px-2 py-1 rounded-full inline-flex items-center gap-1 ${
-                  proposal.status === 'Pending'
-                    ? 'bg-orange-400/20 text-orange-400 animate-pulse'
-                    : proposal.status === 'Passed' || proposal.status === 'Executed'
-                    ? 'bg-emerald-400/20 text-emerald-400'
-                    : 'bg-rose-400/20 text-rose-400'
-                }`}>
-                  {proposal.status === 'Pending' ? 'Live' : proposal.status === 'Executed' ? 'Passed' : proposal.status}
-                  {proposal.status === 'Pending' && (
-                    <span className="relative w-3 h-3 flex items-center justify-center">
-                      <span className="absolute w-3 h-3 bg-orange-400 rounded-full animate-ping opacity-75"></span>
-                      <span className="relative w-2 h-2 bg-orange-400 rounded-full"></span>
-                    </span>
-                  )}
-                  {(proposal.status === 'Passed' || proposal.status === 'Executed') && (
-                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                    </svg>
-                  )}
-                  {proposal.status === 'Failed' && (
-                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                    </svg>
-                  )}
-                </span>
-                <span className="w-px h-4 bg-[#282828]"></span>
-                <span className="text-xs text-gray-500">
-                  {new Date(proposal.finalizedAt).toLocaleDateString('en-US', { 
-                    month: 'long', 
-                    day: 'numeric', 
-                    year: 'numeric'
-                  })} at {new Date(proposal.finalizedAt).toLocaleTimeString('en-US', {
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
-                </span>
-              </div>
-              <div className="mb-4">
-                {proposal.id === 0 ? (
-                  <>
-                    <h1 className="text-3xl font-semibold mb-4">
-                      What is the price of $oogway after OOG-1 settles?
-                    </h1>
-                    <div className="space-y-4 text-gray-300">
-                      <p>
-                        Mint 5,000,000 $oogway, stake them in the $oogway vault and distribute staked tokens proportionally based on wallet volume to all traders of this decision market.
-                      </p>
+            <ProposalHeader
+              proposalId={proposal.id}
+              status={proposal.status as 'Pending' | 'Passed' | 'Failed' | 'Executed'}
+              finalizedAt={proposal.finalizedAt}
+              description={proposal.description}
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
+              onTimerEnd={handleTimerEnd}
+              pfgPercentage={pfgPercentage}
+            />
 
-                      <div>
-                        <h3 className="text-lg font-semibold text-white mb-2">How is volume calculated?</h3>
-                        <p>
-                          All trading volume on the pass and fail markets occurring before the implied resolution on either the pass or fail markets is counted towards the reward calculation. Volume is calculated as if both pass and fail markets resolve.
-                        </p>
-                      </div>
-
-                      <div>
-                        <h3 className="text-lg font-semibold text-white mb-2">What is implied resolution?</h3>
-                        <p>
-                          Implied resolution occurs once the pass-fail gap is sufficiently large such that no additional price movement can change the outcome of the market. This is an anti-manipulation feature.
-                        </p>
-                      </div>
-
-                      <p>
-                        The proposal passes if pass-fail gap &gt; 3%. Pass-fail gap is calculated using TWAP
-                      </p>
-
-                      <div>
-                        <h3 className="text-lg font-semibold text-white mb-2">I need help - who can I talk to?</h3>
-                        <p>
-                          Come join our telegram: <a href="https://t.me/oogwayexperimentportal" className="text-blue-400 hover:text-blue-300 underline" target="_blank" rel="noopener noreferrer">https://t.me/oogwayexperimentportal</a>
-                        </p>
-                      </div>
-                    </div>
-                  </>
-                ) : proposal.id === 6 ? (
-                  <>
-                    <h1 className="text-3xl font-semibold mb-4">
-                      What is the price of $oogway after OOG-1 settles?
-                    </h1>
-                    <div className="space-y-4 text-gray-300">
-                      <p>
-                        Mint 5,000,000 $oogway, stake them in the $oogway vault and distribute staked tokens proportionally based on wallet volume to all traders of this decision market.
-                      </p>
-
-                      <div>
-                        <h3 className="text-lg font-semibold text-white mb-2">How is volume calculated?</h3>
-                        <p>
-                          All trading volume on the pass and fail markets occurring before the implied resolution on either the pass or fail markets is counted towards the reward calculation. Volume is calculated as if both pass and fail markets resolve.
-                        </p>
-                      </div>
-
-                      <div>
-                        <h3 className="text-lg font-semibold text-white mb-2">What is implied resolution?</h3>
-                        <p>
-                          Implied resolution occurs once the pass-fail gap is sufficiently large such that no additional price movement can change the outcome of the market. This is an anti-manipulation feature.
-                        </p>
-                      </div>
-
-                      <p>
-                        The proposal passes if pass-fail gap &gt; 3%. Pass-fail gap is calculated using TWAP
-                      </p>
-
-                      <div>
-                        <h3 className="text-lg font-semibold text-white mb-2">I need help - who can I talk to?</h3>
-                        <p>
-                          Come join our telegram: <a href="https://t.me/oogwayexperimentportal" className="text-blue-400 hover:text-blue-300 underline" target="_blank" rel="noopener noreferrer">https://t.me/oogwayexperimentportal</a>
-                        </p>
-                      </div>
-                    </div>
-                  </>
-                ) : proposal.id === 7 ? (
-                  <>
-                    <h1 className="text-3xl font-semibold mb-4">
-                      What will the price of $oogway be after the OOG-2 market resolves?
-                    </h1>
-                    <div className="space-y-4 text-gray-300">
-                      <p className="font-semibold">
-                        OOG-2: Create an $oogway-sOogway LP via meteora DAMM V2
-                      </p>
-
-                      <div>
-                        <h3 className="text-lg font-semibold text-white mb-2">Mint</h3>
-                        <ul className="list-disc list-inside space-y-1">
-                          <li>40,000,000 $oogway for the purpose of creating a liquid sOogway token</li>
-                          <li>10,000,000 $oogway to be distributed to traders of this market. distribution will be volume based and in the form of staked oogway</li>
-                        </ul>
-                      </div>
-
-                      <div>
-                        <h3 className="text-lg font-semibold text-white mb-2">Pros:</h3>
-                        <ul className="list-disc list-inside space-y-1">
-                          <li>$oogway stakers, who no longer want to signal commitment, can exit at a discount to $oogway.</li>
-                          <li>$oogway holders interested in signaling commitment, can purchase $oogway at discounts by purchasing staked $oogway</li>
-                          <li>decision markets can be set up on staked $oogway instead of $oogway</li>
-                          <li>removes deferred selling upon end of staking period</li>
-                          <li>increased volume on the native trading pool</li>
-                          <li>pricing of staked $oogway APY is more accurate</li>
-                        </ul>
-                      </div>
-
-                      <div>
-                        <h3 className="text-lg font-semibold text-white mb-2">Cons:</h3>
-                        <ul className="list-disc list-inside space-y-1">
-                          <li>staking market becomes less restrictive</li>
-                          <li>complicated mechanisms increase overhead</li>
-                        </ul>
-                      </div>
-
-                      <p className="text-sm italic">
-                        Trading this decision market incurs financial risk.
-                      </p>
-
-                      <div>
-                        <h3 className="text-lg font-semibold text-white mb-2">How is volume calculated?</h3>
-                        <p>
-                          All trading volume on the pass and fail markets occurring before the implied resolution on either the pass or fail markets is counted towards the reward calculation. Volume is calculated as if both pass and fail markets resolve.
-                        </p>
-                      </div>
-
-                      <div>
-                        <h3 className="text-lg font-semibold text-white mb-2">What is implied resolution?</h3>
-                        <p>
-                          Implied resolution occurs once the pass-fail gap is sufficiently large such that no additional price movement can change the outcome of the market. This is an anti-manipulation feature.
-                        </p>
-                      </div>
-
-                      <p>
-                        The proposal passes if pass-fail gap &gt; 1%. Pass-fail gap is calculated using TWAP.
-                      </p>
-
-                      <div>
-                        <h3 className="text-lg font-semibold text-white mb-2">I need help - who can I talk to?</h3>
-                        <p>
-                          Come join our telegram: <a href="https://t.me/oogwayexperimentportal" className="text-blue-400 hover:text-blue-300 underline" target="_blank" rel="noopener noreferrer">https://t.me/oogwayexperimentportal</a>
-                        </p>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <h1 className="text-3xl font-semibold">
-                      {proposal.description}
-                    </h1>
-                    <p className="text-sm text-gray-500 mt-4">Proposal #{proposal.id}</p>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {/* Progress Bar Component */}
-            <div>
-              <div className="border-t border-l border-r border-[#282828] px-4 py-4">
-                <div className="flex items-center gap-6">
-                  {/* Progress Bar */}
-                  <div className="relative flex-1">
-                    <div className="relative h-10 bg-[#2A2A2A] rounded-full overflow-hidden border border-[#2A2A2A] flex items-center">
-                      {/* Pass/Failed/Passed text at the end - behind progress bar */}
-                      <span 
-                        className={`absolute right-4 text-sm font-medium z-10 ${
-                          proposal.status === 'Failed' 
-                            ? 'text-rose-400'
-                            : proposal.status === 'Passed' || proposal.status === 'Executed'
-                            ? 'text-white'
-                            : 'text-gray-500'
-                        }`}
-                      >
-                        {proposal.status === 'Failed' ? 'Failed' : (proposal.status === 'Passed' || proposal.status === 'Executed') ? 'Passed' : `Target PFG: ${(proposal.passThresholdBps / 100).toFixed(2)}%`}
-                      </span>
-                      {/* Progress Fill - on top to overlap text */}
-                      <div 
-                        className={`absolute left-0 top-0 h-full rounded-full transition-all duration-500 flex items-center justify-end pr-3 z-20 ${
-                          proposal.status === 'Passed' || proposal.status === 'Executed'
-                            ? 'bg-emerald-500'
-                            : proposal.status === 'Failed'
-                            ? 'bg-rose-500'
-                            : 'bg-emerald-500'
-                        }`}
-                        style={{
-                          width: `${
-                            (() => {
-                              if (proposal.status === 'Passed' || proposal.status === 'Executed') return 100;
-                              if (proposal.status === 'Failed') return 0;
-                              if (pfgPercentage !== null) {
-                                const thresholdPercentage = proposal.passThresholdBps / 100;
-                                const progressPercentage = (pfgPercentage / thresholdPercentage) * 100;
-                                console.log('Progress Bar Debug:', {
-                                  pfgPercentage,
-                                  passThresholdBps: proposal.passThresholdBps,
-                                  thresholdPercentage,
-                                  progressPercentage,
-                                  finalWidth: Math.min(100, Math.max(0, progressPercentage))
-                                });
-                                return Math.min(100, Math.max(0, progressPercentage));
-                              }
-                              return 0;
-                            })()
-                          }%`
-                        }}
-                      >
-                        {/* Percentage Text inside progress - show TWAP-based PFG for Pending status */}
-                        {proposal.status === 'Pending' && (
-                          <span className="text-base font-bold text-white">
-                            {pfgPercentage !== null
-                              ? isPassing
-                                ? `${pfgPercentage.toFixed(2)}% (Passing)`
-                                : `${pfgPercentage.toFixed(2)}%`
-                              : 'Loading TWAP...'
-                            }
+            {/* Trade Tab Content */}
+            {activeTab === 'trade' && (
+              <div className="mb-8">
+              {/* User Market Balances */}
+              {authenticated && walletAddress && userBalances && (
+                <div className="grid grid-cols-2 gap-4 mt-1">
+                  {/* Pass Market Column */}
+                  <div className={`space-y-2 rounded-lg ${visualFocus.passMarket.className}`}>
+                    {/* Pass Market Balance */}
+                    <div className="bg-[#1A1A1A] p-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-emerald-400">If Pass</span>
+                        <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                          <span
+                            className="group relative cursor-default"
+                            title={oogwayPrice ? formatCurrency((parseFloat(userBalances.base.passConditional || '0') / 1e6) * oogwayPrice, 2) : 'Price unavailable'}
+                          >
+                            {formatNumber(parseFloat(userBalances.base.passConditional || '0') / 1e6, 0)} $oogway
+                            {oogwayPrice && (
+                              <span className="absolute left-0 top-full mt-1 px-2 py-1 bg-[#2a2a2a] border border-[#404040] rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                                {formatCurrency((parseFloat(userBalances.base.passConditional || '0') / 1e6) * oogwayPrice, 2)}
+                              </span>
+                            )}
                           </span>
-                        )}
+                          <span className="text-gray-600">|</span>
+                          <div className="flex items-center gap-1 group relative cursor-default" title={solPrice ? formatCurrency((parseFloat(userBalances.quote.passConditional || '0') / 1e9) * solPrice, 2) : 'Price unavailable'}>
+                            <span>{formatNumber(parseFloat(userBalances.quote.passConditional || '0') / 1e9, 6)}</span>
+                            <svg className="h-3 w-3" viewBox="0 0 101 88" fill="none" xmlns="http://www.w3.org/2000/svg">
+                              <path d="M100.48 69.3817L83.8068 86.8015C83.4444 87.1799 83.0058 87.4816 82.5185 87.6878C82.0312 87.894 81.5055 88.0003 80.9743 88H1.93563C1.55849 88 1.18957 87.8926 0.874202 87.6912C0.558829 87.4897 0.31074 87.2029 0.160416 86.8659C0.0100923 86.529 -0.0359181 86.1566 0.0280382 85.7945C0.0919944 85.4324 0.263131 85.0964 0.520422 84.8278L17.2061 67.408C17.5676 67.0306 18.0047 66.7295 18.4904 66.5234C18.9762 66.3172 19.5002 66.2104 20.0301 66.2095H99.0644C99.4415 66.2095 99.8104 66.3169 100.126 66.5183C100.441 66.7198 100.689 67.0065 100.84 67.3435C100.99 67.6804 101.036 68.0529 100.972 68.415C100.908 68.7771 100.737 69.1131 100.48 69.3817ZM83.8068 36.3032C83.4444 35.9248 83.0058 35.6231 82.5185 35.4169C82.0312 35.2108 81.5055 35.1045 80.9743 35.1048H1.93563C1.55849 35.1048 1.18957 35.2121 0.874202 35.4136C0.558829 35.6151 0.31074 35.9019 0.160416 36.2388C0.0100923 36.5758 -0.0359181 36.9482 0.0280382 37.3103C0.0919944 37.6723 0.263131 38.0083 0.520422 38.277L17.2061 55.6968C17.5676 56.0742 18.0047 56.3752 18.4904 56.5814C18.9762 56.7875 19.5002 56.8944 20.0301 56.8952H99.0644C99.4415 56.8952 99.8104 56.7879 100.126 56.5864C100.441 56.3849 100.689 56.0981 100.84 55.7612C100.99 55.4242 101.036 55.0518 100.972 54.6897C100.908 54.3277 100.737 53.9917 100.48 53.723L83.8068 36.3032ZM1.93563 21.7905H80.9743C81.5055 21.7898 82.0312 21.6835 82.5185 21.4773C83.0058 21.2712 83.4444 20.9695 83.8068 20.5911L100.48 3.17133C100.737 2.90265 100.908 2.56667 100.972 2.2046C101.036 1.84253 100.99 1.47008 100.84 1.13314C100.689 0.796193 100.441 0.509443 100.126 0.307961C99.8104 0.106479 99.4415 -0.000854492 99.0644 -0.000854492H20.0301C19.5002 -0.00013126 18.9762 0.106791 18.4904 0.312929C18.0047 0.519068 17.5676 0.820087 17.2061 1.19754L0.524723 18.6173C0.267481 18.8859 0.0963642 19.2219 0.0323936 19.584C-0.0315771 19.946 0.0144792 20.3184 0.164862 20.6554C0.315245 20.9923 0.563347 21.2791 0.878727 21.4806C1.19411 21.682 1.56303 21.7894 1.94013 21.7896L1.93563 21.7905Z" fill="#AFAFAF"/>
+                            </svg>
+                            {solPrice && (
+                              <span className="absolute right-0 top-full mt-1 px-2 py-1 bg-[#2a2a2a] border border-[#404040] rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                                {formatCurrency((parseFloat(userBalances.quote.passConditional || '0') / 1e9) * solPrice, 2)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </div>
+                    </div>
+
+                    {/* Pass Market Chart */}
+                    <div className="bg-[#1A1A1A] overflow-hidden">
+                      <MarketChart proposalId={proposal.id} market="pass" height={512} />
                     </div>
                   </div>
 
-                  {/* Countdown Timer */}
-                  <div className="flex items-center justify-center gap-2 w-36">
-                    {/* Stopwatch Icon */}
-                    <IoMdStopwatch className="w-6 h-6 text-gray-400 flex-shrink-0" />
-                    <div className="text-2xl font-mono font-bold text-white">
-                      <CountdownTimer 
-                      endsAt={proposal.finalizedAt} 
-                      onTimerEnd={handleTimerEnd}
-                      isPending={proposal.status === 'Pending'}
-                    />
+                  {/* Fail Market Column */}
+                  <div className={`space-y-2 rounded-lg ${visualFocus.failMarket.className}`}>
+                    {/* Fail Market Balance */}
+                    <div className="bg-[#1A1A1A] p-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-medium text-rose-400">If Fail</span>
+                        <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                          <span
+                            className="group relative cursor-default"
+                            title={oogwayPrice ? formatCurrency((parseFloat(userBalances.base.failConditional || '0') / 1e6) * oogwayPrice, 2) : 'Price unavailable'}
+                          >
+                            {formatNumber(parseFloat(userBalances.base.failConditional || '0') / 1e6, 0)} $oogway
+                            {oogwayPrice && (
+                              <span className="absolute left-0 top-full mt-1 px-2 py-1 bg-[#2a2a2a] border border-[#404040] rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                                {formatCurrency((parseFloat(userBalances.base.failConditional || '0') / 1e6) * oogwayPrice, 2)}
+                              </span>
+                            )}
+                          </span>
+                          <span className="text-gray-600">|</span>
+                          <div className="flex items-center gap-1 group relative cursor-default" title={solPrice ? formatCurrency((parseFloat(userBalances.quote.failConditional || '0') / 1e9) * solPrice, 2) : 'Price unavailable'}>
+                            <span>{formatNumber(parseFloat(userBalances.quote.failConditional || '0') / 1e9, 6)}</span>
+                            <svg className="h-3 w-3" viewBox="0 0 101 88" fill="none" xmlns="http://www.w3.org/2000/svg">
+                              <path d="M100.48 69.3817L83.8068 86.8015C83.4444 87.1799 83.0058 87.4816 82.5185 87.6878C82.0312 87.894 81.5055 88.0003 80.9743 88H1.93563C1.55849 88 1.18957 87.8926 0.874202 87.6912C0.558829 87.4897 0.31074 87.2029 0.160416 86.8659C0.0100923 86.529 -0.0359181 86.1566 0.0280382 85.7945C0.0919944 85.4324 0.263131 85.0964 0.520422 84.8278L17.2061 67.408C17.5676 67.0306 18.0047 66.7295 18.4904 66.5234C18.9762 66.3172 19.5002 66.2104 20.0301 66.2095H99.0644C99.4415 66.2095 99.8104 66.3169 100.126 66.5183C100.441 66.7198 100.689 67.0065 100.84 67.3435C100.99 67.6804 101.036 68.0529 100.972 68.415C100.908 68.7771 100.737 69.1131 100.48 69.3817ZM83.8068 36.3032C83.4444 35.9248 83.0058 35.6231 82.5185 35.4169C82.0312 35.2108 81.5055 35.1045 80.9743 35.1048H1.93563C1.55849 35.1048 1.18957 35.2121 0.874202 35.4136C0.558829 35.6151 0.31074 35.9019 0.160416 36.2388C0.0100923 36.5758 -0.0359181 36.9482 0.0280382 37.3103C0.0919944 37.6723 0.263131 38.0083 0.520422 38.277L17.2061 55.6968C17.5676 56.0742 18.0047 56.3752 18.4904 56.5814C18.9762 56.7875 19.5002 56.8944 20.0301 56.8952H99.0644C99.4415 56.8952 99.8104 56.7879 100.126 56.5864C100.441 56.3849 100.689 56.0981 100.84 55.7612C100.99 55.4242 101.036 55.0518 100.972 54.6897C100.908 54.3277 100.737 53.9917 100.48 53.723L83.8068 36.3032ZM1.93563 21.7905H80.9743C81.5055 21.7898 82.0312 21.6835 82.5185 21.4773C83.0058 21.2712 83.4444 20.9695 83.8068 20.5911L100.48 3.17133C100.737 2.90265 100.908 2.56667 100.972 2.2046C101.036 1.84253 100.99 1.47008 100.84 1.13314C100.689 0.796193 100.441 0.509443 100.126 0.307961C99.8104 0.106479 99.4415 -0.000854492 99.0644 -0.000854492H20.0301C19.5002 -0.00013126 18.9762 0.106791 18.4904 0.312929C18.0047 0.519068 17.5676 0.820087 17.2061 1.19754L0.524723 18.6173C0.267481 18.8859 0.0963642 19.2219 0.0323936 19.584C-0.0315771 19.946 0.0144792 20.3184 0.164862 20.6554C0.315245 20.9923 0.563347 21.2791 0.878727 21.4806C1.19411 21.682 1.56303 21.7894 1.94013 21.7896L1.93563 21.7905Z" fill="#AFAFAF"/>
+                            </svg>
+                            {solPrice && (
+                              <span className="absolute right-0 top-full mt-1 px-2 py-1 bg-[#2a2a2a] border border-[#404040] rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                                {formatCurrency((parseFloat(userBalances.quote.failConditional || '0') / 1e9) * solPrice, 2)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Fail Market Chart */}
+                    <div className="bg-[#1A1A1A] overflow-hidden">
+                      <MarketChart proposalId={proposal.id} market="fail" height={512} />
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
+              )}
 
-            {/* Live Price Display */}
-            <div>
+            {/* Hidden component for TWAP updates */}
+            <div className="hidden">
               <LivePriceDisplay
                 proposalId={proposal.id}
                 onPricesUpdate={handlePricesUpdate}
@@ -498,140 +519,69 @@ export default function HomePage() {
               />
             </div>
 
-            {/* Trading History Table */}
-            <div className="border-b border-l border-r border-[#282828]">
-              {/* Table Header */}
-              <div className="grid gap-4 px-4 py-3 text-xs text-[#9C9D9E] font-medium border-b border-[#2A2A2A]" style={{ gridTemplateColumns: '1.5fr 0.7fr 0.7fr 1.5fr 1.5fr 1.5fr 0.7fr' }}>
-                <div>Trader</div>
-                <div>Bet</div>
-                <div>Type</div>
-                <div>Amount</div>
-                <div>Volume</div>
-                <div>Tx</div>
-                <div className="text-right">Age</div>
-              </div>
-              
-              {/* Table Body - Scrollable */}
-              <div className="max-h-[400px] overflow-y-auto scrollbar-hide">
-                {tradesLoading ? (
-                  <div className="px-4 py-8 text-center text-[#9C9D9E] text-xs">
-                    Loading trades...
-                  </div>
-                ) : trades.length === 0 ? (
-                  <div className="px-4 py-8 text-center text-[#9C9D9E] text-xs">
-                    No trades yet
-                  </div>
-                ) : (
-                  trades.map((trade) => {
-                    const tokenUsed = getTokenUsed(trade.isBaseToQuote, trade.market);
-                    const volume = calculateVolume(trade.amountIn, trade.isBaseToQuote, trade.market);
-                    const isBuy = trade.isBaseToQuote;
-
-                    return (
-                      <div key={trade.id} className="grid gap-4 px-4 py-3 text-xs hover:bg-[#272A2D]/30 transition-colors" style={{ gridTemplateColumns: '1.5fr 0.7fr 0.7fr 1.5fr 1.5fr 1.5fr 0.7fr' }}>
-                        <div className="text-white flex items-center gap-1">
-                          <span>{formatAddress(trade.userAddress)}</span>
-                          <button
-                            onClick={() => navigator.clipboard.writeText(trade.userAddress)}
-                            className="text-[#9C9D9E] hover:text-white transition-colors"
-                            title="Copy address"
-                          >
-                            <svg
-                              width="12"
-                              height="12"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                            </svg>
-                          </button>
-                          <a
-                            href={`https://solscan.io/account/${trade.userAddress}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-[#9C9D9E] hover:text-white transition-colors"
-                            title="View on Solscan"
-                          >
-                            <svg
-                              width="12"
-                              height="12"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                              <polyline points="15 3 21 3 21 9"></polyline>
-                              <line x1="10" y1="14" x2="21" y2="3"></line>
-                            </svg>
-                          </a>
-                        </div>
-                        <div className={trade.market === 'pass' ? 'text-rose-400' : 'text-emerald-400'}>
-                          {trade.market === 'pass' ? 'Fail' : 'Pass'}
-                        </div>
-                        <div className={isBuy ? 'text-emerald-400' : 'text-rose-400'}>
-                          {isBuy ? 'Buy' : 'Sell'}
-                        </div>
-                        <div className="text-white">
-                          {formatNumber(parseFloat(trade.amountIn), 2)} {tokenUsed}
-                        </div>
-                        <div className="text-white">{formatVolume(volume)}</div>
-                        <div className="text-white flex items-center gap-1">
-                          <span>{trade.txSignature ? `${trade.txSignature.slice(0, 4)}...${trade.txSignature.slice(-4)}` : '—'}</span>
-                          {trade.txSignature && (
-                            <a
-                              href={`https://solscan.io/tx/${trade.txSignature}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-[#9C9D9E] hover:text-white transition-colors"
-                            >
-                              <svg
-                                width="12"
-                                height="12"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                                <polyline points="15 3 21 3 21 9"></polyline>
-                                <line x1="10" y1="14" x2="21" y2="3"></line>
-                              </svg>
-                            </a>
-                          )}
-                        </div>
-                        <div className="text-[#9C9D9E] text-right">{getTimeAgo(trade.timestamp)}</div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
+            <div className="mt-6">
+              <TradeHistoryTable
+                trades={trades}
+                loading={tradesLoading}
+                getTimeAgo={getTimeAgo}
+                formatAddress={formatAddress}
+                getTokenUsed={getTokenUsed}
+              />
             </div>
+              </div>
+            )}
           </div>
 
           {/* Trading Panel - Sticky Position */}
           <div className="w-[352px] p-8 overflow-y-auto">
-            <div className="sticky top-0">
-              <TradingInterface 
+            <div className="sticky top-0 space-y-6">
+              {proposal.status === 'Pending' && (
+                <div className={visualFocus.entryControls.className}>
+                  <MarketEntryControls
+                  marketMode={marketMode}
+                  amount={amount}
+                  selectedToken={selectedToken}
+                  isEntering={isEntering}
+                  isExiting={isExiting}
+                  hasPosition={hasPosition}
+                  solBalance={solBalance}
+                  oogwayBalance={oogwayBalance}
+                  userBalances={userBalances}
+                  onMarketModeChange={(mode) => {
+                    setMarketMode(mode);
+                    setAmount('');
+                  }}
+                  onAmountChange={setAmount}
+                  onTokenChange={(token) => {
+                    setSelectedToken(token);
+                    setAmount('');
+                  }}
+                  onMaxClick={handleMaxClick}
+                  onSubmit={() => {
+                    if (marketMode === 'enter') {
+                      handleEnterMarket();
+                    } else {
+                      handleExitMarket();
+                    }
+                  }}
+                  />
+                </div>
+              )}
+
+              <div className={visualFocus.tradingInterface.className}>
+                <TradingInterface
                 proposalId={proposal.id}
                 selectedMarket={selectedMarket}
                 onMarketChange={handleMarketChange}
                 passPrice={0.5}
                 failPrice={0.5}
                 proposalStatus={
-                  proposal.status === 'Executed' ? 'Passed' : 
+                  proposal.status === 'Executed' ? 'Passed' :
                   proposal.status as 'Pending' | 'Passed' | 'Failed'
                 }
-              />
+                onBalanceUpdate={refetchBalances}
+                />
+              </div>
             </div>
           </div>
         </div>

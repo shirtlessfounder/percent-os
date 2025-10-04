@@ -87,6 +87,8 @@ export class Moderator implements IModerator {
         quoteDecimals: this.config.quoteDecimals,
         authority: this.config.authority,
         connection: this.config.connection,
+        spotPoolAddress: params.spotPoolAddress,
+        totalSupply: params.totalSupply,
         twap: params.twap,
         ammConfig: params.amm,
       };
@@ -117,7 +119,13 @@ export class Moderator implements IModerator {
 
       // Also schedule price recording for this proposal
       this.scheduler.schedulePriceRecording(proposal.id, 5000); // 5 seconds
-      
+
+      // Schedule spot price recording if spot pool address is provided
+      if (params.spotPoolAddress) {
+        this.scheduler.scheduleSpotPriceRecording(proposal.id, params.spotPoolAddress, 60000); // 1 minute
+        console.log(`Scheduled spot price recording for proposal #${proposal.id}`);
+      }
+
       // Schedule automatic finalization 1 second after the proposal's end time
       // This buffer ensures all TWAP data is collected and avoids race conditions
       this.scheduler.scheduleProposalFinalization(proposal.id, proposal.finalizedAt + 1000);

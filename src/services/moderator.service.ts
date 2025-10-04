@@ -115,13 +115,22 @@ class ModeratorService {
           } else {
             // Proposal is still active, reschedule tasks
             console.log(`Rescheduling tasks for active proposal #${proposal.id}`);
-            
+
+            // Schedule price recording (every 5 seconds)
+            scheduler.schedulePriceRecording(proposal.id, 5000);
+
             // Schedule TWAP cranking (default 1 minute interval)
             scheduler.scheduleTWAPCranking(proposal.id, 60000);
-            
+
+            // Schedule spot price recording if spot pool address exists
+            if (proposal.spotPoolAddress) {
+              scheduler.scheduleSpotPriceRecording(proposal.id, proposal.spotPoolAddress, 60000);
+              console.log(`Scheduled spot price recording for proposal #${proposal.id}`);
+            }
+
             // Schedule finalization 1 second after the proposal's end time
             scheduler.scheduleProposalFinalization(proposal.id, proposal.finalizedAt + 1000);
-            
+
             rescheduledCount++;
           }
           recoveredCount++;

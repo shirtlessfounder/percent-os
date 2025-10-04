@@ -75,7 +75,7 @@ export default function Header({ walletAddress, authenticated, solBalance, oogwa
             
             {/* $oogway Balance */}
             <div className="flex items-center gap-1.5">
-              <span className="text-sm text-[#AFAFAF]">{oogwayBalance.toFixed(3)}</span>
+              <span className="text-sm text-[#AFAFAF]">{oogwayBalance.toFixed(0)}</span>
               <span className="text-sm text-[#AFAFAF] font-bold">$oogway</span>
             </div>
             

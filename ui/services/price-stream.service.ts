@@ -5,11 +5,23 @@ export interface PriceUpdate {
   timestamp: number;
 }
 
+export interface TradeUpdate {
+  proposalId: number;
+  market: 'pass' | 'fail';
+  userAddress: string;
+  amountIn: number;
+  amountOut: number;
+  price: number;
+  timestamp: number;
+}
+
 type PriceUpdateCallback = (update: PriceUpdate) => void;
+type TradeUpdateCallback = (update: TradeUpdate) => void;
 
 export class PriceStreamService {
   private ws: WebSocket | null = null;
   private subscriptions: Map<string, PriceUpdateCallback[]> = new Map();
+  private tradeSubscriptions: Map<number, TradeUpdateCallback[]> = new Map(); // proposalId -> callbacks
   private poolAddresses: Map<string, string> = new Map(); // Store pool addresses for reconnection
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private pingInterval: NodeJS.Timeout | null = null;
@@ -46,7 +58,7 @@ export class PriceStreamService {
           this.isConnecting = false;
           this.reconnectAttempts = 0;
           this.setupPingInterval();
-          
+
           // Resubscribe to all tokens with their pool addresses if available
           if (this.subscriptions.size > 0) {
             const subscriptionData: Array<string | { address: string; poolAddress?: string }> = [];
@@ -60,7 +72,14 @@ export class PriceStreamService {
             }
             this.sendSubscription(subscriptionData);
           }
-          
+
+          // Resubscribe to all trades
+          if (this.tradeSubscriptions.size > 0) {
+            for (const proposalId of this.tradeSubscriptions.keys()) {
+              this.sendTradeSubscription(proposalId);
+            }
+          }
+
           resolve();
         };
 
@@ -93,6 +112,8 @@ export class PriceStreamService {
   }
 
   private handleMessage(message: any) {
+    console.log('[PriceStreamService] Message received:', message.type, message);
+
     if (message.type === 'PRICE_UPDATE' && message.data) {
       const { tokenAddress, price, priceUsd, timestamp } = message.data;
 
@@ -103,6 +124,29 @@ export class PriceStreamService {
           callback({ tokenAddress, price, priceUsd, timestamp });
         } catch (error) {
           console.error('Error in price callback:', error);
+        }
+      });
+    } else if (message.type === 'TRADE') {
+      console.log('[PriceStreamService] TRADE message received for proposal', message.proposalId);
+      // Handle trade notification
+      const { proposalId, market, userAddress, amountIn, amountOut, price, timestamp } = message;
+
+      // Convert timestamp to milliseconds if it's a string
+      const timestampMs = typeof timestamp === 'string'
+        ? new Date(timestamp).getTime()
+        : timestamp;
+
+      console.log('[PriceStreamService] Trade subscriptions:', this.tradeSubscriptions);
+      console.log('[PriceStreamService] Callbacks for proposal', proposalId, ':', this.tradeSubscriptions.get(proposalId)?.length || 0);
+
+      // Notify all callbacks for this proposal
+      const callbacks = this.tradeSubscriptions.get(proposalId) || [];
+      callbacks.forEach(callback => {
+        try {
+          console.log('[PriceStreamService] Calling trade callback');
+          callback({ proposalId, market, userAddress, amountIn, amountOut, price, timestamp: timestampMs });
+        } catch (error) {
+          console.error('Error in trade callback:', error);
         }
       });
     } else if (message.type === 'PONG') {
@@ -204,6 +248,63 @@ export class PriceStreamService {
     }
   }
 
+  public async subscribeToTrades(proposalId: number, callback: TradeUpdateCallback): Promise<void> {
+    // Ensure we're connected
+    await this.connect();
+
+    // Add callback to subscription list
+    const callbacks = this.tradeSubscriptions.get(proposalId) || [];
+    const isFirstSubscription = callbacks.length === 0;
+    callbacks.push(callback);
+    this.tradeSubscriptions.set(proposalId, callbacks);
+
+    // Send subscription message to server (only on first subscription for this proposal)
+    if (isFirstSubscription) {
+      this.sendTradeSubscription(proposalId);
+    }
+
+    console.log(`Subscribed to trade updates for proposal ${proposalId}`);
+  }
+
+  private sendTradeSubscription(proposalId: number) {
+    if (typeof window === 'undefined') return;
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({
+        type: 'SUBSCRIBE_TRADES',
+        proposalId
+      }));
+      console.log(`Sent SUBSCRIBE_TRADES for proposal ${proposalId}`);
+    }
+  }
+
+  private sendTradeUnsubscription(proposalId: number) {
+    if (typeof window === 'undefined') return;
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({
+        type: 'UNSUBSCRIBE_TRADES',
+        proposalId
+      }));
+      console.log(`Sent UNSUBSCRIBE_TRADES for proposal ${proposalId}`);
+    }
+  }
+
+  public unsubscribeFromTrades(proposalId: number, callback: TradeUpdateCallback): void {
+    const callbacks = this.tradeSubscriptions.get(proposalId) || [];
+    const index = callbacks.indexOf(callback);
+
+    if (index > -1) {
+      callbacks.splice(index, 1);
+
+      if (callbacks.length === 0) {
+        this.tradeSubscriptions.delete(proposalId);
+        this.sendTradeUnsubscription(proposalId);
+        console.log(`Unsubscribed from trade updates for proposal ${proposalId}`);
+      } else {
+        this.tradeSubscriptions.set(proposalId, callbacks);
+      }
+    }
+  }
+
   public disconnect() {
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
@@ -218,6 +319,7 @@ export class PriceStreamService {
     }
 
     this.subscriptions.clear();
+    this.tradeSubscriptions.clear();
     this.poolAddresses.clear();
   }
 }

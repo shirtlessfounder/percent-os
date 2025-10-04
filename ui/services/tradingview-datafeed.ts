@@ -1,0 +1,390 @@
+import {
+  IBasicDataFeed,
+  LibrarySymbolInfo,
+  ResolutionString,
+  Bar,
+  HistoryCallback,
+  SubscribeBarsCallback,
+  PeriodParams,
+} from '../../public/charting_library/charting_library';
+import { getPriceStreamService, TradeUpdate } from './price-stream.service';
+import { BarAggregator } from '@/lib/bar-aggregator';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const TOTAL_SUPPLY = 1_000_000_000; // 1 billion tokens
+
+interface ChartDataPoint {
+  timestamp: string;
+  open: string;
+  high: string;
+  low: string;
+  close: string;
+  volume?: string;
+}
+
+/**
+ * TradingView Datafeed for Proposal Markets
+ * Provides historical and real-time price data for Pass/Fail markets
+ */
+export class ProposalMarketDatafeed implements IBasicDataFeed {
+  private proposalId: number;
+  private market: 'pass' | 'fail';
+  private tokenAddress: string | null = null;
+  private poolAddress: string | null = null;
+  private spotPoolAddress: string | null = null;
+  private subscribers: Map<string, { callback: SubscribeBarsCallback; aggregator: BarAggregator; isSpotMarket: boolean }> = new Map();
+  private solPrice: number = 0;
+
+  constructor(proposalId: number, market: 'pass' | 'fail', spotPoolAddress?: string) {
+    this.proposalId = proposalId;
+    this.market = market;
+    this.spotPoolAddress = spotPoolAddress || null;
+  }
+
+  /**
+   * Set token and pool addresses for real-time updates
+   */
+  setAddresses(tokenAddress: string, poolAddress: string) {
+    this.tokenAddress = tokenAddress;
+    this.poolAddress = poolAddress;
+  }
+
+  /**
+   * Called when the chart library is ready
+   */
+  onReady(callback: (config: any) => void): void {
+    setTimeout(() => {
+      callback({
+        supported_resolutions: ['1', '5', '15', '60', '240', '1D'] as ResolutionString[],
+        supports_marks: false,
+        supports_timescale_marks: false,
+        supports_time: true,
+      });
+    }, 0);
+  }
+
+  /**
+   * Search symbols - not needed for our use case
+   */
+  searchSymbols(): void {
+    // Not implemented - we don't need symbol search
+  }
+
+  /**
+   * Resolve symbol information
+   */
+  resolveSymbol(
+    symbolName: string,
+    onResolve: (symbolInfo: LibrarySymbolInfo) => void,
+    onError: (reason: string) => void
+  ): void {
+    // Check if this is a spot market request
+    const isSpotMarket = symbolName === 'SPOT-MARKET';
+
+    const displayName = isSpotMarket
+      ? 'SPOT $oogway'
+      : `${this.market === 'pass' ? 'PASS' : 'FAIL'} $oogway`;
+
+    const symbolInfo: LibrarySymbolInfo = {
+      name: displayName,
+      description: displayName,
+      type: 'crypto',
+      session: '24x7',
+      timezone: 'Etc/UTC',
+      ticker: symbolName,
+      exchange: '',
+      minmov: 1,
+      pricescale: 1, // USD market cap values
+      has_intraday: true,
+      has_daily: true,
+      has_weekly_and_monthly: false,
+      supported_resolutions: ['1', '5', '15', '60', '240', '1D'] as ResolutionString[],
+      volume_precision: 2,
+      data_status: 'streaming',
+      format: 'price',
+    };
+
+    setTimeout(() => onResolve(symbolInfo), 0);
+  }
+
+  /**
+   * Fetch historical bars
+   */
+  async getBars(
+    symbolInfo: LibrarySymbolInfo,
+    resolution: ResolutionString,
+    periodParams: PeriodParams,
+    onResult: HistoryCallback,
+    onError: (reason: string) => void
+  ): Promise<void> {
+    try {
+      const { from, to, countBack, firstDataRequest } = periodParams;
+
+      // Detect if this is a spot market request (check ticker, not name)
+      const isSpotMarket = symbolInfo.ticker === 'SPOT-MARKET';
+      const marketType = isSpotMarket ? 'spot' : this.market;
+
+      console.log(`[${marketType}] getBars called:`, {
+        from: new Date(from * 1000).toISOString(),
+        to: new Date(to * 1000).toISOString(),
+        countBack,
+        firstDataRequest,
+        isSpotMarket
+      });
+
+      // Map TradingView resolution to our API interval format
+      const intervalMap: Record<string, string> = {
+        '1': '1m',
+        '5': '5m',
+        '15': '15m',
+        '60': '1h',
+        '240': '4h',
+        '1D': '1d',
+        'D': '1d',
+      };
+
+      const interval = intervalMap[resolution] || '1m';
+      const fromDate = new Date(from * 1000).toISOString();
+      const toDate = new Date(to * 1000).toISOString();
+
+      const url = `${API_BASE_URL}/api/history/${this.proposalId}/chart?interval=${interval}&from=${fromDate}&to=${toDate}`;
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (!data.data || data.data.length === 0) {
+        console.log(`[${marketType}] No data from API, returning noData=true`);
+        onResult([], { noData: true });
+        return;
+      }
+
+      // Filter data for the specific market (pass/fail/spot) and convert to bars
+      const bars: Bar[] = data.data
+        .filter((item: any) => item.market === marketType)
+        .map((item: ChartDataPoint) => ({
+          time: new Date(item.timestamp).getTime(),
+          open: parseFloat(item.open),
+          high: parseFloat(item.high),
+          low: parseFloat(item.low),
+          close: parseFloat(item.close),
+          volume: item.volume ? parseFloat(item.volume) : 0,
+        }))
+        .filter((bar: Bar) => !isNaN(bar.open) && !isNaN(bar.high) && !isNaN(bar.low) && !isNaN(bar.close))
+        .sort((a: Bar, b: Bar) => a.time - b.time);
+
+      console.log(`[${marketType}] Returning ${bars.length} bars:`, {
+        firstBar: bars[0] ? new Date(bars[0].time).toISOString() : 'none',
+        lastBar: bars[bars.length - 1] ? new Date(bars[bars.length - 1].time).toISOString() : 'none',
+        requestedFrom: new Date(from * 1000).toISOString(),
+        requestedTo: new Date(to * 1000).toISOString(),
+        samplePrice: bars[0]?.close
+      });
+
+      if (bars.length === 0) {
+        console.log(`[${marketType}] No bars after filtering, returning noData=true`);
+        onResult([], { noData: true });
+        return;
+      }
+
+      onResult(bars, { noData: false });
+    } catch (error) {
+      console.error('Error fetching bars:', error);
+      onError(error instanceof Error ? error.message : 'Unknown error');
+    }
+  }
+
+  /**
+   * Subscribe to real-time updates
+   */
+  async subscribeBars(
+    symbolInfo: LibrarySymbolInfo,
+    resolution: ResolutionString,
+    onTick: SubscribeBarsCallback,
+    listenerGuid: string,
+    onResetCacheNeededCallback: () => void
+  ): Promise<void> {
+    // Detect if this is a spot market request (check ticker, not name)
+    const isSpotMarket = symbolInfo.ticker === 'SPOT-MARKET';
+    const marketType = isSpotMarket ? 'spot' : this.market;
+
+    console.log(`[${marketType}] subscribeBars called for resolution ${resolution}, listenerGuid: ${listenerGuid}`);
+
+    // Create bar aggregator for this resolution
+    const aggregator = new BarAggregator(resolution);
+
+    // Seed the aggregator with the last historical bar's close price
+    await this.seedAggregatorWithLastBar(aggregator, resolution, isSpotMarket);
+
+    this.subscribers.set(listenerGuid, { callback: onTick, aggregator, isSpotMarket });
+
+    console.log(`[${marketType}] Subscribers count after add: ${this.subscribers.size}`);
+
+    // Only subscribe to trade updates for pass/fail markets
+    // Spot market updates come from periodic backend recording
+    if (!isSpotMarket) {
+      // Fetch SOL price for market cap calculation
+      this.fetchSolPrice();
+
+      // Subscribe to trade updates via WebSocket
+      const priceService = getPriceStreamService();
+      priceService.subscribeToTrades(this.proposalId, this.handleTradeUpdate.bind(this));
+
+      console.log(`[${marketType}] Subscribed to real-time trade updates for proposal ${this.proposalId}`);
+    } else {
+      console.log(`[${marketType}] Spot market - using periodic backend updates (no WebSocket subscription)`);
+    }
+  }
+
+  /**
+   * Seed the bar aggregator with the last historical bar to ensure continuity
+   */
+  private async seedAggregatorWithLastBar(aggregator: BarAggregator, resolution: ResolutionString, isSpotMarket: boolean = false): Promise<void> {
+    try {
+      const marketType = isSpotMarket ? 'spot' : this.market;
+
+      // Map resolution to API interval format
+      const intervalMap: Record<string, string> = {
+        '1': '1m',
+        '5': '5m',
+        '15': '15m',
+        '60': '1h',
+        '240': '4h',
+        '1D': '1d',
+        'D': '1d',
+      };
+
+      const interval = intervalMap[resolution] || '1m';
+      const toDate = new Date().toISOString();
+      const fromDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(); // Last 24 hours
+
+      const url = `${API_BASE_URL}/api/history/${this.proposalId}/chart?interval=${interval}&from=${fromDate}&to=${toDate}`;
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        console.warn(`[${marketType}] Failed to fetch last bar for seeding`);
+        return;
+      }
+
+      const data = await response.json();
+
+      if (!data.data || data.data.length === 0) {
+        console.log(`[${marketType}] No historical data to seed aggregator`);
+        return;
+      }
+
+      // Find the last bar for this market
+      const lastBar = data.data
+        .filter((item: any) => item.market === marketType)
+        .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+
+      if (lastBar) {
+        const lastPrice = parseFloat(lastBar.close);
+        const lastTime = new Date(lastBar.timestamp).getTime();
+
+        console.log(`[${marketType}] Seeding aggregator with last bar:`, {
+          time: new Date(lastTime).toISOString(),
+          close: lastPrice
+        });
+
+        // Create a synthetic trade at the last bar time to seed the aggregator
+        // This ensures the next bar will open at this close price
+        aggregator.updateBar(lastPrice, 0, lastTime);
+      }
+    } catch (error) {
+      console.error(`[${this.market}] Error seeding aggregator:`, error);
+      // Continue without seeding - not critical
+    }
+  }
+
+  /**
+   * Fetch current SOL price for market cap calculation
+   */
+  private async fetchSolPrice(): Promise<void> {
+    try {
+      const response = await fetch('https://api.dexscreener.com/latest/dex/tokens/So11111111111111111111111111111111111111112');
+      const data = await response.json();
+
+      if (data.pairs && data.pairs.length > 0) {
+        this.solPrice = parseFloat(data.pairs[0].priceUsd);
+        console.log(`[${this.market}] SOL price: $${this.solPrice}`);
+      }
+    } catch (error) {
+      console.error('Error fetching SOL price:', error);
+      this.solPrice = 150; // Fallback price
+    }
+  }
+
+  /**
+   * Handle incoming trade updates
+   */
+  private handleTradeUpdate(trade: TradeUpdate): void {
+    console.log(`[${this.market}] Trade received for ${trade.market}:`, trade);
+
+    // Filter for our market only
+    if (trade.market !== this.market) {
+      console.log(`[${this.market}] Ignoring trade for ${trade.market} market`);
+      return;
+    }
+
+    console.log(`[${this.market}] Processing trade - subscribers: ${this.subscribers.size}`);
+    console.log(`[${this.market}] Trade timestamp: ${new Date(trade.timestamp).toISOString()} (${trade.timestamp})`);
+
+    // Convert conditional token price to market cap in USD
+    // price is in quote tokens (SOL) per base token (conditional token)
+    // Market cap = price × totalSupply × solPrice
+    const marketCapUSD = trade.price * TOTAL_SUPPLY * this.solPrice;
+    console.log(`[${this.market}] Market cap calculated: $${marketCapUSD.toFixed(2)} (price: ${trade.price}, SOL: $${this.solPrice})`);
+
+    // Update all active subscribers (skip spot market subscribers)
+    for (const [listenerGuid, { callback, aggregator, isSpotMarket }] of this.subscribers) {
+      // Skip spot market subscribers - they get updates from backend periodic recording
+      if (isSpotMarket) {
+        console.log(`[${this.market}] Skipping spot market subscriber ${listenerGuid}`);
+        continue;
+      }
+
+      try {
+        // Update bar with new trade
+        const updatedBar = aggregator.updateBar(
+          marketCapUSD,
+          trade.amountOut, // Volume in conditional tokens
+          trade.timestamp
+        );
+
+        // Send updated bar to TradingView
+        callback(updatedBar);
+
+        console.log(`[${this.market}] Updated bar for ${listenerGuid}:`, {
+          time: new Date(updatedBar.time).toISOString(),
+          timeMs: updatedBar.time,
+          price: marketCapUSD,
+          open: updatedBar.open,
+          high: updatedBar.high,
+          low: updatedBar.low,
+          close: updatedBar.close,
+          volume: updatedBar.volume
+        });
+      } catch (error) {
+        console.error(`[${this.market}] Error updating bar for ${listenerGuid}:`, error);
+      }
+    }
+  }
+
+  /**
+   * Unsubscribe from real-time updates
+   */
+  unsubscribeBars(listenerGuid: string): void {
+    this.subscribers.delete(listenerGuid);
+
+    // If no more subscribers, unsubscribe from trades
+    if (this.subscribers.size === 0) {
+      const priceService = getPriceStreamService();
+      priceService.unsubscribeFromTrades(this.proposalId, this.handleTradeUpdate.bind(this));
+      console.log(`[${this.market}] Unsubscribed from trade updates`);
+    }
+  }
+}

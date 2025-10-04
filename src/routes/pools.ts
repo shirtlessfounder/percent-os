@@ -1,0 +1,93 @@
+import { Router } from 'express';
+import { Connection, PublicKey } from '@solana/web3.js';
+import { CpAmm, getPriceFromSqrtPrice } from '@meteora-ag/cp-amm-sdk';
+
+const router = Router();
+
+// Get Solana connection
+const getRpcUrl = () => {
+  return process.env.SOLANA_RPC_URL || 'https://api.devnet.solana.com';
+};
+
+/**
+ * Get current price from a Meteora pool
+ * GET /api/pools/:poolAddress/price
+ *
+ * Returns:
+ * - poolAddress: string
+ * - price: number (quote/base)
+ * - timestamp: number
+ * - liquidity: string
+ * - reserves: { base: string, quote: string }
+ */
+router.get('/:poolAddress/price', async (req, res, next) => {
+  try {
+    const { poolAddress } = req.params;
+
+    if (!poolAddress) {
+      return res.status(400).json({ error: 'Pool address is required' });
+    }
+
+    // Validate pool address
+    let poolPubkey: PublicKey;
+    try {
+      poolPubkey = new PublicKey(poolAddress);
+    } catch (error) {
+      return res.status(400).json({ error: 'Invalid pool address' });
+    }
+
+    // Initialize connection and CP-AMM SDK
+    const connection = new Connection(getRpcUrl(), 'confirmed');
+    const cpAmm = new CpAmm(connection);
+
+    // Fetch pool state
+    let poolState;
+    try {
+      poolState = await cpAmm.fetchPoolState(poolPubkey);
+    } catch (error: any) {
+      if (error.message?.includes('not found') || error.message?.includes('Invariant Violation')) {
+        return res.status(404).json({
+          error: 'Pool not found',
+          poolAddress
+        });
+      }
+      throw error;
+    }
+
+    // Extract decimals (default to standard values if not provided)
+    const tokenADecimal = poolState.tokenADecimal ?? 6;
+    const tokenBDecimal = poolState.tokenBDecimal ?? 9;
+
+    // Calculate price from sqrt price
+    const priceDecimal = getPriceFromSqrtPrice(
+      poolState.sqrtPrice,
+      tokenADecimal,
+      tokenBDecimal
+    );
+
+    const price = priceDecimal.toNumber();
+
+    // Get reserves from vaults
+    const baseReserve = poolState.tokenAAmount.toString();
+    const quoteReserve = poolState.tokenBAmount.toString();
+
+    res.json({
+      poolAddress,
+      price,
+      timestamp: Date.now(),
+      liquidity: poolState.liquidity.toString(),
+      reserves: {
+        base: baseReserve,
+        quote: quoteReserve,
+      },
+      tokenMints: {
+        base: poolState.tokenAMint.toBase58(),
+        quote: poolState.tokenBMint.toBase58(),
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+export default router;

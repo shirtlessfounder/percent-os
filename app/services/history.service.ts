@@ -388,48 +388,51 @@ export class HistoryService implements IHistoryService {
     try {
       const intervalSeconds = this.parseInterval(interval);
       
-      // Get aggregated price data
+      // Get aggregated price data with window functions
       let query = `
-        SELECT 
-          date_trunc('epoch', timestamp) + 
-            interval '${intervalSeconds} seconds' * 
-            floor(extract(epoch from timestamp) / ${intervalSeconds}) as bucket,
-          market,
-          AVG(price) as avg_price,
-          MAX(price) as high,
-          MIN(price) as low,
-          FIRST_VALUE(price) OVER (
-            PARTITION BY market, 
-            date_trunc('epoch', timestamp) + 
-              interval '${intervalSeconds} seconds' * 
-              floor(extract(epoch from timestamp) / ${intervalSeconds})
-            ORDER BY timestamp
-          ) as open,
-          LAST_VALUE(price) OVER (
-            PARTITION BY market,
-            date_trunc('epoch', timestamp) + 
-              interval '${intervalSeconds} seconds' * 
-              floor(extract(epoch from timestamp) / ${intervalSeconds})
-            ORDER BY timestamp
-            RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
-          ) as close
-        FROM price_history
-        WHERE proposal_id = $1
+        WITH bucketed_prices AS (
+          SELECT
+            to_timestamp(floor(extract(epoch from timestamp) / ${intervalSeconds}) * ${intervalSeconds}) as bucket,
+            market,
+            price,
+            timestamp,
+            ROW_NUMBER() OVER (
+              PARTITION BY market,
+                floor(extract(epoch from timestamp) / ${intervalSeconds})
+              ORDER BY timestamp ASC
+            ) as first_row,
+            ROW_NUMBER() OVER (
+              PARTITION BY market,
+                floor(extract(epoch from timestamp) / ${intervalSeconds})
+              ORDER BY timestamp DESC
+            ) as last_row
+          FROM price_history
+          WHERE proposal_id = $1
       `;
-      
+
       const params: (number | Date)[] = [proposalId];
-      
+
       if (from) {
         params.push(from);
         query += ` AND timestamp >= $${params.length}`;
       }
-      
+
       if (to) {
         params.push(to);
         query += ` AND timestamp <= $${params.length}`;
       }
-      
+
       query += `
+        )
+        SELECT
+          bucket,
+          market,
+          MAX(CASE WHEN first_row = 1 THEN price END) as open,
+          MAX(price) as high,
+          MIN(price) as low,
+          MAX(CASE WHEN last_row = 1 THEN price END) as close
+        FROM bucketed_prices
+        GROUP BY bucket, market
         ORDER BY bucket DESC
       `;
       
@@ -437,10 +440,8 @@ export class HistoryService implements IHistoryService {
       
       // Get trade volume data
       let volumeQuery = `
-        SELECT 
-          date_trunc('epoch', timestamp) + 
-            interval '${intervalSeconds} seconds' * 
-            floor(extract(epoch from timestamp) / ${intervalSeconds}) as bucket,
+        SELECT
+          to_timestamp(floor(extract(epoch from timestamp) / ${intervalSeconds}) * ${intervalSeconds}) as bucket,
           SUM(amount_in) as volume
         FROM trade_history
         WHERE proposal_id = $1
@@ -460,35 +461,26 @@ export class HistoryService implements IHistoryService {
       `;
       
       const volumeResult = await pool.query(volumeQuery, params);
-      
-      // Combine price and volume data into unified chart points
-      // Uses Map for efficient lookup and deduplication by timestamp
-      const chartData = new Map<number, IChartDataPoint>();
 
-      // Process price data from aggregated buckets
-      for (const row of priceResult.rows) {
-        const timestamp = new Date(row.bucket).getTime();
-        const existing = chartData.get(timestamp) || { timestamp };
-        
-        if (row.market === 'pass') {
-          existing.passPrice = parseFloat(row.avg_price);
-        } else {
-          existing.failPrice = parseFloat(row.avg_price);
-        }
-        
-        chartData.set(timestamp, existing);
-      }
-      
-      // Add volume data to existing chart points
-      // Volume represents total trade amount in each time bucket
+      // Create volume lookup map by timestamp
+      const volumeMap = new Map<number, number>();
       for (const row of volumeResult.rows) {
         const timestamp = new Date(row.bucket).getTime();
-        const existing = chartData.get(timestamp) || { timestamp };
-        existing.volume = parseFloat(row.volume);
-        chartData.set(timestamp, existing);
+        volumeMap.set(timestamp, parseFloat(row.volume));
       }
-      
-      return Array.from(chartData.values()).sort((a, b) => b.timestamp - a.timestamp);
+
+      // Convert price data to chart points with OHLC
+      const chartData: IChartDataPoint[] = priceResult.rows.map(row => ({
+        timestamp: new Date(row.bucket).getTime(),
+        market: row.market as 'pass' | 'fail',
+        open: parseFloat(row.open),
+        high: parseFloat(row.high),
+        low: parseFloat(row.low),
+        close: parseFloat(row.close),
+        volume: volumeMap.get(new Date(row.bucket).getTime()) || 0,
+      }));
+
+      return chartData.sort((a, b) => b.timestamp - a.timestamp);
     } catch (error) {
       console.error('Failed to get chart data:', error);
       throw error;

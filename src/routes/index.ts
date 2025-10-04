@@ -6,6 +6,7 @@ import vaultRoutes from './vaults';
 import swapRoutes from './swap';
 import historyRoutes from './history';
 import networkRoutes from './network';
+import poolRoutes from './pools';
 
 const router = Router();
 
@@ -20,5 +21,6 @@ router.use('/vaults', vaultRoutes);
 router.use('/swap', swapRoutes);
 router.use('/history', historyRoutes);
 router.use('/network', networkRoutes);
+router.use('/pools', poolRoutes);
 
 export default router;

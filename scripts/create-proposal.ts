@@ -20,7 +20,7 @@ async function createProposal() {
   
   // Raw token amounts (smallest units)
   // Current_spot = ~0.010 SOL per oogway
-  const initialBaseAmount = '500000000000';  // 500k Oogway (6 decimals)
+  const initialBaseAmount = '400000000000';  // 400k Oogway (6 decimals)
   const initialQuoteAmount = '100000000'; // 0.1 Sol (9 decimals)
   
   // Calculate decimal-adjusted price (same as AMM will return)
@@ -30,8 +30,10 @@ async function createProposal() {
   const ammPrice = quoteTokens / baseTokens; // 1,000 / 10,000 = 0.1
   
   const request: CreateProposalRequest = {
-    description: 'First Mainnet Proposal! 🥳',
-    proposalLength: 300, // 5 minutes
+    description: 'Testing UI Elements',
+    proposalLength: 86400, // 1 day
+    spotPoolAddress: '2FCqTyvFcE4uXgRL1yh56riZ9vdjVgoP6yknZW3f8afX', // OOGWAY/SOL spot pool
+    totalSupply: 1000000000, // 1 billion tokens for market cap calculation
     twap: {
       initialTwapValue: ammPrice, // Decimal-adjusted price (0.1)
       twapMaxObservationChangePerUpdate: null,

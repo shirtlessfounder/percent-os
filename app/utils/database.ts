@@ -18,9 +18,9 @@ export function getPool(): Pool {
     
     pool = new Pool({
       connectionString,
-      max: 20, // Maximum number of clients in the pool
+      max: 50, // Maximum number of clients in the pool
       idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
-      connectionTimeoutMillis: 2000, // Fail connection attempts after 2 seconds
+      connectionTimeoutMillis: 10000, // Fail connection attempts after 10 seconds
     });
     
     // Handle pool errors

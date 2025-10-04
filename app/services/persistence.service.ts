@@ -133,8 +133,9 @@ export class PersistenceService implements IPersistenceService {
           id, description, status, created_at, finalized_at, proposal_length,
           transaction_data, base_mint, quote_mint, base_decimals, quote_decimals,
           authority, amm_config, pass_amm_state, fail_amm_state,
-          base_vault_state, quote_vault_state, twap_oracle_state
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+          base_vault_state, quote_vault_state, twap_oracle_state,
+          spot_pool_address, total_supply
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
         ON CONFLICT (id) DO UPDATE SET
           status = EXCLUDED.status,
           pass_amm_state = EXCLUDED.pass_amm_state,
@@ -144,7 +145,7 @@ export class PersistenceService implements IPersistenceService {
           twap_oracle_state = EXCLUDED.twap_oracle_state,
           updated_at = NOW()
       `;
-      
+
       await pool.query(query, [
         proposal.id,
         proposal.description,
@@ -163,7 +164,9 @@ export class PersistenceService implements IPersistenceService {
         JSON.stringify(failAmmState),
         JSON.stringify(baseVaultState),
         JSON.stringify(quoteVaultState),
-        JSON.stringify(twapOracleState)
+        JSON.stringify(twapOracleState),
+        proposal.spotPoolAddress || null,
+        proposal.totalSupply
       ]);
     } catch (error) {
       console.error('Failed to save proposal:', error);
@@ -438,6 +441,8 @@ export class PersistenceService implements IPersistenceService {
         quoteDecimals: row.quote_decimals,
         authority,
         connection,
+        spotPoolAddress: row.spot_pool_address || undefined,
+        totalSupply: row.total_supply || 1000000000,
         twap: row.twap_oracle_state ? {
           initialTwapValue: row.twap_oracle_state.initialTwapValue,
           twapMaxObservationChangePerUpdate: row.twap_oracle_state.twapMaxObservationChangePerUpdate,

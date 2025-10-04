@@ -3,8 +3,11 @@ import { IModerator } from '../types/moderator.interface';
 import { ISchedulerService, IScheduledTask } from '../types/scheduler.interface';
 import { HistoryService } from './history.service';
 import { PersistenceService } from './persistence.service';
+import { SolPriceService } from './sol-price.service';
 import { AMMState } from '../types/amm.interface';
 import { Decimal } from 'decimal.js';
+import { Connection, PublicKey } from '@solana/web3.js';
+import { CpAmm, getPriceFromSqrtPrice } from '@meteora-ag/cp-amm-sdk';
 
 /**
  * Scheduler service for managing automatic TWAP cranking and proposal finalization
@@ -96,6 +99,37 @@ export class SchedulerService implements ISchedulerService {
   }
 
   /**
+   * Schedules automatic spot price recording for a proposal
+   * @param proposalId - The proposal ID to record spot prices for
+   * @param spotPoolAddress - The Meteora pool address for the spot market
+   * @param intervalMs - Interval between recordings in milliseconds (default: 60000 = 1 minute)
+   */
+  scheduleSpotPriceRecording(proposalId: number, spotPoolAddress: string, intervalMs: number = 60000): void {
+    const taskId = `spot-${proposalId}`;
+
+    if (this.tasks.has(taskId)) {
+      console.log(`Spot price recording already scheduled for proposal #${proposalId}`);
+      return;
+    }
+
+    const task: IScheduledTask = {
+      id: taskId,
+      type: 'spot-price-record',
+      proposalId,
+      interval: intervalMs,
+      nextRunTime: Date.now() + intervalMs
+    };
+
+    // Start the periodic task
+    task.timer = setInterval(async () => {
+      await this.recordSpotPriceForProposal(proposalId, spotPoolAddress);
+    }, intervalMs);
+
+    this.tasks.set(taskId, task);
+    console.log(`Scheduled spot price recording for proposal #${proposalId} every ${intervalMs}ms`);
+  }
+
+  /**
    * Schedules automatic finalization for a proposal
    * @param proposalId - The proposal ID to finalize
    * @param finalizeAt - Timestamp when to finalize the proposal
@@ -149,14 +183,16 @@ export class SchedulerService implements ISchedulerService {
       console.error(`Failed to load proposal #${proposalId} for TWAP cranking:`, error);
       this.cancelTask(`twap-${proposalId}`);
       this.cancelTask(`price-${proposalId}`);
+      this.cancelTask(`spot-${proposalId}`);
       this.cancelTask(`finalize-${proposalId}`);
       return; // Gracefully exit instead of throwing
     }
-    
+
     if (!proposal) {
       console.warn(`Proposal #${proposalId} not found, cancelling TWAP cranking tasks`);
       this.cancelTask(`twap-${proposalId}`);
       this.cancelTask(`price-${proposalId}`);
+      this.cancelTask(`spot-${proposalId}`);
       this.cancelTask(`finalize-${proposalId}`);
       return; // Gracefully exit instead of throwing
     }
@@ -167,6 +203,7 @@ export class SchedulerService implements ISchedulerService {
       console.log(`Proposal #${proposalId} has ended, stopping TWAP cranking`);
       this.cancelTask(`twap-${proposalId}`);
       this.cancelTask(`price-${proposalId}`);
+      this.cancelTask(`spot-${proposalId}`);
       return;
     }
 
@@ -210,14 +247,16 @@ export class SchedulerService implements ISchedulerService {
       console.error(`Failed to load proposal #${proposalId} for price recording:`, error);
       this.cancelTask(`twap-${proposalId}`);
       this.cancelTask(`price-${proposalId}`);
+      this.cancelTask(`spot-${proposalId}`);
       this.cancelTask(`finalize-${proposalId}`);
       return; // Gracefully exit instead of throwing
     }
-    
+
     if (!proposal) {
       console.warn(`Proposal #${proposalId} not found, cancelling price recording tasks`);
       this.cancelTask(`twap-${proposalId}`);
       this.cancelTask(`price-${proposalId}`);
+      this.cancelTask(`spot-${proposalId}`);
       this.cancelTask(`finalize-${proposalId}`);
       return; // Gracefully exit instead of throwing
     }
@@ -227,6 +266,7 @@ export class SchedulerService implements ISchedulerService {
     if (now >= proposal.finalizedAt) {
       console.log(`Proposal #${proposalId} has ended, stopping price recording`);
       this.cancelTask(`price-${proposalId}`);
+      this.cancelTask(`spot-${proposalId}`);
       return;
     }
 
@@ -257,6 +297,85 @@ export class SchedulerService implements ISchedulerService {
   }
 
   /**
+   * Records spot price for a specific proposal
+   * Fetches price from Meteora spot pool and converts to market cap USD
+   * @param proposalId - The proposal ID
+   * @param spotPoolAddress - The Meteora pool address
+   */
+  private async recordSpotPriceForProposal(proposalId: number, spotPoolAddress: string): Promise<void> {
+    if (!this.moderator) {
+      throw new Error('Moderator not set in scheduler');
+    }
+
+    let proposal;
+    try {
+      proposal = await this.moderator.getProposal(proposalId);
+    } catch (error) {
+      console.error(`Failed to load proposal #${proposalId} for spot price recording:`, error);
+      this.cancelTask(`spot-${proposalId}`);
+      return;
+    }
+
+    if (!proposal) {
+      console.warn(`Proposal #${proposalId} not found, cancelling spot price recording`);
+      this.cancelTask(`spot-${proposalId}`);
+      return;
+    }
+
+    // Check if proposal has ended
+    const now = Date.now();
+    if (now >= proposal.finalizedAt) {
+      console.log(`Proposal #${proposalId} has ended, stopping spot price recording`);
+      this.cancelTask(`spot-${proposalId}`);
+      return;
+    }
+
+    try {
+      // Get Solana connection
+      const connection = new Connection(
+        process.env.SOLANA_RPC_URL || 'https://api.devnet.solana.com',
+        'confirmed'
+      );
+
+      // Fetch spot pool state
+      const cpAmm = new CpAmm(connection);
+      const poolPubkey = new PublicKey(spotPoolAddress);
+      const poolState = await cpAmm.fetchPoolState(poolPubkey);
+
+      // Calculate price from sqrt price
+      const tokenADecimal = poolState.tokenADecimal ?? 6;
+      const tokenBDecimal = poolState.tokenBDecimal ?? 9;
+      const priceDecimal = getPriceFromSqrtPrice(
+        poolState.sqrtPrice,
+        tokenADecimal,
+        tokenBDecimal
+      );
+      const spotPriceInSol = priceDecimal.toNumber();
+
+      // Get SOL/USD price
+      const solPriceService = SolPriceService.getInstance();
+      const solPrice = await solPriceService.getSolPrice();
+
+      // Convert to market cap USD: price × total supply × SOL/USD
+      const totalSupply = proposal.totalSupply;
+      const marketCapUSD = spotPriceInSol * totalSupply * solPrice;
+
+      // Record to database
+      const historyService = HistoryService.getInstance();
+      await historyService.recordPrice({
+        proposalId,
+        market: 'spot',
+        price: new Decimal(marketCapUSD),
+      });
+
+      console.log(`Recorded spot price for proposal #${proposalId}: $${marketCapUSD.toFixed(2)}`);
+    } catch (error) {
+      console.error(`Failed to record spot price for proposal #${proposalId}:`, error);
+      // Don't cancel task on individual failures - might be transient network issues
+    }
+  }
+
+  /**
    * Finalizes a proposal
    * @param proposalId - The proposal ID
    */
@@ -273,9 +392,10 @@ export class SchedulerService implements ISchedulerService {
       console.error(`Failed to finalize proposal #${proposalId}:`, error);
     }
     
-    // Cancel TWAP cranking and price recording for this proposal regardless of finalization success
+    // Cancel TWAP cranking, price recording, and spot price recording for this proposal regardless of finalization success
     this.cancelTask(`twap-${proposalId}`);
     this.cancelTask(`price-${proposalId}`);
+    this.cancelTask(`spot-${proposalId}`);
     this.cancelTask(`finalize-${proposalId}`);
   }
 
@@ -305,6 +425,7 @@ export class SchedulerService implements ISchedulerService {
   cancelProposalTasks(proposalId: number): void {
     this.cancelTask(`twap-${proposalId}`);
     this.cancelTask(`price-${proposalId}`);
+    this.cancelTask(`spot-${proposalId}`);
     this.cancelTask(`finalize-${proposalId}`);
   }
 

@@ -52,7 +52,7 @@ class GovernanceAPI {
         throw new Error('Failed to fetch TWAP');
       }
       const data = await response.json();
-      
+
       // Get the most recent TWAP data (first element, matching LivePriceDisplay)
       if (data.data && data.data.length > 0) {
         const latest = data.data[0];
@@ -64,6 +64,64 @@ class GovernanceAPI {
       return null;
     } catch (error) {
       console.error('Error fetching TWAP:', error);
+      return null;
+    }
+  }
+
+  async getChartData(
+    proposalId: number,
+    interval: string,
+    from?: Date,
+    to?: Date
+  ): Promise<any> {
+    try {
+      let url = `${API_BASE_URL}/api/history/${proposalId}/chart?interval=${interval}`;
+
+      if (from) {
+        url += `&from=${from.toISOString()}`;
+      }
+      if (to) {
+        url += `&to=${to.toISOString()}`;
+      }
+
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error('Failed to fetch chart data');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching chart data:', error);
+      return null;
+    }
+  }
+
+  async getSwapQuote(
+    proposalId: number,
+    market: 'pass' | 'fail',
+    isBaseToQuote: boolean,
+    amountIn: string,
+    slippageBps: number = 2000
+  ): Promise<{
+    swapInAmount: string;
+    consumedInAmount: string;
+    swapOutAmount: string;
+    minSwapOutAmount: string;
+    totalFee: string;
+    priceImpact: number;
+    slippageBps: number;
+    inputMint: string;
+    outputMint: string;
+  } | null> {
+    try {
+      const url = `${API_BASE_URL}/api/swap/${proposalId}/${market}/quote?isBaseToQuote=${isBaseToQuote}&amountIn=${amountIn}&slippageBps=${slippageBps}`;
+
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error('Failed to fetch swap quote');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching swap quote:', error);
       return null;
     }
   }

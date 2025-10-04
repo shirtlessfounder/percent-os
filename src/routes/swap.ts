@@ -90,7 +90,10 @@ router.post('/:id/buildSwapTx', async (req, res, next) => {
     // Convert values
     const userPubkey = new PublicKey(user);
     const amountInBN = new BN(amountIn);
-    
+
+    // Get quote to know expected output amount
+    const quote = await amm.getQuote(isBaseToQuote, amountInBN, slippageBps);
+
     // Build the swap transaction
     const transaction = await amm.buildSwapTx(
       userPubkey,
@@ -98,9 +101,10 @@ router.post('/:id/buildSwapTx', async (req, res, next) => {
       amountInBN,
       slippageBps
     );
-    
+
     res.json({
       transaction: transaction.serialize({ requireAllSignatures: false }).toString('base64'),
+      expectedAmountOut: quote.swapOutAmount.toString(),
       message: 'Swap transaction built successfully. User must sign before execution.'
     });
   } catch (error) {
@@ -314,17 +318,35 @@ router.get('/:id/:market/quote', async (req, res, next) => {
     
     // Get the appropriate AMM
     const amm = await getAMM(proposalId, market);
-    
+
     // Convert amount
     const amountInBN = new BN(amountIn as string);
-    
+
+    // Validate amount is greater than 0
+    if (amountInBN.lte(new BN(0))) {
+      return res.status(400).json({
+        error: 'Amount must be greater than 0'
+      });
+    }
+
     // Get quote from AMM
-    const quote = await amm.getQuote(direction, amountInBN, slippage);
-    
+    let quote;
+    try {
+      quote = await amm.getQuote(direction, amountInBN, slippage);
+    } catch (quoteError: any) {
+      // Handle specific AMM errors gracefully
+      if (quoteError.message?.includes('Amount out must be greater than 0')) {
+        return res.status(400).json({
+          error: 'Amount too small - would result in zero output'
+        });
+      }
+      throw quoteError;
+    }
+
     // Determine input and output mints based on direction
     const inputMint = direction ? amm.baseMint : amm.quoteMint;
     const outputMint = direction ? amm.quoteMint : amm.baseMint;
-    
+
     res.json({
       proposalId,
       market: market as 'pass' | 'fail',

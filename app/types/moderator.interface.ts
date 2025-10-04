@@ -22,6 +22,8 @@ export interface ICreateProposalParams {
   description: string;                          // Human-readable description of the proposal
   transaction: Transaction;                     // Solana transaction to execute if passed
   proposalLength: number;                       // Duration of voting period in seconds
+  spotPoolAddress?: string;                     // Optional Meteora pool address for spot market charts
+  totalSupply: number;                          // Total supply of conditional tokens for market cap calculation
   twap: ITWAPConfig;                           // TWAP oracle configuration
   amm: {
     initialBaseAmount: BN;                      // Initial base token liquidity (same for both pass and fail AMMs)
