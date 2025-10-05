@@ -25,14 +25,38 @@ export interface VisualFocusState {
  * @param hasPosition - Whether user has any position in the market
  * @param selectedMarket - Currently selected market ('pass' or 'fail')
  * @param proposalStatus - Current status of the proposal
+ * @param hasWalletBalance - Whether user has any balance in wallet (SOL or ZC)
  * @returns Object with className and state for each UI section
  */
 export function useVisualFocus(
   hasPosition: boolean,
   selectedMarket: 'pass' | 'fail',
-  proposalStatus?: 'Pending' | 'Passed' | 'Failed' | 'Executed'
+  proposalStatus?: 'Pending' | 'Passed' | 'Failed' | 'Executed',
+  hasWalletBalance: boolean = true
 ): VisualFocusState {
   return useMemo(() => {
+    // State 0: No Wallet Balance - Blur everything
+    if (!hasWalletBalance) {
+      return {
+        entryControls: {
+          isHighlighted: false,
+          className: 'opacity-40 blur-[2px] pointer-events-none transition-all duration-300'
+        },
+        tradingInterface: {
+          isHighlighted: false,
+          className: 'opacity-40 blur-[2px] pointer-events-none transition-all duration-300'
+        },
+        passMarket: {
+          isHighlighted: false,
+          className: 'opacity-40 blur-[2px] transition-all duration-300'
+        },
+        failMarket: {
+          isHighlighted: false,
+          className: 'opacity-40 blur-[2px] transition-all duration-300'
+        }
+      };
+    }
+
     // State 3: Proposal has ended - No blur on anything
     if (proposalStatus && proposalStatus !== 'Pending') {
       return {
@@ -100,5 +124,5 @@ export function useVisualFocus(
           : 'opacity-40 blur-[1px] transition-all duration-300'
       }
     };
-  }, [hasPosition, selectedMarket, proposalStatus]);
+  }, [hasPosition, selectedMarket, proposalStatus, hasWalletBalance]);
 }

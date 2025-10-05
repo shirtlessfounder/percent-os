@@ -424,20 +424,9 @@ const TradingInterface = memo(({
     }
   }, [sellingToken, tempSolAmounts, tempZCAmounts]);
 
-  // Show login button when not authenticated
+  // Don't show login button in trading interface when not authenticated
   if (!authenticated) {
-    return (
-      <div className="h-[calc(100vh-8rem)] relative">
-        <div className="pt-12 flex justify-center px-8">
-          <button
-            onClick={login}
-            className="w-full max-w-xs px-8 py-3 bg-emerald-500 hover:bg-emerald-600 text-black font-bold rounded-lg transition-all transform hover:scale-105 cursor-pointer shadow-lg"
-          >
-            Login
-          </button>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   return (

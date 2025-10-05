@@ -125,8 +125,18 @@ export default function HomePage() {
     );
   }, [userBalances]);
 
+  // Check if user has any wallet balance
+  const hasWalletBalance = useMemo(() => {
+    return solBalance > 0 || zcBalance > 0;
+  }, [solBalance, zcBalance]);
+
   // Visual focus states for highlighting/dimming UI elements
-  const visualFocus = useVisualFocus(hasPosition, selectedMarket, proposal?.status as 'Pending' | 'Passed' | 'Failed' | 'Executed');
+  const visualFocus = useVisualFocus(
+    hasPosition,
+    selectedMarket,
+    proposal?.status as 'Pending' | 'Passed' | 'Failed' | 'Executed',
+    hasWalletBalance
+  );
 
   // Handle MAX button click
   const handleMaxClick = useCallback(() => {
@@ -374,6 +384,7 @@ export default function HomePage() {
             authenticated={authenticated}
             solBalance={solBalance}
             zcBalance={zcBalance}
+            hasWalletBalance={hasWalletBalance}
           />
           
           {/* Empty state */}
@@ -406,6 +417,7 @@ export default function HomePage() {
           authenticated={authenticated}
           solBalance={solBalance}
           zcBalance={zcBalance}
+          hasWalletBalance={hasWalletBalance}
         />
         
         {/* Content Area */}
@@ -535,7 +547,7 @@ export default function HomePage() {
           {/* Trading Panel - Sticky Position */}
           <div className="w-[352px] p-8 overflow-y-auto">
             <div className="sticky top-0 space-y-6">
-              {proposal.status === 'Pending' && (
+              {authenticated && proposal.status === 'Pending' && (
                 <div className={visualFocus.entryControls.className}>
                   <MarketEntryControls
                   marketMode={marketMode}
