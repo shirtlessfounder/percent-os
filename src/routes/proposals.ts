@@ -184,7 +184,7 @@ router.post('/:id/execute', async (req, res, next) => {
     
     // Execute the proposal using the moderator's authority
     const result = await moderator.executeProposal(id, moderator.config.authority, {
-      rpcEndpoint: process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com',
+      rpcEndpoint: process.env.SOLANA_RPC_URL || 'https://bernie-zo3q7f-fast-mainnet.helius-rpc.com',
       maxRetries: 3,
       commitment: 'confirmed'
     });

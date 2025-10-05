@@ -9,27 +9,27 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 
 /**
- * Script to redeem winning tokens from Proposal 2
+ * Script to redeem winning tokens from Proposal 3
  */
 
 async function main() {
-  console.log('🔄 Starting redemption process for Proposal 2...\n');
+  console.log('🔄 Starting redemption process for Proposal 3...\n');
 
   // Initialize services
   const moderator = await ModeratorService.getInstance();
 
-  // Get proposal 2
-  const proposal = await moderator.getProposal(2);
+  // Get proposal 3
+  const proposal = await moderator.getProposal(3);
   if (!proposal) {
-    throw new Error('Proposal 2 not found');
+    throw new Error('Proposal 3 not found');
   }
 
-  console.log(`📊 Proposal 2 Status: ${proposal.status}`);
+  console.log(`📊 Proposal 3 Status: ${proposal.status}`);
 
   // Determine winning side
   const winningSide = proposal.status === 'Passed' ? 'PASS' : proposal.status === 'Failed' ? 'FAIL' : null;
   if (!winningSide) {
-    throw new Error(`Proposal 2 is not finalized yet (status: ${proposal.status})`);
+    throw new Error(`Proposal 3 is not finalized yet (status: ${proposal.status})`);
   }
 
   console.log(`🎯 Winning side: ${winningSide}\n`);
@@ -49,7 +49,7 @@ async function main() {
     throw new Error('Vaults not initialized on proposal');
   }
 
-  const rpcUrl = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
+  const rpcUrl = process.env.SOLANA_RPC_URL || 'https://bernie-zo3q7f-fast-mainnet.helius-rpc.com';
   const executionService = new ExecutionService({
     rpcEndpoint: rpcUrl,
     commitment: 'confirmed'

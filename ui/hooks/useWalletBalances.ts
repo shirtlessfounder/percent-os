@@ -25,7 +25,7 @@ export function useWalletBalances(walletAddress: string | null): WalletBalances 
 
     try {
       // Use Helius RPC for better reliability
-      const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.mainnet-beta.solana.com';
+      const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || 'https://bernie-zo3q7f-fast-mainnet.helius-rpc.com';
       const connection = new Connection(rpcUrl, 'confirmed');
       const pubKey = new PublicKey(address);
 
@@ -80,7 +80,7 @@ export function useWalletBalances(walletAddress: string | null): WalletBalances 
     fetchBalances(walletAddress);
 
     // Set up WebSocket subscriptions for real-time updates
-    const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.mainnet-beta.solana.com';
+    const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || 'https://bernie-zo3q7f-fast-mainnet.helius-rpc.com';
     const connection = new Connection(rpcUrl, 'confirmed');
     const pubKey = new PublicKey(walletAddress);
     

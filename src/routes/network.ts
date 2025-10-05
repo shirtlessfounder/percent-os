@@ -12,7 +12,7 @@ const router = Router();
  */
 router.get('/', async (_req, res, next) => {
   try {
-    const rpcUrl = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
+    const rpcUrl = process.env.SOLANA_RPC_URL || 'https://bernie-zo3q7f-fast-mainnet.helius-rpc.com';
     const connection = new Connection(rpcUrl);
 
     // Determine network from connection using utility

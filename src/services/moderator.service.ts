@@ -45,7 +45,7 @@ class ModeratorService {
         
         // Create new moderator with default config
         const keypairPath = process.env.SOLANA_KEYPAIR_PATH || './wallet.json';
-        const rpcUrl = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
+        const rpcUrl = process.env.SOLANA_RPC_URL || 'https://bernie-zo3q7f-fast-mainnet.helius-rpc.com';
         
         if (!fs.existsSync(keypairPath)) {
           throw new Error(`Keypair file not found at ${keypairPath}`);

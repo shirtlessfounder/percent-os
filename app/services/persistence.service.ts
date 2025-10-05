@@ -392,7 +392,7 @@ export class PersistenceService implements IPersistenceService {
         }
       }
       
-      const rpcUrl = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
+      const rpcUrl = process.env.SOLANA_RPC_URL || 'https://bernie-zo3q7f-fast-mainnet.helius-rpc.com';
       const connection = new Connection(rpcUrl, 'confirmed');
       
       // Reconstruct transaction from stored instructions

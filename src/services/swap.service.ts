@@ -154,7 +154,7 @@ let instance: SwapService | null = null;
 export function getSwapService(): SwapService {
   if (!instance) {
     // Initialize with config from environment
-    const rpcUrl = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
+    const rpcUrl = process.env.SOLANA_RPC_URL || 'https://bernie-zo3q7f-fast-mainnet.helius-rpc.com';
     const executionConfig: IExecutionConfig = {
       rpcEndpoint: rpcUrl,
       commitment: 'confirmed'

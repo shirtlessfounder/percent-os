@@ -16,7 +16,7 @@ export class MainnetPriceService {
   private priceCache: Map<string, AMMPriceData> = new Map();
   private CACHE_DURATION = 5000; // 5 seconds cache
 
-  constructor(rpcUrl: string = 'https://api.mainnet-beta.solana.com') {
+  constructor(rpcUrl: string = 'https://bernie-zo3q7f-fast-mainnet.helius-rpc.com') {
     this.connection = new Connection(rpcUrl, 'confirmed');
     this.cpAmm = new CpAmm(this.connection);
   }
