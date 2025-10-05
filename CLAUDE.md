@@ -511,7 +511,7 @@ ui/
 **Features**:
 - Pass/Fail market selection
 - Position management (increase/decrease)
-- SOL/OOGWAY input modes with currency toggle
+- SOL/ZC input modes with currency toggle
 - Dynamic payout calculations
 - Customizable quick amount buttons (persistent via localStorage)
 - Real-time position tracking
@@ -546,7 +546,7 @@ ui/
 
 **Features**:
 - Privy wallet integration
-- SOL and OOGWAY balance display
+- SOL and ZC balance display
 - Network indicator (mainnet/devnet)
 - Settings modal access
 
@@ -568,7 +568,7 @@ ui/
 - Real-time balance updates
 
 #### **useTokenPrices** (`hooks/useTokenPrices.ts`)
-- SOL and OOGWAY price fetching
+- SOL and ZC price fetching
 - Price caching with TTL
 - USD conversion calculations
 
@@ -579,7 +579,7 @@ ui/
 
 #### **useWalletBalances** (`hooks/useWalletBalances.ts`)
 - Native wallet balance tracking
-- SOL and OOGWAY token balances
+- SOL and ZC token balances
 - Automatic refresh on transactions
 
 ### 4. **Trading Library** (`lib/trading.ts`)
@@ -591,7 +591,7 @@ openPosition({
   proposalId,
   positionType: 'pass' | 'fail',
   inputAmount,
-  inputCurrency: 'sol' | 'oogway',
+  inputCurrency: 'sol' | 'zc',
   userAddress,
   signTransaction
 })

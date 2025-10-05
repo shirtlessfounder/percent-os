@@ -34,10 +34,10 @@ const TradingInterface = memo(({
 }: TradingInterfaceProps) => {
   const { authenticated, walletAddress, login } = usePrivyWallet();
   const isConnected = authenticated;
-  const { sol: solPrice, oogway: oogwayPrice } = useTokenPrices();
+  const { sol: solPrice, zc: zcPrice } = useTokenPrices();
   const { data: userBalances, refetch: refetchBalances } = useUserBalances(proposalId, walletAddress);
   const [amount, setAmount] = useState('');
-  const [sellingToken, setSellingToken] = useState<'sol' | 'oogway'>('sol');
+  const [sellingToken, setSellingToken] = useState<'sol' | 'zc'>('sol');
   const [isEditingQuickAmounts, setIsEditingQuickAmounts] = useState(false);
   const [hoveredPayout, setHoveredPayout] = useState<string | null>(null);
   
@@ -50,16 +50,16 @@ const TradingInterface = memo(({
     return ['0.01', '0.1', '1', '10'];
   });
   
-  const [oogwayQuickAmounts, setOogwayQuickAmounts] = useState(() => {
+  const [zcQuickAmounts, setZCQuickAmounts] = useState(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('oogwayQuickAmounts');
+      const saved = localStorage.getItem('zcQuickAmounts');
       return saved ? JSON.parse(saved) : ['10000', '100000', '1000000', '10000000'];
     }
     return ['10000', '100000', '1000000', '10000000'];
   });
 
   const [tempSolAmounts, setTempSolAmounts] = useState(['0.01', '0.1', '1', '10']);
-  const [tempOogwayAmounts, setTempOogwayAmounts] = useState(['10000', '100000', '1000000', '10000000']);
+  const [tempZCAmounts, setTempZCAmounts] = useState(['10000', '100000', '1000000', '10000000']);
 
   // Calculate user's position from balances
   const userPosition = useMemo(() => {
@@ -86,12 +86,12 @@ const TradingInterface = memo(({
     const positionType = totalPassValue >= totalFailValue ? 'pass' : 'fail';
 
     // Track individual token amounts and types for payout display
-    // Base = OOGWAY, Quote = SOL
+    // Base = ZC, Quote = SOL
     return {
       type: positionType as 'pass' | 'fail',
-      passOogwayAmount: basePassConditional,
+      passZCAmount: basePassConditional,
       passSolAmount: quotePassConditional,
-      failOogwayAmount: baseFailConditional,
+      failZCAmount: baseFailConditional,
       failSolAmount: quoteFailConditional
     };
   }, [userBalances]);
@@ -147,7 +147,7 @@ const TradingInterface = memo(({
         }
 
         // Determine swap direction
-        const isBaseToQuote = sellingToken === 'oogway';
+        const isBaseToQuote = sellingToken === 'zc';
 
         // Fetch quote from API
         const quoteData = await api.getSwapQuote(
@@ -192,8 +192,8 @@ const TradingInterface = memo(({
     // Get the correct balance based on selectedMarket and sellingToken
     if (selectedMarket === 'pass') {
       // Pass market
-      if (sellingToken === 'oogway') {
-        // Selling Pass-OOGWAY
+      if (sellingToken === 'zc') {
+        // Selling Pass-ZC
         balance = userBalances.base.passConditional;
       } else {
         // Selling Pass-SOL
@@ -201,8 +201,8 @@ const TradingInterface = memo(({
       }
     } else {
       // Fail market
-      if (sellingToken === 'oogway') {
-        // Selling Fail-OOGWAY
+      if (sellingToken === 'zc') {
+        // Selling Fail-ZC
         balance = userBalances.base.failConditional;
       } else {
         // Selling Fail-SOL
@@ -231,13 +231,13 @@ const TradingInterface = memo(({
 
     // Get the correct balance based on selectedMarket and sellingToken
     if (selectedMarket === 'pass') {
-      if (sellingToken === 'oogway') {
+      if (sellingToken === 'zc') {
         balance = userBalances.base.passConditional;
       } else {
         balance = userBalances.quote.passConditional;
       }
     } else {
-      if (sellingToken === 'oogway') {
+      if (sellingToken === 'zc') {
         balance = userBalances.base.failConditional;
       } else {
         balance = userBalances.quote.failConditional;
@@ -247,7 +247,7 @@ const TradingInterface = memo(({
     const maxAmount = toDecimal(parseFloat(balance), sellingToken);
 
     if (inputAmount > maxAmount) {
-      return `Insufficient balance. Max: ${formatNumber(maxAmount, sellingToken === 'sol' ? 3 : 0)} ${sellingToken === 'sol' ? 'SOL' : '$oogway'}`;
+      return `Insufficient balance. Max: ${formatNumber(maxAmount, sellingToken === 'sol' ? 3 : 0)} ${sellingToken === 'sol' ? 'SOL' : '$ZC'}`;
     }
 
     return null;
@@ -345,13 +345,13 @@ const TradingInterface = memo(({
     if (sellingToken === 'sol') {
       return isEditingQuickAmounts ? tempSolAmounts : solQuickAmounts;
     } else {
-      return isEditingQuickAmounts ? tempOogwayAmounts : oogwayQuickAmounts;
+      return isEditingQuickAmounts ? tempZCAmounts : zcQuickAmounts;
     }
-  }, [sellingToken, isEditingQuickAmounts, tempSolAmounts, tempOogwayAmounts, solQuickAmounts, oogwayQuickAmounts]);
+  }, [sellingToken, isEditingQuickAmounts, tempSolAmounts, tempZCAmounts, solQuickAmounts, zcQuickAmounts]);
 
-  // Format quick amount for display (abbreviate K/M for oogway)
+  // Format quick amount for display (abbreviate K/M for ZC)
   const formatQuickAmountDisplay = (val: string): string => {
-    if (sellingToken === 'oogway' && !isEditingQuickAmounts) {
+    if (sellingToken === 'zc' && !isEditingQuickAmounts) {
       const num = parseFloat(val);
       if (num >= 1000000) {
         return (num / 1000000) + 'M';
@@ -366,20 +366,20 @@ const TradingInterface = memo(({
     if (isEditingQuickAmounts) {
       // Save the changes
       setSolQuickAmounts([...tempSolAmounts]);
-      setOogwayQuickAmounts([...tempOogwayAmounts]);
+      setZCQuickAmounts([...tempZCAmounts]);
 
       // Save to localStorage
       if (typeof window !== 'undefined') {
         localStorage.setItem('solQuickAmounts', JSON.stringify(tempSolAmounts));
-        localStorage.setItem('oogwayQuickAmounts', JSON.stringify(tempOogwayAmounts));
+        localStorage.setItem('zcQuickAmounts', JSON.stringify(tempZCAmounts));
       }
     } else {
       // Start editing, copy current values to temp
       setTempSolAmounts([...solQuickAmounts]);
-      setTempOogwayAmounts([...oogwayQuickAmounts]);
+      setTempZCAmounts([...zcQuickAmounts]);
     }
     setIsEditingQuickAmounts(!isEditingQuickAmounts);
-  }, [isEditingQuickAmounts, tempSolAmounts, tempOogwayAmounts, solQuickAmounts, oogwayQuickAmounts]);
+  }, [isEditingQuickAmounts, tempSolAmounts, tempZCAmounts, solQuickAmounts, zcQuickAmounts]);
 
   const handleQuickAmountChange = useCallback((index: number, value: string) => {
     // Only allow numbers and decimal points
@@ -389,12 +389,12 @@ const TradingInterface = memo(({
         newAmounts[index] = value;
         setTempSolAmounts(newAmounts);
       } else {
-        const newAmounts = [...tempOogwayAmounts];
+        const newAmounts = [...tempZCAmounts];
         newAmounts[index] = value;
-        setTempOogwayAmounts(newAmounts);
+        setTempZCAmounts(newAmounts);
       }
     }
-  }, [sellingToken, tempSolAmounts, tempOogwayAmounts]);
+  }, [sellingToken, tempSolAmounts, tempZCAmounts]);
 
   // Show frosted glass effect when not authenticated
   if (!authenticated) {
@@ -424,16 +424,16 @@ const TradingInterface = memo(({
           <div className="space-y-2">
             {proposalStatus === 'Passed' && (
               <>
-                {userPosition.passOogwayAmount > 0 && (
+                {userPosition.passZCAmount > 0 && (
                   <PayoutCard
                     status="pass"
-                    label="Passed (OOGWAY)"
-                    amount={userPosition.passOogwayAmount}
-                    token="oogway"
-                    tokenPrice={oogwayPrice}
-                    isHovered={hoveredPayout === 'pass-oogway'}
+                    label="Passed (ZC)"
+                    amount={userPosition.passZCAmount}
+                    token="zc"
+                    tokenPrice={zcPrice}
+                    isHovered={hoveredPayout === 'pass-zc'}
                     onHover={setHoveredPayout}
-                    hoverId="pass-oogway"
+                    hoverId="pass-zc"
                   />
                 )}
                 {userPosition.passSolAmount > 0 && (
@@ -452,16 +452,16 @@ const TradingInterface = memo(({
             )}
             {proposalStatus === 'Failed' && (
               <>
-                {userPosition.failOogwayAmount > 0 && (
+                {userPosition.failZCAmount > 0 && (
                   <PayoutCard
                     status="fail"
-                    label="Failed (OOGWAY)"
-                    amount={userPosition.failOogwayAmount}
-                    token="oogway"
-                    tokenPrice={oogwayPrice}
-                    isHovered={hoveredPayout === 'fail-oogway'}
+                    label="Failed (ZC)"
+                    amount={userPosition.failZCAmount}
+                    token="zc"
+                    tokenPrice={zcPrice}
+                    isHovered={hoveredPayout === 'fail-zc'}
                     onHover={setHoveredPayout}
-                    hoverId="fail-oogway"
+                    hoverId="fail-zc"
                   />
                 )}
                 {userPosition.failSolAmount > 0 && (
@@ -582,15 +582,15 @@ const TradingInterface = memo(({
             {/* Token Toggle */}
             <button
               onClick={() => {
-                setSellingToken(sellingToken === 'sol' ? 'oogway' : 'sol');
+                setSellingToken(sellingToken === 'sol' ? 'zc' : 'sol');
                 setAmount('');
               }}
               className="flex items-center justify-center gap-1 px-2 h-7 bg-[#333] rounded hover:bg-[#404040] transition cursor-pointer"
             >
-              {sellingToken === 'oogway' ? (
+              {sellingToken === 'zc' ? (
                 <>
                   <span className="text-xs text-[#AFAFAF] font-medium">sell</span>
-                  <span className="text-xs text-[#AFAFAF] font-bold">$oogway</span>
+                  <span className="text-xs text-[#AFAFAF] font-bold">$ZC</span>
                 </>
               ) : (
                 <>
@@ -672,9 +672,9 @@ const TradingInterface = memo(({
                 <span className="text-gray-400">Expected Output:</span>
                 <span className="text-white font-medium">
                   ~{formatNumber(
-                    toDecimal(parseFloat(quote.swapOutAmount), sellingToken === 'oogway' ? 'sol' : 'oogway'),
-                    sellingToken === 'oogway' ? 4 : 2
-                  )} {sellingToken === 'oogway' ? 'SOL' : '$oogway'}
+                    toDecimal(parseFloat(quote.swapOutAmount), sellingToken === 'zc' ? 'sol' : 'zc'),
+                    sellingToken === 'zc' ? 4 : 2
+                  )} {sellingToken === 'zc' ? 'SOL' : '$ZC'}
                 </span>
               </div>
 
@@ -738,7 +738,7 @@ const TradingInterface = memo(({
           {isTrading ? (
             'Swapping...'
           ) : (
-            sellingToken === 'sol' ? 'Swap for $oogway' : 'Swap for SOL'
+            sellingToken === 'sol' ? 'Swap for $ZC' : 'Swap for SOL'
           )}
         </span>
       </button>

@@ -2,12 +2,12 @@ import { useState, useEffect, useCallback } from 'react';
 import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { getAccount, getAssociatedTokenAddress } from '@solana/spl-token';
 
-// $oogway token mint address
-const OOGWAY_MINT = 'GVvPZpC6ymCoiHzYJ7CWZ8LhVn9tL2AUpRjSAsLh6jZC';
+// $ZC token mint address
+const ZC_MINT = 'GVvPZpC6ymCoiHzYJ7CWZ8LhVn9tL2AUpRjSAsLh6jZC';
 
 interface WalletBalances {
   sol: number;
-  oogway: number;
+  zc: number;
   loading: boolean;
   error: string | null;
 }
@@ -15,7 +15,7 @@ interface WalletBalances {
 export function useWalletBalances(walletAddress: string | null): WalletBalances {
   const [balances, setBalances] = useState<WalletBalances>({
     sol: 0,
-    oogway: 0,
+    zc: 0,
     loading: false,
     error: null,
   });
@@ -33,32 +33,32 @@ export function useWalletBalances(walletAddress: string | null): WalletBalances 
         const solBalance = await connection.getBalance(pubKey);
         const solAmount = solBalance / LAMPORTS_PER_SOL;
 
-        // Fetch $oogway token balance
-        let oogwayAmount = 0;
+        // Fetch $ZC token balance
+        let zcAmount = 0;
         try {
-            const oogwayMint = new PublicKey(OOGWAY_MINT);
-            const oogwayATA = await getAssociatedTokenAddress(
-              oogwayMint,
+            const zcMint = new PublicKey(ZC_MINT);
+            const zcATA = await getAssociatedTokenAddress(
+              zcMint,
               pubKey
             );
 
-            const oogwayAccount = await getAccount(connection, oogwayATA);
-            // Assuming $oogway has 9 decimals like most SPL tokens
-            oogwayAmount = Number(oogwayAccount.amount) / 1e6;
+            const zcAccount = await getAccount(connection, zcATA);
+            // $ZC has 6 decimals
+            zcAmount = Number(zcAccount.amount) / 1e6;
         } catch (error) {
           // Token account might not exist if user has 0 balance - this is normal
         }
 
       setBalances({
         sol: solAmount,
-        oogway: oogwayAmount,
+        zc: zcAmount,
         loading: false,
         error: null,
       });
     } catch (error) {
       setBalances({
         sol: 0,
-        oogway: 0,
+        zc: 0,
         loading: false,
         error: error instanceof Error ? error.message : 'Failed to fetch balances',
       });
@@ -69,7 +69,7 @@ export function useWalletBalances(walletAddress: string | null): WalletBalances 
     if (!walletAddress) {
       setBalances({
         sol: 0,
-        oogway: 0,
+        zc: 0,
         loading: false,
         error: null,
       });
@@ -94,15 +94,15 @@ export function useWalletBalances(walletAddress: string | null): WalletBalances 
       'confirmed'
     );
 
-    // Subscribe to $oogway token account changes
-    let oogwaySubscriptionId: number | null = null;
+    // Subscribe to $ZC token account changes
+    let zcSubscriptionId: number | null = null;
     (async () => {
       try {
-        const oogwayMint = new PublicKey(OOGWAY_MINT);
-        const oogwayATA = await getAssociatedTokenAddress(oogwayMint, pubKey);
-        
-        oogwaySubscriptionId = connection.onAccountChange(
-          oogwayATA,
+        const zcMint = new PublicKey(ZC_MINT);
+        const zcATA = await getAssociatedTokenAddress(zcMint, pubKey);
+
+        zcSubscriptionId = connection.onAccountChange(
+          zcATA,
           () => {
             // Refetch balances when token account changes
             fetchBalances(walletAddress);
@@ -110,7 +110,7 @@ export function useWalletBalances(walletAddress: string | null): WalletBalances 
           'confirmed'
         );
       } catch (error) {
-        // Could not subscribe to $oogway account changes - this is normal if account doesn't exist
+        // Could not subscribe to $ZC account changes - this is normal if account doesn't exist
       }
     })();
     
@@ -120,8 +120,8 @@ export function useWalletBalances(walletAddress: string | null): WalletBalances 
     // Cleanup
     return () => {
       connection.removeAccountChangeListener(solSubscriptionId);
-      if (oogwaySubscriptionId !== null) {
-        connection.removeAccountChangeListener(oogwaySubscriptionId);
+      if (zcSubscriptionId !== null) {
+        connection.removeAccountChangeListener(zcSubscriptionId);
       }
       clearInterval(interval);
     };

@@ -19,8 +19,8 @@ async function createProposal() {
   const quoteDecimals = 9;
   
   // Raw token amounts (smallest units)
-  // Current_spot = ~0.010 SOL per oogway
-  const initialBaseAmount = '400000000000';  // 400k Oogway (6 decimals)
+  // Current_spot = ~0.010 SOL per ZC
+  const initialBaseAmount = '30000000000';  // 30k ZC (6 decimals)
   const initialQuoteAmount = '100000000'; // 0.1 Sol (9 decimals)
   
   // Calculate decimal-adjusted price (same as AMM will return)
@@ -31,9 +31,9 @@ async function createProposal() {
   
   const request: CreateProposalRequest = {
     description: 'ZC Emissions Proposal',
-    proposalLength: 86400, // 1 day
-    spotPoolAddress: 'CCZdbVvDqPN8DmMLVELfnt9G1Q9pQNt3bTGifSpUY9Ad', // OOGWAY/SOL spot pool
-    totalSupply: 1020000000, // 1 billion tokens for market cap calculation
+    proposalLength: 3600, // 1 day
+    spotPoolAddress: 'CCZdbVvDqPN8DmMLVELfnt9G1Q9pQNt3bTGifSpUY9Ad', // ZC/SOL spot pool
+    totalSupply: 1000000000, // 1 billion tokens for market cap calculation
     twap: {
       initialTwapValue: ammPrice, // Decimal-adjusted price (0.1)
       twapMaxObservationChangePerUpdate: null,

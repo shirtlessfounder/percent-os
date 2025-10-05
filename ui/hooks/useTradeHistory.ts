@@ -32,7 +32,7 @@ export function useTradeHistory(proposalId: number | null) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [wsStatus, setWsStatus] = useState<ConnectionStatus>('disconnected');
-  const { sol: solPrice, oogway: oogwayPrice } = useTokenPrices();
+  const { sol: solPrice, zc: zcPrice } = useTokenPrices();
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttemptsRef = useRef(0);
@@ -239,8 +239,8 @@ export function useTradeHistory(proposalId: number | null) {
   // Memoized helper function to determine token used
   const getTokenUsed = useCallback((isBaseToQuote: boolean, market: 'pass' | 'fail') => {
     // Both pass and fail markets use the same token pairs:
-    // base = oogway, quote = SOL
-    return isBaseToQuote ? '$oogway' : 'SOL';
+    // base = ZC, quote = SOL
+    return isBaseToQuote ? '$ZC' : 'SOL';
   }, []);
 
   // Memoized helper function to calculate volume in USD
@@ -251,9 +251,9 @@ export function useTradeHistory(proposalId: number | null) {
     if (token === 'SOL') {
       return amount * solPrice;
     } else {
-      return amount * oogwayPrice;
+      return amount * zcPrice;
     }
-  }, [solPrice, oogwayPrice, getTokenUsed]);
+  }, [solPrice, zcPrice, getTokenUsed]);
 
   return {
     trades,

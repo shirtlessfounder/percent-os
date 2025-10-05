@@ -77,9 +77,9 @@ async function main() {
   try {
     const baseWinningAccount = await getAccount(connection, authorityBaseWinningAta);
     baseWinningBalance = baseWinningAccount.amount;
-    console.log(`💰 Base ${winningSide} tokens: ${Number(baseWinningBalance) / 1e6} OOGWAY`);
+    console.log(`💰 Base ${winningSide} tokens: ${Number(baseWinningBalance) / 1e6} ZC`);
   } catch (e) {
-    console.log(`💰 Base ${winningSide} tokens: 0 OOGWAY (no account)`);
+    console.log(`💰 Base ${winningSide} tokens: 0 ZC (no account)`);
   }
 
   try {

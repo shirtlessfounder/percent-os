@@ -5,7 +5,7 @@ interface PayoutCardProps {
   status: 'pass' | 'fail';
   label: string;
   amount: number;
-  token: 'sol' | 'oogway';
+  token: 'sol' | 'zc';
   tokenPrice: number;
   isHovered: boolean;
   onHover: (id: string | null) => void;
@@ -62,10 +62,10 @@ export function PayoutCard({
           formatCurrency(usdValue)
         ) : (
           <div className="flex items-center gap-1">
-            {token === 'oogway' ? (
+            {token === 'zc' ? (
               <>
                 {formatNumber(decimalAmount)}
-                <span className="text-gray-400 text-sm font-bold">$oogway</span>
+                <span className="text-gray-400 text-sm font-bold">$ZC</span>
               </>
             ) : (
               <>

@@ -55,7 +55,7 @@ class ModeratorService {
         const authority = Keypair.fromSecretKey(new Uint8Array(keypairData));
         
         const config: IModeratorConfig = {
-          baseMint: new PublicKey('GVvPZpC6ymCoiHzYJ7CWZ8LhVn9tL2AUpRjSAsLh6jZC'), // Oogway
+          baseMint: new PublicKey('GVvPZpC6ymCoiHzYJ7CWZ8LhVn9tL2AUpRjSAsLh6jZC'), // ZC
           quoteMint: new PublicKey('So11111111111111111111111111111111111111112'), // Wrapped SOL
           baseDecimals: 6,
           quoteDecimals: 9,

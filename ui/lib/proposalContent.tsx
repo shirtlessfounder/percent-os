@@ -9,11 +9,11 @@ interface ProposalContent {
 export const proposalContentMap: Record<number, ProposalContent> = {
   0: {
     id: 0,
-    title: "What is the price of $oogway after OOG-1 settles?",
+    title: "What is the price of $ZC after OOG-1 settles?",
     content: (
       <div className="space-y-4 text-gray-300">
         <p>
-          Mint 5,000,000 $oogway, stake them in the $oogway vault and distribute staked tokens proportionally based on wallet volume to all traders of this decision market.
+          Mint 5,000,000 $ZC, stake them in the $ZC vault and distribute staked tokens proportionally based on wallet volume to all traders of this decision market.
         </p>
 
         <div>
@@ -45,11 +45,11 @@ export const proposalContentMap: Record<number, ProposalContent> = {
   },
   6: {
     id: 6,
-    title: "What is the price of $oogway after OOG-1 settles?",
+    title: "What is the price of $ZC after OOG-1 settles?",
     content: (
       <div className="space-y-4 text-gray-300">
         <p>
-          Mint 5,000,000 $oogway, stake them in the $oogway vault and distribute staked tokens proportionally based on wallet volume to all traders of this decision market.
+          Mint 5,000,000 $ZC, stake them in the $ZC vault and distribute staked tokens proportionally based on wallet volume to all traders of this decision market.
         </p>
 
         <div>
@@ -81,30 +81,30 @@ export const proposalContentMap: Record<number, ProposalContent> = {
   },
   7: {
     id: 7,
-    title: "What will the price of $oogway be after the OOG-2 market resolves?",
+    title: "What will the price of $ZC be after the OOG-2 market resolves?",
     content: (
       <div className="space-y-4 text-gray-300">
         <p className="font-semibold">
-          OOG-2: Create an $oogway-sOogway LP via meteora DAMM V2
+          OOG-2: Create an $ZC-sZC LP via meteora DAMM V2
         </p>
 
         <div>
           <h3 className="text-lg font-semibold text-white mb-2">Mint</h3>
           <ul className="list-disc list-inside space-y-1">
-            <li>40,000,000 $oogway for the purpose of creating a liquid sOogway token</li>
-            <li>10,000,000 $oogway to be distributed to traders of this market. distribution will be volume based and in the form of staked oogway</li>
+            <li>40,000,000 $ZC for the purpose of creating a liquid sZC token</li>
+            <li>10,000,000 $ZC to be distributed to traders of this market. distribution will be volume based and in the form of staked ZC</li>
           </ul>
         </div>
 
         <div>
           <h3 className="text-lg font-semibold text-white mb-2">Pros:</h3>
           <ul className="list-disc list-inside space-y-1">
-            <li>$oogway stakers, who no longer want to signal commitment, can exit at a discount to $oogway.</li>
-            <li>$oogway holders interested in signaling commitment, can purchase $oogway at discounts by purchasing staked $oogway</li>
-            <li>decision markets can be set up on staked $oogway instead of $oogway</li>
+            <li>$ZC stakers, who no longer want to signal commitment, can exit at a discount to $ZC.</li>
+            <li>$ZC holders interested in signaling commitment, can purchase $ZC at discounts by purchasing staked $ZC</li>
+            <li>decision markets can be set up on staked $ZC instead of $ZC</li>
             <li>removes deferred selling upon end of staking period</li>
             <li>increased volume on the native trading pool</li>
-            <li>pricing of staked $oogway APY is more accurate</li>
+            <li>pricing of staked $ZC APY is more accurate</li>
           </ul>
         </div>
 

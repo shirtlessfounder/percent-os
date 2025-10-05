@@ -12,10 +12,10 @@ interface LivePriceDisplayProps {
 }
 
 interface TokenPrices {
-  oogway: number | null;
+  zc: number | null;
   pass: number | null;
   fail: number | null;
-  oogwayUsd?: number | null;
+  zcUsd?: number | null;
   passUsd?: number | null;
   failUsd?: number | null;
 }
@@ -25,20 +25,20 @@ interface TwapData {
   failTwap: number | null;
 }
 
-// OOGWAY token configuration
-const OOGWAY_CONFIG = {
+// ZC token configuration
+const ZC_CONFIG = {
   address: 'GVvPZpC6ymCoiHzYJ7CWZ8LhVn9tL2AUpRjSAsLh6jZC',
   poolAddress: '2FCqTyvFcE4uXgRL1yh56riZ9vdjVgoP6yknZW3f8afX',
-  name: '$oogway',
-  symbol: '$oogway'
+  name: '$ZC',
+  symbol: '$ZC'
 };
 
 export const LivePriceDisplay: React.FC<LivePriceDisplayProps> = ({ proposalId, onPricesUpdate, onTwapUpdate }) => {
   const [prices, setPrices] = useState<TokenPrices>({
-    oogway: null,
+    zc: null,
     pass: null,
     fail: null,
-    oogwayUsd: null,
+    zcUsd: null,
     passUsd: null,
     failUsd: null
   });
@@ -132,7 +132,7 @@ export const LivePriceDisplay: React.FC<LivePriceDisplayProps> = ({ proposalId, 
   }, [proposalId]);
 
   // Handle price updates from WebSocket - stable reference
-  const handlePriceUpdate = useCallback((tokenType: 'oogway' | 'pass' | 'fail') => {
+  const handlePriceUpdate = useCallback((tokenType: 'zc' | 'pass' | 'fail') => {
     return (update: PriceUpdate) => {
       setPrices(prev => ({
         ...prev,
@@ -142,15 +142,15 @@ export const LivePriceDisplay: React.FC<LivePriceDisplayProps> = ({ proposalId, 
     };
   }, []); // Empty dependency array for stable reference
 
-  // Set up OOGWAY subscription immediately
+  // Set up ZC subscription immediately
   useEffect(() => {
     const priceService = getPriceStreamService();
-    const oogwayCallback = handlePriceUpdate('oogway');
+    const zcCallback = handlePriceUpdate('zc');
     
-    priceService.subscribeToToken(OOGWAY_CONFIG.address, oogwayCallback);
+    priceService.subscribeToToken(ZC_CONFIG.address, zcCallback);
     
     return () => {
-      priceService.unsubscribeFromToken(OOGWAY_CONFIG.address, oogwayCallback);
+      priceService.unsubscribeFromToken(ZC_CONFIG.address, zcCallback);
     };
   }, []); // Removed handlePriceUpdate - it's stable now
 
@@ -209,11 +209,11 @@ export const LivePriceDisplay: React.FC<LivePriceDisplayProps> = ({ proposalId, 
   return (
     <div className="grid grid-cols-1 md:grid-cols-4">
       <TokenPriceBox
-        tokenName={OOGWAY_CONFIG.name}
-        tokenSymbol={OOGWAY_CONFIG.symbol}
-        tokenAddress={OOGWAY_CONFIG.address}
-        price={prices.oogway}
-        isLoading={isLoading && prices.oogway === null}
+        tokenName={ZC_CONFIG.name}
+        tokenSymbol={ZC_CONFIG.symbol}
+        tokenAddress={ZC_CONFIG.address}
+        price={prices.zc}
+        isLoading={isLoading && prices.zc === null}
         tokenType="governance"
       />
       

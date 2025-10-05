@@ -65,7 +65,7 @@ export const TokenPriceBox: React.FC<TokenPriceBoxProps> = ({
         return (
           <img 
             src="https://www.oogway.xyz/icon.jpeg" 
-            alt="OOGWAY" 
+            alt="ZC" 
             className="w-5 h-5 rounded-full"
           />
         );

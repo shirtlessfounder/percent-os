@@ -82,8 +82,8 @@ export class ProposalMarketDatafeed implements IBasicDataFeed {
     const isSpotMarket = symbolName === 'SPOT-MARKET';
 
     const displayName = isSpotMarket
-      ? 'SPOT $oogway'
-      : `${this.market === 'pass' ? 'PASS' : 'FAIL'} $oogway`;
+      ? 'SPOT $ZC'
+      : `${this.market === 'pass' ? 'PASS' : 'FAIL'} $ZC`;
 
     const symbolInfo: LibrarySymbolInfo = {
       name: displayName,

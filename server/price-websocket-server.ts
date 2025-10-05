@@ -192,16 +192,16 @@ class PriceWebSocketServer {
   }
 
   private startPriceUpdates() {
-    // Initial fetch for OOGWAY
-    const OOGWAY_ADDRESS = 'GVvPZpC6ymCoiHzYJ7CWZ8LhVn9tL2AUpRjSAsLh6jZC';
-    this.fetchTokenPrice(OOGWAY_ADDRESS);
+    // Initial fetch for ZC
+    const ZC_ADDRESS = 'GVvPZpC6ymCoiHzYJ7CWZ8LhVn9tL2AUpRjSAsLh6jZC';
+    this.fetchTokenPrice(ZC_ADDRESS);
 
-    // For mainnet tokens (like OOGWAY), poll DexScreener every 10 seconds
+    // For mainnet tokens (like ZC), poll DexScreener every 10 seconds
     // This is acceptable since DexScreener itself aggregates data
     this.priceUpdateInterval = setInterval(() => {
-      // Only poll for mainnet tokens (OOGWAY)
-      if (this.subscribedTokens.has(OOGWAY_ADDRESS)) {
-        this.fetchTokenPrice(OOGWAY_ADDRESS);
+      // Only poll for mainnet tokens (ZC)
+      if (this.subscribedTokens.has(ZC_ADDRESS)) {
+        this.fetchTokenPrice(ZC_ADDRESS);
       }
     }, 10000); // 10 seconds for mainnet tokens
 

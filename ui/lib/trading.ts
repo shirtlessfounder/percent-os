@@ -3,14 +3,14 @@ import toast from 'react-hot-toast';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
-// SOL and OOGWAY mint addresses
+// SOL and ZC mint addresses
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
-const OOGWAY_MINT = 'GVvPZpC6ymCoiHzYJ7CWZ8LhVn9tL2AUpRjSAsLh6jZC';
+const ZC_MINT = 'GVvPZpC6ymCoiHzYJ7CWZ8LhVn9tL2AUpRjSAsLh6jZC';
 
 export interface OpenPositionConfig {
   proposalId: number;
   market: 'pass' | 'fail';  // Which AMM market to trade on
-  inputToken: 'sol' | 'oogway';  // Which conditional token we're selling
+  inputToken: 'sol' | 'zc';  // Which conditional token we're selling
   inputAmount: string;  // Amount of conditional tokens to sell
   userAddress: string;
   signTransaction: (transaction: Transaction) => Promise<Transaction>;
@@ -26,23 +26,23 @@ export interface ClosePositionConfig {
 
 /**
  * Execute a swap on a specific market (Pass or Fail AMM)
- * Swaps conditional tokens: e.g., Pass-OOGWAY → Pass-SOL or Fail-SOL → Fail-OOGWAY
+ * Swaps conditional tokens: e.g., Pass-ZC → Pass-SOL or Fail-SOL → Fail-ZC
  */
 export async function openPosition(config: OpenPositionConfig): Promise<void> {
   const { proposalId, market, inputToken, inputAmount, userAddress, signTransaction } = config;
 
   // Determine swap direction based on inputToken
-  // inputToken 'oogway' means we're selling base (oogway conditional) for quote (SOL conditional)
-  // inputToken 'sol' means we're selling quote (SOL conditional) for base (oogway conditional)
-  const isBaseToQuote = inputToken === 'oogway';
+  // inputToken 'zc' means we're selling base (ZC conditional) for quote (SOL conditional)
+  // inputToken 'sol' means we're selling quote (SOL conditional) for base (ZC conditional)
+  const isBaseToQuote = inputToken === 'zc';
 
   const toastId = toast.loading(`Swapping ${market}-${inputToken.toUpperCase()}...`);
 
   try {
     // Convert decimal amount to smallest units
-    const OOGWAY_DECIMALS = 6;
+    const ZC_DECIMALS = 6;
     const SOL_DECIMALS = 9;
-    const decimals = inputToken === 'oogway' ? OOGWAY_DECIMALS : SOL_DECIMALS;
+    const decimals = inputToken === 'zc' ? ZC_DECIMALS : SOL_DECIMALS;
     const amountInSmallestUnits = Math.floor(parseFloat(inputAmount) * Math.pow(10, decimals)).toString();
 
     // Execute the swap on the selected market
@@ -56,7 +56,7 @@ export async function openPosition(config: OpenPositionConfig): Promise<void> {
     );
 
     // Success message
-    const outputToken = inputToken === 'oogway' ? 'SOL' : 'OOGWAY';
+    const outputToken = inputToken === 'zc' ? 'SOL' : 'ZC';
     toast.success(
       `Successfully swapped ${market}-${inputToken.toUpperCase()} → ${market}-${outputToken}!`,
       { id: toastId, duration: 5000 }
@@ -358,7 +358,7 @@ async function getNetwork(): Promise<'devnet' | 'mainnet'> {
  */
 async function simulateInitialSwap(
   inputAmount: string,
-  inputCurrency: 'sol' | 'oogway',
+  inputCurrency: 'sol' | 'zc',
   proposalId: number,
   userAddress?: string,
   signTransaction?: (transaction: Transaction) => Promise<Transaction>
@@ -369,8 +369,8 @@ async function simulateInitialSwap(
     throw new Error('Invalid input amount');
   }
   
-  // OOGWAY has 6 decimals, SOL has 9 decimals
-  const OOGWAY_DECIMALS = 6;
+  // ZC has 6 decimals, SOL has 9 decimals
+  const ZC_DECIMALS = 6;
   const SOL_DECIMALS = 9;
   
   // Check if we're on devnet
@@ -379,23 +379,23 @@ async function simulateInitialSwap(
   if (network === 'devnet') {
     // For devnet, simulate a 1:1 exchange rate
     if (inputCurrency === 'sol') {
-      // User inputs SOL, split 50/50 into base (OOGWAY) and quote (SOL)
+      // User inputs SOL, split 50/50 into base (ZC) and quote (SOL)
       const solAmountInSmallestUnits = Math.floor(amount * Math.pow(10, SOL_DECIMALS));
       const halfSolAmount = Math.floor(solAmountInSmallestUnits / 2);
-      const halfInOogway = Math.floor((amount / 2) * Math.pow(10, OOGWAY_DECIMALS));
+      const halfInZC = Math.floor((amount / 2) * Math.pow(10, ZC_DECIMALS));
       
       return {
-        baseAmount: halfInOogway.toString(),     // OOGWAY (6 decimals)
+        baseAmount: halfInZC.toString(),     // ZC (6 decimals)
         quoteAmount: halfSolAmount.toString()    // SOL (9 decimals)
       };
     } else {
-      // User inputs OOGWAY, split 50/50 into base (OOGWAY) and quote (SOL)
-      const oogwayAmountInSmallestUnits = Math.floor(amount * Math.pow(10, OOGWAY_DECIMALS));
-      const halfOogwayAmount = Math.floor(oogwayAmountInSmallestUnits / 2);
+      // User inputs ZC, split 50/50 into base (ZC) and quote (SOL)
+      const zcAmountInSmallestUnits = Math.floor(amount * Math.pow(10, ZC_DECIMALS));
+      const halfZCAmount = Math.floor(zcAmountInSmallestUnits / 2);
       const halfInSol = Math.floor((amount / 2) * Math.pow(10, SOL_DECIMALS));
       
       return {
-        baseAmount: halfOogwayAmount.toString(),  // OOGWAY (6 decimals)
+        baseAmount: halfZCAmount.toString(),  // ZC (6 decimals)
         quoteAmount: halfInSol.toString()         // SOL (9 decimals)
       };
     }
@@ -411,9 +411,9 @@ async function simulateInitialSwap(
     let swapAmount: string;
     
     if (inputCurrency === 'sol') {
-      // User has SOL, swap half to OOGWAY
+      // User has SOL, swap half to ZC
       inputMint = SOL_MINT;
-      outputMint = OOGWAY_MINT;
+      outputMint = ZC_MINT;
       const solAmountInSmallestUnits = Math.floor(amount * Math.pow(10, SOL_DECIMALS));
       const halfSolAmount = Math.floor(solAmountInSmallestUnits / 2);
       swapAmount = halfSolAmount.toString();
@@ -456,17 +456,17 @@ async function simulateInitialSwap(
       
       // Use the actual quote amounts from Jupiter
       return {
-        baseAmount: buildData.quote.outAmount,      // OOGWAY received from swap (actual)
+        baseAmount: buildData.quote.outAmount,      // ZC received from swap (actual)
         quoteAmount: halfSolAmount.toString()       // Remaining SOL
       };
       
     } else {
-      // User has OOGWAY, swap half to SOL
-      inputMint = OOGWAY_MINT;
+      // User has ZC, swap half to SOL
+      inputMint = ZC_MINT;
       outputMint = SOL_MINT;
-      const oogwayAmountInSmallestUnits = Math.floor(amount * Math.pow(10, OOGWAY_DECIMALS));
-      const halfOogwayAmount = Math.floor(oogwayAmountInSmallestUnits / 2);
-      swapAmount = halfOogwayAmount.toString();
+      const zcAmountInSmallestUnits = Math.floor(amount * Math.pow(10, ZC_DECIMALS));
+      const halfZCAmount = Math.floor(zcAmountInSmallestUnits / 2);
+      swapAmount = halfZCAmount.toString();
       
       // Build swap transaction
       const buildResponse = await fetch(`${API_BASE_URL}/api/swap/${proposalId}/jupiter/buildSwapTx`, {
@@ -506,7 +506,7 @@ async function simulateInitialSwap(
       
       // Use the actual quote amounts from Jupiter
       return {
-        baseAmount: halfOogwayAmount.toString(),    // Remaining OOGWAY
+        baseAmount: halfZCAmount.toString(),    // Remaining ZC
         quoteAmount: buildData.quote.outAmount      // SOL received from swap (actual)
       };
     }

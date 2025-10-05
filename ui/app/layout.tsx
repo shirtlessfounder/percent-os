@@ -18,7 +18,7 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Percent | oogway",
+  title: "Percent | ZC",
   description: "Trade decision markets",
 };
 

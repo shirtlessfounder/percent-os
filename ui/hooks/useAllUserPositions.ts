@@ -23,7 +23,7 @@ interface AllUserPositions {
 
 export function useAllUserPositions(walletAddress: string | null): AllUserPositions {
   const { proposals } = useProposals();
-  const { sol: solPrice, oogway: oogwayPrice } = useTokenPrices();
+  const { sol: solPrice, zc: zcPrice } = useTokenPrices();
   const [balancesMap, setBalancesMap] = useState<Map<number, UserBalancesResponse>>(new Map());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -94,34 +94,34 @@ export function useAllUserPositions(walletAddress: string | null): AllUserPositi
         let passAmount, failAmount, value;
 
         if (hasPassPosition) {
-          // Pass position: gets oogway if pass, SOL if fail
-          passAmount = basePassConditional;  // in oogway raw units
+          // Pass position: gets ZC if pass, SOL if fail
+          passAmount = basePassConditional;  // in ZC raw units
           failAmount = quoteFailConditional; // in SOL raw units
 
           // Calculate USD value based on position type
           // For pending proposals, use the higher of the two potential payouts
           if (proposal.status === 'Pending') {
-            const passValue = (passAmount / 1e6) * oogwayPrice;  // oogway with 6 decimals
+            const passValue = (passAmount / 1e6) * zcPrice;  // ZC with 6 decimals
             const failValue = (failAmount / 1e9) * solPrice;     // SOL with 9 decimals
             value = Math.max(passValue, failValue);
           } else if (proposal.status === 'Passed') {
-            value = (passAmount / 1e6) * oogwayPrice;
+            value = (passAmount / 1e6) * zcPrice;
           } else {
             value = (failAmount / 1e9) * solPrice;
           }
         } else {
-          // Fail position: gets SOL if pass, oogway if fail
+          // Fail position: gets SOL if pass, ZC if fail
           passAmount = quotePassConditional; // in SOL raw units
-          failAmount = baseFailConditional;  // in oogway raw units
+          failAmount = baseFailConditional;  // in ZC raw units
 
           if (proposal.status === 'Pending') {
             const passValue = (passAmount / 1e9) * solPrice;     // SOL with 9 decimals
-            const failValue = (failAmount / 1e6) * oogwayPrice;  // oogway with 6 decimals
+            const failValue = (failAmount / 1e6) * zcPrice;  // ZC with 6 decimals
             value = Math.max(passValue, failValue);
           } else if (proposal.status === 'Passed') {
             value = (passAmount / 1e9) * solPrice;
           } else {
-            value = (failAmount / 1e6) * oogwayPrice;
+            value = (failAmount / 1e6) * zcPrice;
           }
         }
 
@@ -140,7 +140,7 @@ export function useAllUserPositions(walletAddress: string | null): AllUserPositi
     });
 
     return { positions: positionsList, totalValue: total };
-  }, [balancesMap, proposals, solPrice, oogwayPrice]);
+  }, [balancesMap, proposals, solPrice, zcPrice]);
 
   return { positions, totalValue, loading, error };
 }

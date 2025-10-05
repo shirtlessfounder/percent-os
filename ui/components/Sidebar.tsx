@@ -61,7 +61,7 @@ const Sidebar = memo(({ selectedProposal, onSelectProposal, proposals, loading }
         <div className="flex-1 overflow-y-auto p-2">
           {/* Header */}
           <div className="px-2 pb-2 text-sm text-gray-400">
-            $oogway Proposals
+            $ZC Proposals
           </div>
           {loading ? (
             <ProposalListSkeleton />

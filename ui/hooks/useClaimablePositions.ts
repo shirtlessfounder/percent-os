@@ -11,7 +11,7 @@ export interface ClaimablePosition {
   positionType: 'pass' | 'fail';
   isWinner: boolean;
   claimableAmount: number; // Amount of tokens to claim
-  claimableToken: 'sol' | 'oogway'; // Which token they'll receive
+  claimableToken: 'sol' | 'zc'; // Which token they'll receive
   claimableValue: number; // USD value
 }
 
@@ -24,7 +24,7 @@ interface ClaimablePositions {
 
 export function useClaimablePositions(walletAddress: string | null): ClaimablePositions {
   const { proposals } = useProposals();
-  const { sol: solPrice, oogway: oogwayPrice } = useTokenPrices();
+  const { sol: solPrice, zc: zcPrice } = useTokenPrices();
   const [balancesMap, setBalancesMap] = useState<Map<number, UserBalancesResponse>>(new Map());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -93,9 +93,9 @@ export function useClaimablePositions(walletAddress: string | null): ClaimablePo
       // Determine if user has winning tokens to claim
       const proposalPassed = proposal.status === 'Passed';
 
-      // For base vault (oogway):
-      // - If proposal passed, pass conditional tokens win (can redeem for oogway)
-      // - If proposal failed, fail conditional tokens win (can redeem for oogway)
+      // For base vault (ZC):
+      // - If proposal passed, pass conditional tokens win (can redeem for ZC)
+      // - If proposal failed, fail conditional tokens win (can redeem for ZC)
       const baseWinningTokens = proposalPassed ? basePassConditional : baseFailConditional;
 
       // For quote vault (SOL):
@@ -113,8 +113,8 @@ export function useClaimablePositions(walletAddress: string | null): ClaimablePo
           // User might have partial positions or already claimed some
           // Check if they have any winning tokens
           if (baseWinningTokens > 0) {
-            // Can claim oogway
-            const value = (baseWinningTokens / 1e6) * oogwayPrice;
+            // Can claim ZC
+            const value = (baseWinningTokens / 1e6) * zcPrice;
             claimableList.push({
               proposalId,
               proposalDescription: proposal.description,
@@ -122,7 +122,7 @@ export function useClaimablePositions(walletAddress: string | null): ClaimablePo
               positionType: proposalPassed ? 'pass' : 'fail',
               isWinner: true,
               claimableAmount: baseWinningTokens / 1e6,
-              claimableToken: 'oogway',
+              claimableToken: 'zc',
               claimableValue: value
             });
             total += value;
@@ -152,19 +152,19 @@ export function useClaimablePositions(walletAddress: string | null): ClaimablePo
           if (isWinner) {
             // Winner gets their collateral back
             let claimableAmount: number;
-            let claimableToken: 'sol' | 'oogway';
+            let claimableToken: 'sol' | 'zc';
             let value: number;
 
             if (positionType === 'pass') {
-              // Pass position wins if proposal passed - gets oogway back
+              // Pass position wins if proposal passed - gets ZC back
               claimableAmount = basePassConditional / 1e6;
-              claimableToken = 'oogway';
-              value = claimableAmount * oogwayPrice;
+              claimableToken = 'zc';
+              value = claimableAmount * zcPrice;
             } else {
-              // Fail position wins if proposal failed - gets oogway back
+              // Fail position wins if proposal failed - gets ZC back
               claimableAmount = baseFailConditional / 1e6;
-              claimableToken = 'oogway';
-              value = claimableAmount * oogwayPrice;
+              claimableToken = 'zc';
+              value = claimableAmount * zcPrice;
             }
 
             claimableList.push({
@@ -184,7 +184,7 @@ export function useClaimablePositions(walletAddress: string | null): ClaimablePo
     });
 
     return { positions: claimableList, totalClaimableValue: total };
-  }, [balancesMap, proposals, solPrice, oogwayPrice]);
+  }, [balancesMap, proposals, solPrice, zcPrice]);
 
   return { positions, totalClaimableValue, loading, error };
 }

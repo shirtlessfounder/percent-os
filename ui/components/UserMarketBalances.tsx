@@ -20,7 +20,7 @@ export function UserMarketBalances({ userBalances }: UserMarketBalancesProps) {
           </div>
           <div className="space-y-1">
             <div className="flex justify-between items-baseline">
-              <span className="text-xs text-gray-400">$OOGWAY:</span>
+              <span className="text-xs text-gray-400">$ZC:</span>
               <span className="text-sm font-semibold text-white">
                 {formatNumber(parseFloat(userBalances.base.passConditional || '0') / 1e6, 2)}
               </span>
@@ -53,7 +53,7 @@ export function UserMarketBalances({ userBalances }: UserMarketBalancesProps) {
           </div>
           <div className="space-y-1">
             <div className="flex justify-between items-baseline">
-              <span className="text-xs text-gray-400">$OOGWAY:</span>
+              <span className="text-xs text-gray-400">$ZC:</span>
               <span className="text-sm font-semibold text-white">
                 {formatNumber(parseFloat(userBalances.base.failConditional || '0') / 1e6, 2)}
               </span>

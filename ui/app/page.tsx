@@ -44,15 +44,15 @@ export default function HomePage() {
   const [activeTab, setActiveTab] = useState<'trade' | 'description'>('trade');
   const [marketMode, setMarketMode] = useState<'enter' | 'exit'>('enter');
   const [amount, setAmount] = useState<string>('');
-  const [selectedToken, setSelectedToken] = useState<'sol' | 'oogway'>('sol');
+  const [selectedToken, setSelectedToken] = useState<'sol' | 'zc'>('sol');
   const [isEntering, setIsEntering] = useState(false);
   const [isExiting, setIsExiting] = useState(false);
 
   // Fetch wallet balances
-  const { sol: solBalance, oogway: oogwayBalance } = useWalletBalances(walletAddress);
+  const { sol: solBalance, zc: zcBalance } = useWalletBalances(walletAddress);
 
   // Fetch token prices for USD conversion
-  const { sol: solPrice, oogway: oogwayPrice } = useTokenPrices();
+  const { sol: solPrice, zc: zcPrice } = useTokenPrices();
 
   // Get Solana wallets for transaction signing
   const { wallets } = useSolanaWallets();
@@ -131,7 +131,7 @@ export default function HomePage() {
   // Handle MAX button click
   const handleMaxClick = useCallback(() => {
     if (marketMode === 'enter') {
-      const maxBalance = selectedToken === 'sol' ? solBalance : oogwayBalance;
+      const maxBalance = selectedToken === 'sol' ? solBalance : zcBalance;
       setAmount(maxBalance?.toString() || '0');
     } else {
       // Exit mode: calculate min of pass and fail for selected token
@@ -142,14 +142,14 @@ export default function HomePage() {
           const failSol = parseFloat(userBalances.quote.failConditional || '0') / 1e9;
           maxExitAmount = Math.min(passSol, failSol);
         } else {
-          const passOogway = parseFloat(userBalances.base.passConditional || '0') / 1e6;
-          const failOogway = parseFloat(userBalances.base.failConditional || '0') / 1e6;
-          maxExitAmount = Math.min(passOogway, failOogway);
+          const passZC = parseFloat(userBalances.base.passConditional || '0') / 1e6;
+          const failZC = parseFloat(userBalances.base.failConditional || '0') / 1e6;
+          maxExitAmount = Math.min(passZC, failZC);
         }
         setAmount(maxExitAmount.toString());
       }
     }
-  }, [marketMode, selectedToken, solBalance, oogwayBalance, userBalances]);
+  }, [marketMode, selectedToken, solBalance, zcBalance, userBalances]);
 
   // Handle Enter Market - Split tokens into conditional tokens
   const handleEnterMarket = useCallback(async () => {
@@ -176,7 +176,7 @@ export default function HomePage() {
       const vaultType = selectedToken === 'sol' ? 'quote' : 'base';
 
       // Convert amount to smallest units
-      const decimals = selectedToken === 'sol' ? 9 : 6; // SOL: 9, OOGWAY: 6
+      const decimals = selectedToken === 'sol' ? 9 : 6; // SOL: 9, ZC: 6
       const amountInSmallestUnits = Math.floor(parseFloat(amount) * Math.pow(10, decimals));
 
       // Build split transaction
@@ -264,7 +264,7 @@ export default function HomePage() {
       const vaultType = selectedToken === 'sol' ? 'quote' : 'base';
 
       // Convert amount to smallest units
-      const decimals = selectedToken === 'sol' ? 9 : 6; // SOL: 9, OOGWAY: 6
+      const decimals = selectedToken === 'sol' ? 9 : 6; // SOL: 9, ZC: 6
       const amountInSmallestUnits = Math.floor(parseFloat(amount) * Math.pow(10, decimals));
 
       // Build merge transaction
@@ -369,11 +369,11 @@ export default function HomePage() {
         {/* Main Content */}
         <div className="flex-1 flex flex-col">
           {/* Header */}
-          <Header 
+          <Header
             walletAddress={walletAddress}
             authenticated={authenticated}
             solBalance={solBalance}
-            oogwayBalance={oogwayBalance}
+            zcBalance={zcBalance}
           />
           
           {/* Empty state */}
@@ -401,11 +401,11 @@ export default function HomePage() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
-        <Header 
+        <Header
           walletAddress={walletAddress}
           authenticated={authenticated}
           solBalance={solBalance}
-          oogwayBalance={oogwayBalance}
+          zcBalance={zcBalance}
         />
         
         {/* Content Area */}
@@ -437,12 +437,12 @@ export default function HomePage() {
                         <div className="flex items-center gap-2 text-sm font-semibold text-white">
                           <span
                             className="group relative cursor-default"
-                            title={oogwayPrice ? formatCurrency((parseFloat(userBalances.base.passConditional || '0') / 1e6) * oogwayPrice, 2) : 'Price unavailable'}
+                            title={zcPrice ? formatCurrency((parseFloat(userBalances.base.passConditional || '0') / 1e6) * zcPrice, 2) : 'Price unavailable'}
                           >
-                            {formatNumber(parseFloat(userBalances.base.passConditional || '0') / 1e6, 0)} $oogway
-                            {oogwayPrice && (
+                            {formatNumber(parseFloat(userBalances.base.passConditional || '0') / 1e6, 0)} $ZC
+                            {zcPrice && (
                               <span className="absolute left-0 top-full mt-1 px-2 py-1 bg-[#2a2a2a] border border-[#404040] rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                                {formatCurrency((parseFloat(userBalances.base.passConditional || '0') / 1e6) * oogwayPrice, 2)}
+                                {formatCurrency((parseFloat(userBalances.base.passConditional || '0') / 1e6) * zcPrice, 2)}
                               </span>
                             )}
                           </span>
@@ -477,12 +477,12 @@ export default function HomePage() {
                         <div className="flex items-center gap-2 text-sm font-semibold text-white">
                           <span
                             className="group relative cursor-default"
-                            title={oogwayPrice ? formatCurrency((parseFloat(userBalances.base.failConditional || '0') / 1e6) * oogwayPrice, 2) : 'Price unavailable'}
+                            title={zcPrice ? formatCurrency((parseFloat(userBalances.base.failConditional || '0') / 1e6) * zcPrice, 2) : 'Price unavailable'}
                           >
-                            {formatNumber(parseFloat(userBalances.base.failConditional || '0') / 1e6, 0)} $oogway
-                            {oogwayPrice && (
+                            {formatNumber(parseFloat(userBalances.base.failConditional || '0') / 1e6, 0)} $ZC
+                            {zcPrice && (
                               <span className="absolute left-0 top-full mt-1 px-2 py-1 bg-[#2a2a2a] border border-[#404040] rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                                {formatCurrency((parseFloat(userBalances.base.failConditional || '0') / 1e6) * oogwayPrice, 2)}
+                                {formatCurrency((parseFloat(userBalances.base.failConditional || '0') / 1e6) * zcPrice, 2)}
                               </span>
                             )}
                           </span>
@@ -545,7 +545,7 @@ export default function HomePage() {
                   isExiting={isExiting}
                   hasPosition={hasPosition}
                   solBalance={solBalance}
-                  oogwayBalance={oogwayBalance}
+                  zcBalance={zcBalance}
                   userBalances={userBalances}
                   onMarketModeChange={(mode) => {
                     setMarketMode(mode);
