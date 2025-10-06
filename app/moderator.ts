@@ -98,7 +98,7 @@ export class Moderator implements IModerator {
 
       // Initialize the proposal (use Jito bundles on mainnet if UUID provided)
       const network = getNetworkFromConnection(this.config.connection);
-      if (network === Network.MAINNET && this.config.jitoUuid) {
+      if (false && network === Network.MAINNET && this.config.jitoUuid) {
         console.log(`Initializing proposal on ${network} using Jito ...`);
         await proposal.initializeViaBundle(this.jitoService!);
       } else {
