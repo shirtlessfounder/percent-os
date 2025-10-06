@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { X, Copy, Shield, DollarSign, Key } from 'lucide-react';
 import { usePrivyWallet } from '@/hooks/usePrivyWallet';
-import { useSolanaWallets, useFundWallet } from '@privy-io/react-auth/solana';
+import { useSolanaWallets } from '@privy-io/react-auth/solana';
 import toast from 'react-hot-toast';
 
 interface SettingsModalProps {
@@ -25,7 +25,6 @@ export default function SettingsModal({
 }: SettingsModalProps) {
   const { authenticated, walletAddress, logout, login } = usePrivyWallet();
   const { exportWallet } = useSolanaWallets();
-  const { fundWallet } = useFundWallet();
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(() => {
@@ -142,25 +141,10 @@ export default function SettingsModal({
                 </div>
 
                 {/* Action Buttons */}
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={() => {
-                      if (walletAddress) {
-                        // Call fundWallet for Solana wallet - Privy should handle Solana funding properly
-                        fundWallet(walletAddress).catch((error) => {
-                          console.error('Funding error:', error);
-                          toast.error('Unable to open funding options. Please check your Privy dashboard configuration.');
-                        });
-                      }
-                    }}
-                    className="px-4 py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-sm font-semibold rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-2 border border-emerald-500/20"
-                  >
-                    <DollarSign size={16} />
-                    Deposit
-                  </button>
+                <div className="space-y-3">
                   <button
                     onClick={logout}
-                    className="px-4 py-2.5 bg-[#272727] hover:bg-[#303030] text-[#AFAFAF] hover:text-white text-sm font-semibold rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-2 border border-[#3D3D3D]"
+                    className="w-full px-4 py-2.5 bg-[#272727] hover:bg-[#303030] text-[#AFAFAF] hover:text-white text-sm font-semibold rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-2 border border-[#3D3D3D]"
                   >
                     <Shield size={16} />
                     Log Out

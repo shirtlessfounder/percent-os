@@ -118,7 +118,7 @@ export default function MarketChart({ proposalId, market, height = 256 }: Market
           custom_css_url: '/charting_library/charting_library/custom.css',
           custom_formatters: {
             priceFormatterFactory: () => ({
-              format: (price: number) => formatUSD(price, 1)
+              format: (price: number) => formatUSD(price, 2)
             }),
           },
           overrides: {

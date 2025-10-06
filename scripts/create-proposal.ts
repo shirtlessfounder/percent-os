@@ -31,7 +31,7 @@ async function createProposal() {
   
   const request: CreateProposalRequest = {
     description: 'ZC Emissions Proposal',
-    proposalLength: 900, // 15 minutes
+    proposalLength: 1800, // 30 minutes
     spotPoolAddress: 'CCZdbVvDqPN8DmMLVELfnt9G1Q9pQNt3bTGifSpUY9Ad', // ZC/SOL spot pool
     totalSupply: 1000000000, // 1 billion tokens for market cap calculation
     twap: {

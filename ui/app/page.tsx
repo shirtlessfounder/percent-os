@@ -141,7 +141,14 @@ export default function HomePage() {
   // Handle MAX button click
   const handleMaxClick = useCallback(() => {
     if (marketMode === 'enter') {
-      const maxBalance = selectedToken === 'sol' ? solBalance : zcBalance;
+      let maxBalance = selectedToken === 'sol' ? solBalance : zcBalance;
+
+      // Reserve 0.02 SOL for transaction fees when entering with SOL
+      if (selectedToken === 'sol' && maxBalance !== null) {
+        const SOL_GAS_RESERVE = 0.02;
+        maxBalance = Math.max(0, maxBalance - SOL_GAS_RESERVE);
+      }
+
       setAmount(maxBalance?.toString() || '0');
     } else {
       // Exit mode: calculate min of pass and fail for selected token

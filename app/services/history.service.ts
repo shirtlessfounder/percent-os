@@ -480,7 +480,42 @@ export class HistoryService implements IHistoryService {
         volume: volumeMap.get(new Date(row.bucket).getTime()) || 0,
       }));
 
-      return chartData.sort((a, b) => b.timestamp - a.timestamp);
+      // Sort by timestamp ascending for forward-fill processing
+      const sortedData = chartData.sort((a, b) => a.timestamp - b.timestamp);
+
+      // Forward-fill: ensure each candle's open equals the previous candle's close
+      // Group by market to handle pass/fail separately
+      const marketGroups = new Map<'pass' | 'fail' | 'global' | 'spot', IChartDataPoint[]>();
+      for (const point of sortedData) {
+        if (!marketGroups.has(point.market)) {
+          marketGroups.set(point.market, []);
+        }
+        marketGroups.get(point.market)!.push(point);
+      }
+
+      // Apply forward-fill within each market
+      for (const [market, points] of marketGroups) {
+        for (let i = 1; i < points.length; i++) {
+          const prevClose = points[i - 1].close;
+          const currentOpen = points[i].open;
+
+          // If there's a gap, forward-fill the open with previous close
+          if (prevClose !== currentOpen) {
+            points[i].open = prevClose;
+            // Also adjust low if the new open is lower than recorded low
+            if (prevClose < points[i].low) {
+              points[i].low = prevClose;
+            }
+            // Also adjust high if the new open is higher than recorded high
+            if (prevClose > points[i].high) {
+              points[i].high = prevClose;
+            }
+          }
+        }
+      }
+
+      // Return sorted descending (most recent first)
+      return sortedData.sort((a, b) => b.timestamp - a.timestamp);
     } catch (error) {
       console.error('Failed to get chart data:', error);
       throw error;
