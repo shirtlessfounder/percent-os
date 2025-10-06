@@ -114,14 +114,14 @@ export function useVisualFocus(
       passMarket: {
         isHighlighted: selectedMarket === 'pass',
         className: selectedMarket === 'pass'
-          ? 'ring-2 ring-emerald-500/30 shadow-lg shadow-emerald-500/10 transition-all duration-300'
-          : 'opacity-40 blur-[1px] transition-all duration-300'
+          ? 'ring-2 ring-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.4)] transition-all duration-300'
+          : 'transition-all duration-300'
       },
       failMarket: {
         isHighlighted: selectedMarket === 'fail',
         className: selectedMarket === 'fail'
-          ? 'ring-2 ring-rose-500/30 shadow-lg shadow-rose-500/10 transition-all duration-300'
-          : 'opacity-40 blur-[1px] transition-all duration-300'
+          ? 'ring-2 ring-rose-500 shadow-[0_0_20px_rgba(244,63,94,0.4)] transition-all duration-300'
+          : 'transition-all duration-300'
       }
     };
   }, [hasPosition, selectedMarket, proposalStatus, hasWalletBalance]);

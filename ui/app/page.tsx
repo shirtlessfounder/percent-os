@@ -448,12 +448,12 @@ export default function HomePage() {
               {authenticated && walletAddress && userBalances && (
                 <div className="grid grid-cols-2 gap-4 mt-1">
                   {/* Pass Market Column */}
-                  <div className={`space-y-2 rounded-lg ${visualFocus.passMarket.className}`}>
+                  <div className={`overflow-hidden rounded-lg ${visualFocus.passMarket.className}`}>
                     {/* Pass Market Balance */}
                     <div className="bg-[#1A1A1A] p-4">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-emerald-400">If Pass</span>
-                        <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                        <span className="text-sm font-semibold text-emerald-400">If Pass</span>
+                        <div className="flex items-center gap-2 text-base font-bold text-white">
                           <span
                             className="group relative cursor-default"
                             title={zcPrice ? formatCurrency((parseFloat(userBalances.base.passConditional || '0') / 1e6) * zcPrice, 2) : 'Price unavailable'}
@@ -488,12 +488,12 @@ export default function HomePage() {
                   </div>
 
                   {/* Fail Market Column */}
-                  <div className={`space-y-2 rounded-lg ${visualFocus.failMarket.className}`}>
+                  <div className={`overflow-hidden rounded-lg ${visualFocus.failMarket.className}`}>
                     {/* Fail Market Balance */}
                     <div className="bg-[#1A1A1A] p-4">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-rose-400">If Fail</span>
-                        <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                        <span className="text-sm font-semibold text-rose-400">If Fail</span>
+                        <div className="flex items-center gap-2 text-base font-bold text-white">
                           <span
                             className="group relative cursor-default"
                             title={zcPrice ? formatCurrency((parseFloat(userBalances.base.failConditional || '0') / 1e6) * zcPrice, 2) : 'Price unavailable'}

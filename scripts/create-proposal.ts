@@ -20,7 +20,7 @@ async function createProposal() {
   
   // Raw token amounts (smallest units)
   // Current_spot = ~0.010 SOL per ZC
-  const initialBaseAmount = '18000000000';  // 18k ZC (6 decimals)
+  const initialBaseAmount = '7400000000';  // 7.4k ZC (6 decimals)
   const initialQuoteAmount = '100000000'; // 0.1 Sol (9 decimals)
   
   // Calculate decimal-adjusted price (same as AMM will return)
@@ -28,12 +28,13 @@ async function createProposal() {
   const baseTokens = parseInt(initialBaseAmount) / Math.pow(10, baseDecimals); // 10,000 tokens
   const quoteTokens = parseInt(initialQuoteAmount) / Math.pow(10, quoteDecimals); // 1,000 tokens
   const ammPrice = quoteTokens / baseTokens; // 1,000 / 10,000 = 0.1
+  console.log(ammPrice);
   
   const request: CreateProposalRequest = {
     description: 'ZC Emissions Proposal',
-    proposalLength: 1800, // 30 minutes
+    proposalLength: 900, // 15 minutes
     spotPoolAddress: 'CCZdbVvDqPN8DmMLVELfnt9G1Q9pQNt3bTGifSpUY9Ad', // ZC/SOL spot pool
-    totalSupply: 1000000000, // 1 billion tokens for market cap calculation
+    totalSupply: 1019381155, // 1 billion tokens for market cap calculation
     twap: {
       initialTwapValue: ammPrice, // Decimal-adjusted price (0.1)
       twapMaxObservationChangePerUpdate: null,

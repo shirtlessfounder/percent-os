@@ -9,27 +9,27 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 
 /**
- * Script to redeem winning tokens from Proposal 0
+ * Script to redeem winning tokens from Proposal 1
  */
 
 async function main() {
-  console.log('🔄 Starting redemption process for Proposal 0...\n');
+  console.log('🔄 Starting redemption process for Proposal 1...\n');
 
   // Initialize services
   const moderator = await ModeratorService.getInstance();
 
-  // Get proposal 0
-  const proposal = await moderator.getProposal(0);
+  // Get proposal 1
+  const proposal = await moderator.getProposal(1);
   if (!proposal) {
-    throw new Error('Proposal 0 not found');
+    throw new Error('Proposal 1 not found');
   }
 
-  console.log(`📊 Proposal 0 Status: ${proposal.status}`);
+  console.log(`📊 Proposal 1 Status: ${proposal.status}`);
 
   // Determine winning side
   const winningSide = proposal.status === 'Passed' ? 'PASS' : proposal.status === 'Failed' ? 'FAIL' : null;
   if (!winningSide) {
-    throw new Error(`Proposal 0 is not finalized yet (status: ${proposal.status})`);
+    throw new Error(`Proposal 1 is not finalized yet (status: ${proposal.status})`);
   }
 
   console.log(`🎯 Winning side: ${winningSide}\n`);
