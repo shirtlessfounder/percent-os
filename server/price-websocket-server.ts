@@ -529,6 +529,9 @@ class PriceWebSocketServer {
   }
 
   private handleNewPrice(priceData: any) {
+    // Log raw payload from database for debugging
+    console.log('[WebSocket Server] Raw price notification from database:', JSON.stringify(priceData));
+
     // Broadcast price update to all clients subscribed to this proposal
     const priceUpdate = {
       type: 'PRICE_UPDATE',
@@ -538,7 +541,8 @@ class PriceWebSocketServer {
       timestamp: priceData.timestamp || new Date().toISOString()
     };
 
-    console.log(`Price update received: proposal ${priceUpdate.proposalId}, market ${priceUpdate.market}, price ${priceUpdate.price}`);
+    console.log(`[WebSocket Server] Broadcasting price update: proposal ${priceUpdate.proposalId}, market ${priceUpdate.market}, price ${priceUpdate.price}`);
+    console.log(`[WebSocket Server] Subscribed proposals:`, Array.from(this.subscribedProposals));
     this.broadcastPrice(priceUpdate);
   }
 
@@ -552,11 +556,14 @@ class PriceWebSocketServer {
   }
 
   private broadcastPrice(priceUpdate: any) {
+    let clientCount = 0;
     this.clients.forEach((subscription, ws) => {
       if (subscription.proposals.has(priceUpdate.proposalId) && ws.readyState === 1) {
         ws.send(JSON.stringify(priceUpdate));
+        clientCount++;
       }
     });
+    console.log(`[WebSocket Server] Price broadcast sent to ${clientCount} client(s) for proposal ${priceUpdate.proposalId}`);
     console.log(`Price broadcast for proposal ${priceUpdate.proposalId}: ${priceUpdate.market} @ ${priceUpdate.price}`);
   }
 

@@ -380,9 +380,16 @@ export class ProposalMarketDatafeed implements IBasicDataFeed {
    * Handle incoming price updates from scheduler
    */
   private handlePriceUpdate(priceUpdate: ChartPriceUpdate): void {
-    console.log(`[${this.market}] Price update received for ${priceUpdate.market}:`, priceUpdate);
+    console.log(`[Datafeed ${this.market}] 📊 Price update received:`, {
+      proposalId: priceUpdate.proposalId,
+      market: priceUpdate.market,
+      price: priceUpdate.price,
+      timestamp: new Date(priceUpdate.timestamp).toISOString(),
+      subscribersCount: this.subscribers.size
+    });
 
     // Update all subscribers that match this market
+    let updatedCount = 0;
     for (const [listenerGuid, { callback, aggregator, isSpotMarket }] of this.subscribers) {
       // Match spot market subscribers to spot prices, pass/fail subscribers to their respective prices
       const marketMatches = isSpotMarket
@@ -390,6 +397,7 @@ export class ProposalMarketDatafeed implements IBasicDataFeed {
         : priceUpdate.market === this.market;
 
       if (!marketMatches) {
+        console.log(`[Datafeed ${this.market}] Skipping subscriber ${listenerGuid}: market mismatch (subscriber wants ${isSpotMarket ? 'spot' : this.market}, update is ${priceUpdate.market})`);
         continue;
       }
 
@@ -401,7 +409,7 @@ export class ProposalMarketDatafeed implements IBasicDataFeed {
           ? priceUpdate.price
           : priceUpdate.price * TOTAL_SUPPLY * this.solPrice;
 
-        console.log(`[${this.market}] Processing ${priceUpdate.market} price update: $${priceUSD.toFixed(2)}`);
+        console.log(`[Datafeed ${this.market}] Processing ${priceUpdate.market} price update for ${listenerGuid}: $${priceUSD.toFixed(2)}`);
 
         // Update bar with new price (volume = 0 for price updates)
         const updatedBar = aggregator.updateBar(
@@ -412,8 +420,9 @@ export class ProposalMarketDatafeed implements IBasicDataFeed {
 
         // Send updated bar to TradingView
         callback(updatedBar);
+        updatedCount++;
 
-        console.log(`[${this.market}] Updated bar for ${listenerGuid} from price update:`, {
+        console.log(`[Datafeed ${this.market}] ✅ Bar updated for ${listenerGuid}:`, {
           time: new Date(updatedBar.time).toISOString(),
           timeMs: updatedBar.time,
           price: priceUSD,
@@ -423,9 +432,10 @@ export class ProposalMarketDatafeed implements IBasicDataFeed {
           close: updatedBar.close,
         });
       } catch (error) {
-        console.error(`[${this.market}] Error updating bar from price for ${listenerGuid}:`, error);
+        console.error(`[Datafeed ${this.market}] ❌ Error updating bar for ${listenerGuid}:`, error);
       }
     }
+    console.log(`[Datafeed ${this.market}] Price update complete: ${updatedCount}/${this.subscribers.size} subscriber(s) updated`);
   }
 
   /**

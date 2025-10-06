@@ -137,7 +137,12 @@ export class PriceStreamService {
       });
     } else if (message.type === 'PRICE_UPDATE' && message.proposalId !== undefined) {
       // Chart price update from price_history table
-      console.log('[PriceStreamService] Chart PRICE_UPDATE message received for proposal', message.proposalId);
+      console.log('[PriceStreamService] ✅ Chart PRICE_UPDATE received:', {
+        proposalId: message.proposalId,
+        market: message.market,
+        price: message.price,
+        timestamp: message.timestamp
+      });
       const { proposalId, market, price, timestamp } = message;
 
       // Convert timestamp to milliseconds if it's a string
@@ -145,14 +150,14 @@ export class PriceStreamService {
         ? new Date(timestamp).getTime()
         : timestamp;
 
-      console.log('[PriceStreamService] Chart price subscriptions:', this.chartPriceSubscriptions);
-      console.log('[PriceStreamService] Callbacks for proposal', proposalId, ':', this.chartPriceSubscriptions.get(proposalId)?.length || 0);
+      console.log('[PriceStreamService] Chart price subscriptions map:', Array.from(this.chartPriceSubscriptions.keys()));
+      const callbacks = this.chartPriceSubscriptions.get(proposalId) || [];
+      console.log(`[PriceStreamService] Found ${callbacks.length} callback(s) for proposal ${proposalId}`);
 
       // Notify all callbacks for this proposal
-      const callbacks = this.chartPriceSubscriptions.get(proposalId) || [];
-      callbacks.forEach(callback => {
+      callbacks.forEach((callback, index) => {
         try {
-          console.log('[PriceStreamService] Calling chart price callback');
+          console.log(`[PriceStreamService] Calling chart price callback #${index + 1}`);
           callback({ proposalId, market, price, timestamp: timestampMs });
         } catch (error) {
           console.error('Error in chart price callback:', error);
