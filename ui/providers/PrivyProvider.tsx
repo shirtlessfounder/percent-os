@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { PrivyProvider } from '@privy-io/react-auth';
-import { toSolanaWalletConnectors } from '@privy-io/react-auth/solana';
+import { toSolanaWalletConnectors, createSolanaRpc, createSolanaRpcSubscriptions } from '@privy-io/react-auth/solana';
 
 const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID || 'YOUR-PRIVY-APP-ID';
 
@@ -44,6 +44,19 @@ export default function PrivyProviderWrapper({ children }: { children: React.Rea
         externalWallets: {
           solana: {
             connectors: solanaConnectors,
+          },
+        },
+        // Custom RPC configuration for Solana
+        solana: {
+          rpcs: {
+            'solana:mainnet': {
+              rpc: createSolanaRpc('https://bernie-zo3q7f-fast-mainnet.helius-rpc.com'),
+              rpcSubscriptions: createSolanaRpcSubscriptions('wss://bernie-zo3q7f-fast-mainnet.helius-rpc.com'),
+            },
+            'solana:devnet': {
+              rpc: createSolanaRpc('https://api.devnet.solana.com'),
+              rpcSubscriptions: createSolanaRpcSubscriptions('wss://api.devnet.solana.com'),
+            },
           },
         },
       }}
