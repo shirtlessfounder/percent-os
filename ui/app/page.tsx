@@ -76,10 +76,19 @@ export default function HomePage() {
     }
   }, [sortedProposals, selectedProposalId]);
   
-  const proposal = useMemo(() =>
-    proposals.find(p => p.id === selectedProposalId) || sortedProposals[0] || null,
-    [selectedProposalId, proposals, sortedProposals]
-  );
+  const proposal = useMemo(() => {
+    const foundProposal = proposals.find(p => p.id === selectedProposalId) || sortedProposals[0] || null;
+
+    // Hardcode proposal #4 to show as "Passed"
+    if (foundProposal && foundProposal.id === 4) {
+      return {
+        ...foundProposal,
+        status: 'Passed'
+      };
+    }
+
+    return foundProposal;
+  }, [selectedProposalId, proposals, sortedProposals]);
 
   // Fetch trade history for the selected proposal
   const {
