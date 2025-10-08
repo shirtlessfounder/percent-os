@@ -20,8 +20,8 @@ async function createProposal() {
   
   // Raw token amounts (smallest units)
   // Current_spot = ~0.010 SOL per ZC
-  const initialBaseAmount = '7300000000';  // 7.3k ZC (6 decimals)
-  const initialQuoteAmount = '100000000'; // 0.1 Sol (9 decimals)
+  const initialBaseAmount = '8554706000000';  // ZC (6 decimals)
+  const initialQuoteAmount = '42370000000'; // (9 decimals)
   
   // Calculate decimal-adjusted price (same as AMM will return)
   // Convert to actual token amounts: raw / 10^decimals
@@ -31,10 +31,10 @@ async function createProposal() {
   console.log(ammPrice);
   
   const request: CreateProposalRequest = {
-    description: 'Update Staking Vault Rewards and Parameters',
-    proposalLength: 900, // 15 minutes
+    description: 'SolPay Retroactive Holder Redistribution (ZC-2)',
+    proposalLength: 10800, // 3 hours
     spotPoolAddress: 'CCZdbVvDqPN8DmMLVELfnt9G1Q9pQNt3bTGifSpUY9Ad', // ZC/SOL spot pool
-    totalSupply: 1019381155, // 1 billion tokens for market cap calculation
+    totalSupply: 1037781155, // 1 billion tokens for market cap calculation
     twap: {
       initialTwapValue: ammPrice, // Decimal-adjusted price (0.1)
       twapMaxObservationChangePerUpdate: null,

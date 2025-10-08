@@ -133,6 +133,68 @@ export const proposalContentMap: Record<number, ProposalContent> = {
       </div>
     )
   },
+  4: {
+    id: 4,
+    title: "SolPay Retroactive Holder Redistribution (ZC-2)",
+    content: (
+      <div className="space-y-4 text-gray-300">
+        <div>
+          <h3 className="text-lg font-semibold text-white mb-2">Summary</h3>
+          <p>
+            This proposal authorizes the ZCombinatorio Protocol to execute a controlled redistribution of the SolPay ($SP) token supply in response to a recent exploitative accumulation event. The goal is to preserve the integrity of the $SP network and restore fair ownership distribution.
+          </p>
+        </div>
+
+        <div>
+          <h3 className="text-lg font-semibold text-white mb-2">Actions Authorized</h3>
+          <p className="mb-2">If passed, this proposal permits the Protocol to:</p>
+          <ul className="list-disc list-inside space-y-1">
+            <li>Pull liquidity from the existing SP–SOL Meteora DAMM v2 pool to secure assets prior to redistribution.</li>
+            <li>Snapshot the total circulating supply and tokenholder distribution of $SP at the time of execution.</li>
+            <li>Deploy a new token, $SP (v2), with a total supply of 1 billion tokens, and create a new liquidity pool seeded with the SOL portion withdrawn from the DAMM pool.</li>
+            <li>
+              Exclude the following wallet addresses from eligibility in the redistribution. Any amount transferred from these wallets is ineligible for the redistribution:
+              <ul className="list-none ml-6 mt-1 space-y-0.5 font-mono text-sm">
+                <li>Fve2mSodYe6oPgX2GNx8PwcELjFkKkGVVNSkYa2LtqAo</li>
+                <li>J7qUXWS8N2tyjsdWkW91dca5M2JqcMEt98fR6qeWRv7o</li>
+                <li>8x69juM1Qg6eWbtTyChNnFhX1foFkA2ZDeQtufMNPN14</li>
+                <li>AiLwAtCzPnQh6GnJ1UiMi9vqNniV3QyTM4rueKYNjPwN</li>
+              </ul>
+            </li>
+            <li>Airdrop the entire circulating of $SP supply proportionally to eligible holders based on the adjusted snapshot distribution, effectively restoring balances to aligned participants.</li>
+          </ul>
+          <p className="mt-2">In the case that the wallets exit prior to snapshot, no actions will be taken.</p>
+          <p className="mt-2">Once the actions are authorized, the decision to execute actions will be given to Bennie the Dev.</p>
+        </div>
+
+        <div>
+          <h3 className="text-lg font-semibold text-white mb-2">Rationale</h3>
+          <p className="mb-2">
+            Following the SolPay launch, a significant percentage of $SP supply was acquired by a single actor through aggressive sniping behavior. This concentration of ownership undermines:
+          </p>
+          <ul className="list-disc list-inside space-y-1">
+            <li>Price discovery, by reducing market depth and liquidity efficiency;</li>
+            <li>User acquisition, by discouraging organic participation and inflating volatility;</li>
+            <li>Protocol alignment, as the affected actor has demonstrated behavior inconsistent with the long-term goals of the project.</li>
+          </ul>
+          <p className="mt-2">
+            The SolPay developer and ZCombinatorio community deem this redistribution necessary to ensure the network&apos;s sustainability and equitable token distribution.
+          </p>
+        </div>
+
+        <p>
+          The proposal passes if pass-fail gap &gt; 0%. Pass-fail gap is calculated using TWAP.
+        </p>
+
+        <div>
+          <h3 className="text-lg font-semibold text-white mb-2">I need help - who can I talk to?</h3>
+          <p>
+            Come join our Discord: <a href="https://discord.gg/Vf38Mqhxu5" className="text-blue-400 hover:text-blue-300 underline" target="_blank" rel="noopener noreferrer">https://discord.gg/Vf38Mqhxu5</a>
+          </p>
+        </div>
+      </div>
+    )
+  },
   6: {
     id: 6,
     title: "What is the price of $ZC after OOG-1 settles?",
