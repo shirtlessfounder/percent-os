@@ -19,8 +19,8 @@ export default function FeedbackWidget() {
       }}
     >
       <button
-        className="fixed bottom-6 right-6 w-14 h-14 text-white rounded-full shadow-lg transition-all hover:scale-110 flex items-center justify-center z-40 cursor-pointer"
-        style={{ backgroundColor: '#ef6400' }}
+        className="fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-lg transition-all hover:scale-110 flex items-center justify-center z-40 cursor-pointer"
+        style={{ backgroundColor: '#ef6400', color: '#0a0a0a' }}
         onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#d75700'}
         onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#ef6400'}
         title="Send feedback"
