@@ -11,9 +11,11 @@ interface HeaderProps {
   zcBalance: number;
   hasWalletBalance?: boolean;
   login?: () => void;
+  navTab: 'live' | 'history';
+  onNavTabChange: (tab: 'live' | 'history') => void;
 }
 
-export default function Header({ walletAddress, authenticated, solBalance, zcBalance, login }: HeaderProps) {
+export default function Header({ walletAddress, authenticated, solBalance, zcBalance, login, navTab, onNavTabChange }: HeaderProps) {
   const { exportWallet } = useSolanaWallets();
   const [isHoveringWallet, setIsHoveringWallet] = useState(false);
   const walletPrefix = walletAddress ? walletAddress.slice(0, 6) : 'N/A';
@@ -34,9 +36,11 @@ export default function Header({ walletAddress, authenticated, solBalance, zcBal
   };
 
   return (
-    <div className="h-14 flex items-center justify-between px-8 bg-[#0a0a0a] border-b border-[#494949]">
-      {/* Left side: Logo / wallet / balances */}
-      <div className="flex items-center gap-4 text-gray-400">
+    <div className="bg-[#0a0a0a]">
+      {/* First Row: Logo / wallet / balances / links */}
+      <div className="h-14 flex items-center justify-between px-8">
+        {/* Left side: Logo / wallet / balances */}
+        <div className="flex items-center gap-4 text-gray-400">
         <img
           src="/long-logo.svg"
           alt="percent.markets"
@@ -141,6 +145,39 @@ export default function Header({ walletAddress, authenticated, solBalance, zcBal
           <span className="hidden sm:inline text-sm">Twitter</span>
         </a>
       </nav>
+      </div>
+
+      {/* Second Row: Live/History Tab Navigation */}
+      <div className="px-8 border-b border-[#292929]">
+        <div className="flex">
+          <button
+            onClick={() => onNavTabChange('live')}
+            className={`text-sm py-1 px-4 transition-all duration-200 ease-in-out cursor-pointer my-0.5 hover:bg-white/10 hover:rounded relative ${
+              navTab === 'live'
+                ? 'text-white'
+                : 'text-gray-400 hover:text-gray-300'
+            }`}
+          >
+            {navTab === 'live' && (
+              <div className="absolute -bottom-[4px] left-0 right-0 h-[2px] bg-white z-10" />
+            )}
+            Live
+          </button>
+          <button
+            onClick={() => onNavTabChange('history')}
+            className={`text-sm py-1 px-4 transition-all duration-200 ease-in-out cursor-pointer my-0.5 hover:bg-white/10 hover:rounded relative ${
+              navTab === 'history'
+                ? 'text-white'
+                : 'text-gray-400 hover:text-gray-300'
+            }`}
+          >
+            {navTab === 'history' && (
+              <div className="absolute -bottom-[4px] left-0 right-0 h-[2px] bg-white z-10" />
+            )}
+            History
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

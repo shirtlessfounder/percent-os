@@ -470,39 +470,9 @@ export default function HomePage() {
             zcBalance={zcBalance}
             hasWalletBalance={hasWalletBalance}
             login={login}
+            navTab={navTab}
+            onNavTabChange={setNavTab}
           />
-
-          {/* Tab Navigation */}
-          <div className="px-8">
-            <div className="flex pt-1">
-              <button
-                onClick={() => setNavTab('live')}
-                className={`text-sm py-1 px-4 transition-all duration-200 ease-in-out cursor-pointer my-0.5 hover:bg-white/10 hover:rounded relative ${
-                  navTab === 'live'
-                    ? 'text-white'
-                    : 'text-gray-400 hover:text-gray-300'
-                }`}
-              >
-                {navTab === 'live' && (
-                  <div className="absolute -top-[7px] left-0 right-0 h-[2px] bg-white z-10" />
-                )}
-                Live
-              </button>
-              <button
-                onClick={() => setNavTab('history')}
-                className={`text-sm py-1 px-4 transition-all duration-200 ease-in-out cursor-pointer my-0.5 hover:bg-white/10 hover:rounded relative ${
-                  navTab === 'history'
-                    ? 'text-white'
-                    : 'text-gray-400 hover:text-gray-300'
-                }`}
-              >
-                {navTab === 'history' && (
-                  <div className="absolute -top-[7px] left-0 right-0 h-[2px] bg-white z-10" />
-                )}
-                History
-              </button>
-            </div>
-          </div>
 
           {/* Empty state */}
           <div className="flex-1 flex items-center justify-center">
@@ -528,45 +498,19 @@ export default function HomePage() {
           zcBalance={zcBalance}
           hasWalletBalance={hasWalletBalance}
           login={login}
+          navTab={navTab}
+          onNavTabChange={setNavTab}
         />
-
-        {/* Tab Navigation */}
-        <div className="px-8">
-          <div className="flex pt-1">
-            <button
-              onClick={() => setNavTab('live')}
-              className={`text-sm py-1 px-4 transition-all duration-200 ease-in-out cursor-pointer my-0.5 hover:bg-white/10 hover:rounded relative ${
-                navTab === 'live'
-                  ? 'text-white'
-                  : 'text-gray-400 hover:text-gray-300'
-              }`}
-            >
-              {navTab === 'live' && (
-                <div className="absolute -top-[7px] left-0 right-0 h-[2px] bg-white z-10" />
-              )}
-              Live
-            </button>
-            <button
-              onClick={() => setNavTab('history')}
-              className={`text-sm py-1 px-4 transition-all duration-200 ease-in-out cursor-pointer my-0.5 hover:bg-white/10 hover:rounded relative ${
-                navTab === 'history'
-                  ? 'text-white'
-                  : 'text-gray-400 hover:text-gray-300'
-              }`}
-            >
-              {navTab === 'history' && (
-                <div className="absolute -top-[7px] left-0 right-0 h-[2px] bg-white z-10" />
-              )}
-              History
-            </button>
-          </div>
-        </div>
 
         {/* Content Area */}
         <div className="flex-1 flex overflow-hidden">
           {navTab === 'live' && (
             <>
-          <div className="flex-1 p-8 pr-10 overflow-y-auto border-r border-[#2A2A2A]">
+          <div className="flex-1 flex justify-center overflow-y-auto border-r border-[#2A2A2A]">
+            <div className="w-full max-w-[1332px] 2xl:max-w-[1512px] pt-8 pb-8">
+            <div className="text-white mb-6">
+              <h2 className="text-2xl font-medium">Live Proposal</h2>
+            </div>
             <ProposalHeader
               proposalId={proposal.id}
               status={proposal.status as 'Pending' | 'Passed' | 'Failed' | 'Executed'}
@@ -686,9 +630,12 @@ export default function HomePage() {
             </div>
               </div>
             )}
+            </div>
           </div>
 
           {/* Trading Panel - Sticky Position */}
+          {/* TEMPORARILY COMMENTED OUT TO TEST ALIGNMENT */}
+          {/*
           <div className="w-[352px] p-8 overflow-y-auto">
             <div className="sticky top-0 space-y-6">
               {authenticated && proposal.status === 'Pending' && (
@@ -740,6 +687,7 @@ export default function HomePage() {
               />
             </div>
           </div>
+          */}
             </>
           )}
 
