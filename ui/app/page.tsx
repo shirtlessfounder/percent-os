@@ -506,7 +506,7 @@ export default function HomePage() {
         <div className="flex-1 flex overflow-hidden">
           {navTab === 'live' && (
             <>
-          <div className="flex-1 flex justify-center overflow-y-auto border-r border-[#2A2A2A]">
+          <div className="flex-1 flex justify-center overflow-y-auto">
             <div className="w-full max-w-[1332px] 2xl:max-w-[1512px] pt-8 pb-8">
             <div className="text-white mb-6">
               <h2 className="text-2xl font-medium">Live Proposal</h2>
