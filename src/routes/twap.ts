@@ -1,13 +1,10 @@
 import { Router } from 'express';
 import { getModerator } from '../services/moderator.service';
 import { ProposalStatus } from '../../app/types/moderator.interface';
-import { SchedulerService } from '../../app/services/scheduler.service';
-import { optionalApiKey } from '../middleware/auth';
-import { PersistenceService } from '../../app/services/persistence.service';
 
 const router = Router();
 
-router.get('/:proposalId', optionalApiKey, async (req, res) => {
+router.get('/:proposalId', async (req, res) => {
   try {
     const proposalId = parseInt(req.params.proposalId);
     

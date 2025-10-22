@@ -24,16 +24,3 @@ export const requireApiKey = (req: AuthRequest, res: Response, next: NextFunctio
   req.isAuthenticated = true;
   next();
 };
-
-export const optionalApiKey = (req: AuthRequest, res: Response, next: NextFunction) => {
-  const apiKey = req.headers['x-api-key'] || req.query.api_key;
-  const validApiKey = process.env.API_KEY;
-
-  if (apiKey && validApiKey && apiKey === validApiKey) {
-    req.isAuthenticated = true;
-  } else {
-    req.isAuthenticated = false;
-  }
-
-  next();
-};
