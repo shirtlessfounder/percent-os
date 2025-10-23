@@ -20,17 +20,11 @@ export interface IAMM {
   readonly quoteMint: PublicKey;      // Quote token mint address (immutable)
   readonly baseDecimals: number;      // Decimals for base token (immutable)
   readonly quoteDecimals: number;     // Decimals for quote token (immutable)
-  readonly state: AMMState;           // Current operational state (readonly)
+  state: AMMState;                    // Current operational state
   readonly isFinalized: boolean;      // Whether the AMM has been finalized
   pool?: PublicKey;                   // Pool address (set after initialization)
   position?: PublicKey;               // Position account address
   positionNft?: PublicKey;            // Position NFT mint address
-  
-  /**
-   * Sets the AMM state (useful for deserialization or testing)
-   * @param state - The new AMM state
-   */
-  setState(state: AMMState): void;
 
   /**
    * Builds a transaction for initializing the AMM pool with initial liquidity

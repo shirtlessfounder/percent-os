@@ -79,7 +79,8 @@ export class Proposal implements IProposal {
       config.baseDecimals,
       config.quoteDecimals,
       config.authority,
-      config.executionService
+      config.executionService,
+      config.logger.createChild('pAMM')
     );
     
     // Initialize fail AMM (trades fBase/fQuote tokens)
@@ -89,7 +90,8 @@ export class Proposal implements IProposal {
       config.baseDecimals,
       config.quoteDecimals,
       config.authority,
-      config.executionService
+      config.executionService,
+      config.logger.createChild('fAMM')
     );
   }
 
