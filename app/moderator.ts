@@ -1,4 +1,4 @@
-import { Keypair, Connection } from '@solana/web3.js';
+import { Keypair } from '@solana/web3.js';
 import { IModerator, IModeratorConfig, IModeratorInfo, ProposalStatus, ICreateProposalParams } from './types/moderator.interface';
 import { IExecutionConfig, IExecutionResult, PriorityFeeMode, Commitment, ExecutionStatus } from './types/execution.interface';
 import { IProposal, IProposalConfig } from './types/proposal.interface';
@@ -52,11 +52,10 @@ export class Moderator implements IModerator {
     };
 
     // Initialize logger with a category based on protocol name and moderator ID
-    const loggerCategory = protocolName ? `moderator-${protocolName}-${id}` : `moderator-${id}`;
-    this.logger = LoggerService.getInstance(loggerCategory);
+    this.logger = LoggerService.getInstance(`moderator-${protocolName || id}`);
     this.logger.info('Moderator initialized', {
       moderatorId: id,
-      protocolName: protocolName || 'default',
+      protocolName: protocolName,
     });
 
     this.executionService = new ExecutionService(executionConfig, this.logger);
@@ -127,7 +126,7 @@ export class Moderator implements IModerator {
   async createProposal(params: ICreateProposalParams): Promise<IProposal> {
     const proposalIdCounter = await this.getProposalIdCounter();
     try {
-      this.logger.info('Creating proposal', { proposalId: proposalIdCounter });
+      this.logger.info('Creating proposal');
       // Create proposal config from moderator config and params
       const proposalConfig: IProposalConfig = {
         id: proposalIdCounter,
@@ -147,7 +146,7 @@ export class Moderator implements IModerator {
         totalSupply: params.totalSupply,
         twap: params.twap,
         ammConfig: params.amm,
-        logger: this.logger,
+        logger: this.logger.createChild(`proposal-${proposalIdCounter}`),
       };
 
       // Create new proposal with config object
@@ -160,35 +159,28 @@ export class Moderator implements IModerator {
       await this.saveProposal(proposal);
       await this.persistenceService.saveModeratorState(proposalIdCounter + 1, this.config);
       
-      this.logger.info('Proposal initialized and saved', { proposalId: proposal.id });
+      this.logger.info('Proposal initialized and saved');
       
       // Schedule automatic TWAP cranking (every minute)
-      this.scheduler.scheduleTWAPCranking(proposal.id, params.twap.minUpdateInterval);
+      this.scheduler.scheduleTWAPCranking(proposalIdCounter, params.twap.minUpdateInterval);
 
       // Also schedule price recording for this proposal
-      this.scheduler.schedulePriceRecording(proposal.id, 5000); // 5 seconds
+      this.scheduler.schedulePriceRecording(proposalIdCounter, 5000); // 5 seconds
 
       // Schedule spot price recording if spot pool address is provided
       if (params.spotPoolAddress) {
-        this.scheduler.scheduleSpotPriceRecording(proposal.id, params.spotPoolAddress, 60000); // 1 minute
-        this.logger.info('Scheduled spot price recording', {
-          proposalId: proposal.id,
-          spotPoolAddress: params.spotPoolAddress
-        });
+        this.scheduler.scheduleSpotPriceRecording(proposalIdCounter, params.spotPoolAddress, 60000); // 1 minute
+        this.logger.info('Scheduled spot price recording', { spotPoolAddress: params.spotPoolAddress });
       }
 
       // Schedule automatic finalization 1 second after the proposal's end time
       // This buffer ensures all TWAP data is collected and attempts to avoid race conditions
-      this.scheduler.scheduleProposalFinalization(proposal.id, proposal.finalizedAt + 1000);
-      this.logger.info('Scheduled proposal finalization', {
-        proposalId: proposal.id,
-        finalizedAt: proposal.finalizedAt
-      });
+      this.scheduler.scheduleProposalFinalization(proposalIdCounter, proposal.finalizedAt + 1000);
+      this.logger.info('Scheduled proposal finalization', { finalizedAt: proposal.finalizedAt });
 
       return proposal;
     } catch (error) {
       this.logger.error('Failed to create proposal', {
-        proposalId: proposalIdCounter,
         error: error instanceof Error ? error.message : String(error)
       });
       throw error;
@@ -205,7 +197,7 @@ export class Moderator implements IModerator {
    */
   async finalizeProposal(id: number): Promise<ProposalStatus> {
     // Get proposal from cache or database
-    this.logger.info('Finalizing proposal', { proposalId: id });
+    this.logger.info('Finalizing proposal');
     const proposal = await this.getProposal(id);
     if (!proposal) {
       throw new Error(`Proposal with ID ${id} does not exist`);
@@ -213,10 +205,7 @@ export class Moderator implements IModerator {
 
     const status = await proposal.finalize();
     await this.saveProposal(proposal);
-    this.logger.info('Proposal finalized and saved', {
-      proposalId: id,
-      status: status
-    });
+    this.logger.info('Proposal finalized and saved', { status: status });
     return status;
   }
 
@@ -232,7 +221,7 @@ export class Moderator implements IModerator {
     id: number,
     signer: Keypair
   ): Promise<IExecutionResult> {
-    this.logger.info('Executing proposal', { proposalId: id });
+    this.logger.info('Executing proposal');
 
     try {
       // Get proposal from cache or database
@@ -252,22 +241,15 @@ export class Moderator implements IModerator {
       await this.saveProposal(proposal);
 
       if (result.status === ExecutionStatus.Failed) {
-        this.logger.error('Proposal execution failed', {
-          proposalId: id,
-          result
-        });
+        this.logger.error('Proposal execution failed', { result: result });
         throw new Error(`Failed to execute proposal #${id}: ${result.error}`);
       }
 
-      this.logger.info('Proposal executed successfully', {
-        proposalId: id,
-        result
-      });
+      this.logger.info('Proposal executed successfully', { result: result });
 
       return result;
     } catch (error) {
       this.logger.error('Failed to execute proposal', {
-        proposalId: id,
         error: error instanceof Error ? error.message : String(error)
       });
       throw error;

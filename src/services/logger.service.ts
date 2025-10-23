@@ -23,7 +23,7 @@ export class LoggerService {
     const transports: winston.transport[] = [];
 
     // Console transport (only in development)
-    if (process.env.NODE_ENV !== 'production' && process.env.LOG_TO_CONSOLE !== 'false') {
+    if (process.env.LOG_TO_CONSOLE !== 'false') {
       transports.push(
         new winston.transports.Console({
           format: winston.format.combine(
@@ -37,11 +37,13 @@ export class LoggerService {
       );
     }
 
-    // File transport - one file per category
+    // File transport - one file per root category (before first dot)
     if (process.env.LOG_TO_FILE !== 'false') {
+      // Extract root category (everything before first dot)
+      const rootCategory = this.category.split('.')[0];
       transports.push(
         new winston.transports.File({
-          filename: path.join(logDir, `${this.category}.log`),
+          filename: path.join(logDir, `${rootCategory}.log`),
           format: winston.format.combine(
             winston.format.timestamp(),
             winston.format.json()
@@ -79,6 +81,18 @@ export class LoggerService {
       this.instances.set(category, new LoggerService(category));
     }
     return this.instances.get(category)!;
+  }
+
+  /**
+   * Create a child logger with extended category
+   * Useful for sub-components within the same category
+   * Example: moderatorLogger.createChild('proposal') -> [moderator.proposal]
+   */
+  createChild(subCategory: string): LoggerService {
+    const child = Object.create(this);
+    // Extend the category with dot notation
+    child.category = `${this.category}.${subCategory}`;
+    return child;
   }
 
   /**
@@ -127,7 +141,12 @@ export class LoggerService {
       else if (value && typeof value === 'object' && 'toString' in value && !Array.isArray(value)) {
         sanitized[key] = value.toString();
       }
-      // Pass through primitive values and arrays
+      // Prettify objects and arrays
+      else if (typeof value === 'object' && typeof value !== 'function') {
+        // For complex objects/arrays, stringify with pretty formatting
+        sanitized[key] = JSON.stringify(value, null, 2);
+      }
+      // Pass through primitive values
       else if (typeof value !== 'function') {
         sanitized[key] = value;
       }

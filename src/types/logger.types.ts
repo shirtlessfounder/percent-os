@@ -16,13 +16,8 @@ export enum LogLevel {
  * Log categories enum - organizes logs by component
  */
 export enum LogCategory {
-  SYSTEM = 'system',
+  ROUTER = 'router',
   MODERATOR = 'moderator',
-  PROPOSAL = 'proposal',
   API = 'api',
-  AMM = 'amm',
-  VAULT = 'vault',
-  TWAP = 'twap',
-  SCHEDULER = 'scheduler',
   WEBSOCKET = 'websocket',
 }
