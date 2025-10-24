@@ -1,5 +1,5 @@
 import { Keypair, PublicKey, Transaction} from '@solana/web3.js';
-import { IAMM, AMMState } from './types/amm.interface';
+import { IAMM, AMMState, IAMMSerializedData, IAMMDeserializeConfig } from './types/amm.interface';
 import { createMemoIx } from './utils/memo';
 import {
   CpAmm,
@@ -469,12 +469,73 @@ export class AMM implements IAMM {
     // Execute without adding authority signature (swaps only need user signature)
     this.logger.debug('Executing transaction to swap tokens');
     const result = await this.executionService.executeTx(tx);
-    
+
     if (result.status === 'failed') {
       throw new Error(`Swap transaction failed: ${result.error}`);
     }
-    
+
     return result.signature;
+  }
+
+  /**
+   * Serializes the AMM state for persistence
+   * @returns Serialized AMM data that can be saved to database
+   */
+  serialize(): IAMMSerializedData {
+    return {
+      // Token configuration
+      baseMint: this.baseMint.toBase58(),
+      quoteMint: this.quoteMint.toBase58(),
+      baseDecimals: this.baseDecimals,
+      quoteDecimals: this.quoteDecimals,
+
+      // Pool state - handle optional fields
+      state: this.state,
+      pool: this.pool?.toBase58(),
+      position: this.position?.toBase58(),
+      positionNft: this.positionNft?.toBase58(),
+
+      // Note: We don't serialize authority, cpAmm instance, or services
+      // as those are reconstructed during deserialization
+    };
+  }
+
+  /**
+   * Deserializes AMM data and restores the AMM state
+   * @param data - Serialized AMM data from database
+   * @param config - Configuration for reconstructing the AMM
+   * @returns Restored AMM instance
+   */
+  static deserialize(data: IAMMSerializedData, config: IAMMDeserializeConfig): AMM {
+    // Create a new AMM instance with the provided config
+    const amm = new AMM(
+      new PublicKey(data.baseMint),
+      new PublicKey(data.quoteMint),
+      data.baseDecimals,
+      data.quoteDecimals,
+      config.authority,
+      config.executionService,
+      config.logger
+    );
+
+    // Restore the state
+    amm.state = data.state;
+
+    // Restore the pool references if they exist
+    if (data.pool) {
+      amm.pool = new PublicKey(data.pool);
+    }
+    if (data.position) {
+      amm.position = new PublicKey(data.position);
+    }
+    if (data.positionNft) {
+      amm.positionNft = new PublicKey(data.positionNft);
+    }
+
+    // The cpAmm instance is already created in the constructor
+    // Authority and services are provided through config
+
+    return amm;
   }
 
 }
