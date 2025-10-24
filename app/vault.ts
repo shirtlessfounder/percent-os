@@ -11,7 +11,9 @@ import {
   IVaultConfig,
   ITokenBalance,
   VaultType,
-  VaultState
+  VaultState,
+  IVaultSerializedData,
+  IVaultDeserializeConfig
 } from './types/vault.interface';
 import { ProposalStatus } from './types/moderator.interface';
 import { SPLTokenService, NATIVE_MINT } from './services/spl-token.service';
@@ -799,6 +801,84 @@ export class Vault implements IVault {
     }
 
     return result.signature;
+  }
+
+  /**
+   * Serializes the vault state for persistence
+   * @returns Serialized vault data that can be saved to database
+   */
+  serialize(): IVaultSerializedData {
+    return {
+      // Core identifiers
+      proposalId: this.proposalId,
+      vaultType: this.vaultType,
+
+      // Token mints - handle case where they might not be initialized yet
+      regularMint: this.regularMint.toBase58(),
+      passConditionalMint: this._passConditionalMint?.toBase58() || '',
+      failConditionalMint: this._failConditionalMint?.toBase58() || '',
+
+      // State (escrow is deterministic and doesn't need to be stored)
+      state: this._state,
+      proposalStatus: this._proposalStatus,
+
+      // Token configuration
+      decimals: this.decimals,
+
+      // Note: We don't serialize keypairs, escrow, or services as those are
+      // reconstructed during deserialization with proper security context
+    };
+  }
+
+  /**
+   * Deserializes vault data and restores the vault state
+   * @param data - Serialized vault data from database
+   * @param config - Configuration for reconstructing the vault
+   * @returns Restored vault instance
+   */
+  static async deserialize(data: IVaultSerializedData, config: IVaultDeserializeConfig): Promise<Vault> {
+    // Create a new vault instance with the provided config
+    const vault = new Vault({
+      proposalId: data.proposalId,
+      vaultType: data.vaultType,
+      regularMint: new PublicKey(data.regularMint),
+      decimals: data.decimals,
+      authority: config.authority,
+      executionService: config.executionService,
+      logger: config.logger
+    });
+
+    // Restore the internal state
+    // These are private fields that need to be restored for a fully functional vault
+    vault._state = data.state;
+    vault._proposalStatus = data.proposalStatus;
+
+    // Restore the public keys if they exist (not empty strings)
+    if (data.passConditionalMint) {
+      vault._passConditionalMint = new PublicKey(data.passConditionalMint);
+    }
+    if (data.failConditionalMint) {
+      vault._failConditionalMint = new PublicKey(data.failConditionalMint);
+    }
+
+    // Regenerate the escrow public key if the vault has been initialized
+    // The escrow keypair is deterministically generated, so we can recreate it
+    if (vault._state !== VaultState.Uninitialized && data.regularMint) {
+      // The escrowKeypair is already generated in the constructor using
+      // generateDeterministicEscrowKeypair(), so we just need to derive
+      // the associated token address
+      vault._escrow = await getAssociatedTokenAddress(
+        new PublicKey(data.regularMint),
+        vault.escrowKeypair.publicKey
+      );
+    }
+
+    // Clear the mint keypairs as they're only needed for initialization
+    // and we're loading an already initialized vault
+    vault.passMintKeypair = null;
+    vault.failMintKeypair = null;
+
+    return vault;
   }
 
 }

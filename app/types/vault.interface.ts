@@ -202,4 +202,40 @@ export interface IVault {
    * @throws Error if transaction execution fails
    */
   executeRedeemWinningTokensTx(transaction: Transaction, presigned?: boolean): Promise<string>;
+
+  /**
+   * Serializes the vault state for persistence
+   * @returns Serialized vault data that can be saved to database
+   */
+  serialize(): IVaultSerializedData;
+}
+
+/**
+ * Serialized vault data structure for persistence
+ */
+export interface IVaultSerializedData {
+  // Core identifiers
+  proposalId: number;
+  vaultType: VaultType;
+
+  // Token mints (stored as base58 strings)
+  regularMint: string;
+  passConditionalMint: string;
+  failConditionalMint: string;
+
+  // State - escrow is deterministic and doesn't need to be stored
+  state: VaultState;
+  proposalStatus: ProposalStatus;
+
+  // Token configuration
+  decimals: number;
+}
+
+/**
+ * Configuration for deserializing a vault
+ */
+export interface IVaultDeserializeConfig {
+  authority: Keypair;
+  executionService: IExecutionService;
+  logger: LoggerService;
 }
