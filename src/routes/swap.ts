@@ -5,7 +5,6 @@ import { BN } from '@coral-xyz/anchor';
 import { IAMM } from '../../app/types/amm.interface';
 import { HistoryService } from '../../app/services/history.service';
 import { Decimal } from 'decimal.js';
-import { getSwapService } from '../services/swap.service';
 
 const router = Router();
 
@@ -221,59 +220,6 @@ router.post('/:id/executeSwapTx', async (req, res, next) => {
 });
 
 /**
- * Get quote from Jupiter for direct swaps
- * GET /:id/jupiter/quote
- * 
- * Query params:
- * - inputMint: string - Input token mint address
- * - outputMint: string - Output token mint address
- * - amount: string - Amount of input tokens (as string to preserve precision)
- * - slippageBps?: number - Optional slippage tolerance in basis points (default: 50 = 0.5%)
- */
-router.get('/:id/jupiter/quote', async (req, res, next) => {
-  try {
-    
-    // Validate query parameters
-    const { inputMint, outputMint, amount, slippageBps } = req.query;
-    
-    if (!inputMint || !outputMint || !amount) {
-      return res.status(400).json({
-        error: 'Missing required query parameters',
-        required: ['inputMint', 'outputMint', 'amount'],
-        optional: ['slippageBps']
-      });
-    }
-    
-    // Validate slippageBps if provided
-    const slippage = slippageBps ? parseInt(slippageBps as string) : 50;
-    if (isNaN(slippage) || slippage < 0) {
-      return res.status(400).json({
-        error: 'Invalid slippageBps: must be a positive number'
-      });
-    }
-    
-    // Convert parameters
-    const inputMintPubkey = new PublicKey(inputMint as string);
-    const outputMintPubkey = new PublicKey(outputMint as string);
-    const amountBN = new BN(amount as string);
-    
-    // Get swap service and fetch quote
-    const swapService = getSwapService();
-    
-    const quote = await swapService.fetchQuote(
-      inputMintPubkey,
-      outputMintPubkey,
-      amountBN,
-      slippage
-    );
-    
-    res.json(quote);
-  } catch (error) {
-    next(error);
-  }
-});
-
-/**
  * Get quote from conditional AMM
  * GET /:id/:market/quote
  * 
@@ -362,124 +308,6 @@ router.get('/:id/:market/quote', async (req, res, next) => {
       outputMint: outputMint.toString()
     });
   } catch (error) {
-    next(error);
-  }
-});
-
-/**
- * Build a Jupiter swap transaction
- * POST /:id/jupiter/buildSwapTx
- * 
- * Body:
- * - user: string - User's public key who is swapping tokens
- * - inputMint: string - Input token mint address
- * - outputMint: string - Output token mint address
- * - amount: string - Amount of input tokens (as string to preserve precision)
- * - slippageBps?: number - Optional slippage tolerance in basis points (default: 50 = 0.5%)
- */
-router.post('/:id/jupiter/buildSwapTx', async (req, res, next) => {
-  try {
-    const proposalId = parseInt(req.params.id);
-    
-    // Validate request body
-    const { user, inputMint, outputMint, amount, slippageBps } = req.body;
-    
-    if (!user || !inputMint || !outputMint || !amount) {
-      return res.status(400).json({
-        error: 'Missing required fields',
-        required: ['user', 'inputMint', 'outputMint', 'amount'],
-        optional: ['slippageBps']
-      });
-    }
-    
-    // Validate slippageBps if provided
-    const slippage = slippageBps !== undefined ? slippageBps : 50;
-    if (typeof slippage !== 'number' || slippage < 0) {
-      return res.status(400).json({
-        error: 'Invalid slippageBps: must be a positive number'
-      });
-    }
-    
-    // Convert parameters
-    const userPubkey = new PublicKey(user);
-    const inputMintPubkey = new PublicKey(inputMint);
-    const outputMintPubkey = new PublicKey(outputMint);
-    const amountBN = new BN(amount);
-    
-    // Get swap service and build transaction
-    const swapService = getSwapService();
-    
-    const { transaction, quote } = await swapService.buildSwapTx(
-      proposalId,
-      userPubkey,
-      inputMintPubkey,
-      outputMintPubkey,
-      amountBN,
-      slippage
-    );
-    
-    res.json({
-      transaction: transaction.serialize({ requireAllSignatures: false }).toString('base64'),
-      quote: {
-        inAmount: quote.inAmount,
-        outAmount: quote.outAmount,
-        priceImpactPct: quote.priceImpactPct
-      },
-      message: 'Jupiter swap transaction built successfully. User must sign before execution.'
-    });
-  } catch (error) {
-    next(error);
-  }
-});
-
-/**
- * Execute a pre-signed Jupiter swap transaction
- * POST /:id/jupiter/executeSwapTx
- * 
- * Body:
- * - transaction: string - Base64 encoded signed transaction
- */
-router.post('/:id/jupiter/executeSwapTx', async (req, res, next) => {
-  try {
-    // Validate request body
-    const { transaction } = req.body;
-    
-    if (!transaction) {
-      return res.status(400).json({
-        error: 'Missing required field',
-        required: ['transaction']
-      });
-    }
-    
-    // Deserialize the transaction
-    let tx: Transaction;
-    try {
-      tx = Transaction.from(Buffer.from(transaction, 'base64'));
-    } catch (error) {
-      return res.status(400).json({
-        error: 'Invalid transaction: unable to deserialize'
-      });
-    }
-    
-    // Get swap service and execute transaction
-    const swapService = getSwapService();
-    
-    const signature = await swapService.executeSwapTx(tx);
-    
-    res.json({
-      signature,
-      status: 'success',
-      message: 'Jupiter swap executed successfully'
-    });
-  } catch (error) {
-    // Handle execution errors specifically
-    if (error instanceof Error && error.message.includes('Swap execution failed')) {
-      return res.status(500).json({
-        signature: '',
-        status: 'failed',
-        message: error.message
-      });
-    }
     next(error);
   }
 });
