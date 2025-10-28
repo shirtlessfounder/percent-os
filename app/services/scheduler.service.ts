@@ -1,8 +1,7 @@
-import { IProposal } from '../types/proposal.interface';
-import { IModerator } from '../types/moderator.interface';
-import { ISchedulerService, IScheduledTask } from '../types/scheduler.interface';
+import { ISchedulerService, IScheduledTask, ScheduledTaskType } from '../types/scheduler.interface';
+import { IRouterService } from '../types/router.interface';
 import { HistoryService } from './history.service';
-import { PersistenceService } from './persistence.service';
+import { LoggerService } from './logger.service';
 import { SolPriceService } from './sol-price.service';
 import { AMMState } from '../types/amm.interface';
 import { Decimal } from 'decimal.js';
@@ -11,14 +10,16 @@ import { CpAmm, getPriceFromSqrtPrice } from '@meteora-ag/cp-amm-sdk';
 
 /**
  * Scheduler service for managing automatic TWAP cranking and proposal finalization
- * Handles periodic tasks for active proposals
+ * Handles periodic tasks for active proposals across multiple moderators
  */
 export class SchedulerService implements ISchedulerService {
   private tasks: Map<string, IScheduledTask> = new Map();
-  private moderator: IModerator | null = null;
   private static instance: SchedulerService;
+  private logger: LoggerService;
 
-  private constructor() {}
+  private constructor() {
+    this.logger = new LoggerService('router').createChild('scheduler');
+  }
 
   /**
    * Gets the singleton instance of the scheduler service
@@ -31,29 +32,33 @@ export class SchedulerService implements ISchedulerService {
   }
 
   /**
-   * Sets the moderator instance for accessing proposals
-   * @param moderator - The moderator instance
+   * Gets the router service for accessing moderators
+   * @returns The router service instance
    */
-  setModerator(moderator: IModerator): void {
-    this.moderator = moderator;
+  private getRouter(): IRouterService {
+    // Dynamic import to avoid circular dependency with router service
+    const { RouterService } = require('./router.service');
+    return RouterService.getInstance();
   }
 
   /**
    * Schedules automatic TWAP cranking for a proposal
+   * @param moderatorId - The moderator ID that owns the proposal
    * @param proposalId - The proposal ID to crank TWAP for
    * @param intervalMs - Interval between cranks in milliseconds (default: 60000 = 1 minute)
    */
-  scheduleTWAPCranking(proposalId: number, intervalMs: number = 60000): void {
-    const taskId = `twap-${proposalId}`;
-    
+  scheduleTWAPCranking(moderatorId: number, proposalId: number, intervalMs: number = 60000): void {
+    const taskId = `twap-${moderatorId}-${proposalId}`;
+
     if (this.tasks.has(taskId)) {
-      console.log(`TWAP cranking already scheduled for proposal #${proposalId}`);
+      this.logger.debug(`TWAP cranking already scheduled for moderator #${moderatorId} proposal #${proposalId}`);
       return;
     }
 
     const task: IScheduledTask = {
       id: taskId,
-      type: 'twap-crank',
+      type: ScheduledTaskType.TWAPCrank,
+      moderatorId,
       proposalId,
       interval: intervalMs,
       nextRunTime: Date.now() + intervalMs
@@ -61,29 +66,36 @@ export class SchedulerService implements ISchedulerService {
 
     // Start the periodic task
     task.timer = setInterval(async () => {
-      await this.crankTWAPForProposal(proposalId);
+      await this.crankTWAPForProposal(moderatorId, proposalId);
     }, intervalMs);
 
     this.tasks.set(taskId, task);
-    console.log(`Scheduled TWAP cranking for proposal #${proposalId} every ${intervalMs}ms`);
+    this.logger.info('Scheduled TWAP cranking', {
+      moderatorId,
+      proposalId,
+      intervalMs,
+      taskId
+    });
   }
   
   /**
    * Schedules automatic price recording for a proposal
+   * @param moderatorId - The moderator ID that owns the proposal
    * @param proposalId - The proposal ID to record prices for
    * @param intervalMs - Interval between recordings in milliseconds (default: 60000 = 1 minute)
    */
-  schedulePriceRecording(proposalId: number, intervalMs: number = 60000): void {
-    const taskId = `price-${proposalId}`;
-    
+  schedulePriceRecording(moderatorId: number, proposalId: number, intervalMs: number = 60000): void {
+    const taskId = `price-${moderatorId}-${proposalId}`;
+
     if (this.tasks.has(taskId)) {
-      console.log(`Price recording already scheduled for proposal #${proposalId}`);
+      this.logger.info(`Price recording already scheduled for moderator #${moderatorId} proposal #${proposalId}`);
       return;
     }
 
     const task: IScheduledTask = {
       id: taskId,
-      type: 'price-record',
+      type: ScheduledTaskType.PriceRecord,
+      moderatorId,
       proposalId,
       interval: intervalMs,
       nextRunTime: Date.now() + intervalMs
@@ -91,30 +103,37 @@ export class SchedulerService implements ISchedulerService {
 
     // Start the periodic task
     task.timer = setInterval(async () => {
-      await this.recordPricesForProposal(proposalId);
+      await this.recordPricesForProposal(moderatorId, proposalId);
     }, intervalMs);
 
     this.tasks.set(taskId, task);
-    console.log(`Scheduled price recording for proposal #${proposalId} every ${intervalMs}ms`);
+    this.logger.info('Scheduled price recording', {
+      moderatorId,
+      proposalId,
+      intervalMs,
+      taskId
+    });
   }
 
   /**
    * Schedules automatic spot price recording for a proposal
+   * @param moderatorId - The moderator ID that owns the proposal
    * @param proposalId - The proposal ID to record spot prices for
    * @param spotPoolAddress - The Meteora pool address for the spot market
    * @param intervalMs - Interval between recordings in milliseconds (default: 60000 = 1 minute)
    */
-  scheduleSpotPriceRecording(proposalId: number, spotPoolAddress: string, intervalMs: number = 60000): void {
-    const taskId = `spot-${proposalId}`;
+  scheduleSpotPriceRecording(moderatorId: number, proposalId: number, spotPoolAddress: string, intervalMs: number = 60000): void {
+    const taskId = `spot-${moderatorId}-${proposalId}`;
 
     if (this.tasks.has(taskId)) {
-      console.log(`Spot price recording already scheduled for proposal #${proposalId}`);
+      this.logger.info(`Spot price recording already scheduled for moderator #${moderatorId} proposal #${proposalId}`);
       return;
     }
 
     const task: IScheduledTask = {
       id: taskId,
-      type: 'spot-price-record',
+      type: ScheduledTaskType.SpotPriceRecord,
+      moderatorId,
       proposalId,
       interval: intervalMs,
       nextRunTime: Date.now() + intervalMs
@@ -122,95 +141,113 @@ export class SchedulerService implements ISchedulerService {
 
     // Start the periodic task
     task.timer = setInterval(async () => {
-      await this.recordSpotPriceForProposal(proposalId, spotPoolAddress);
+      await this.recordSpotPriceForProposal(moderatorId, proposalId, spotPoolAddress);
     }, intervalMs);
 
     this.tasks.set(taskId, task);
-    console.log(`Scheduled spot price recording for proposal #${proposalId} every ${intervalMs}ms`);
+    this.logger.info('Scheduled spot price recording', {
+      moderatorId,
+      proposalId,
+      intervalMs,
+      spotPoolAddress,
+      taskId
+    });
   }
 
   /**
    * Schedules automatic finalization for a proposal
+   * @param moderatorId - The moderator ID that owns the proposal
    * @param proposalId - The proposal ID to finalize
    * @param finalizeAt - Timestamp when to finalize the proposal
    */
-  scheduleProposalFinalization(proposalId: number, finalizeAt: number): void {
-    const taskId = `finalize-${proposalId}`;
-    
+  scheduleProposalFinalization(moderatorId: number, proposalId: number, finalizeAt: number): void {
+    const taskId = `finalize-${moderatorId}-${proposalId}`;
+
     if (this.tasks.has(taskId)) {
-      console.log(`Finalization already scheduled for proposal #${proposalId}`);
+      this.logger.info(`Finalization already scheduled for moderator #${moderatorId} proposal #${proposalId}`);
       return;
     }
 
     const delayMs = finalizeAt - Date.now();
-    
+
     if (delayMs <= 0) {
       // Should finalize immediately
-      this.finalizeProposal(proposalId);
+      this.finalizeProposal(moderatorId, proposalId);
       return;
     }
 
     const task: IScheduledTask = {
       id: taskId,
-      type: 'proposal-finalize',
+      type: ScheduledTaskType.ProposalFinalize,
+      moderatorId,
       proposalId,
       nextRunTime: finalizeAt
     };
 
     // Schedule one-time finalization
     task.timer = setTimeout(async () => {
-      await this.finalizeProposal(proposalId);
+      await this.finalizeProposal(moderatorId, proposalId);
       this.tasks.delete(taskId);
     }, delayMs);
 
     this.tasks.set(taskId, task);
-    console.log(`Scheduled finalization for proposal #${proposalId} at ${new Date(finalizeAt).toISOString()}`);
+    this.logger.info('Scheduled proposal finalization', {
+      moderatorId,
+      proposalId,
+      finalizeAt: new Date(finalizeAt).toISOString(),
+      delayMs,
+      taskId
+    });
   }
 
   /**
    * Cranks TWAP for a specific proposal
+   * @param moderatorId - The moderator ID that owns the proposal
    * @param proposalId - The proposal ID
    */
-  private async crankTWAPForProposal(proposalId: number): Promise<void> {
-    if (!this.moderator) {
-      throw new Error('Moderator not set in scheduler');
+  private async crankTWAPForProposal(moderatorId: number, proposalId: number): Promise<void> {
+    const router = this.getRouter();
+    const moderator = router.getModerator(moderatorId);
+
+    if (!moderator) {
+      this.logger.error('Moderator not found, cancelling tasks', { moderatorId, proposalId });
+      this.cancelProposalTasks(moderatorId, proposalId);
+      return;
     }
 
     let proposal;
     try {
-      proposal = await this.moderator.getProposal(proposalId);
+      proposal = await moderator.getProposal(proposalId);
     } catch (error) {
-      console.error(`Failed to load proposal #${proposalId} for TWAP cranking:`, error);
-      this.cancelTask(`twap-${proposalId}`);
-      this.cancelTask(`price-${proposalId}`);
-      this.cancelTask(`spot-${proposalId}`);
-      this.cancelTask(`finalize-${proposalId}`);
+      this.logger.error('Failed to load proposal for TWAP cranking', {
+        moderatorId,
+        proposalId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      this.cancelProposalTasks(moderatorId, proposalId);
       return; // Gracefully exit instead of throwing
     }
 
     if (!proposal) {
-      console.warn(`Proposal #${proposalId} not found, cancelling TWAP cranking tasks`);
-      this.cancelTask(`twap-${proposalId}`);
-      this.cancelTask(`price-${proposalId}`);
-      this.cancelTask(`spot-${proposalId}`);
-      this.cancelTask(`finalize-${proposalId}`);
+      this.logger.warn('Proposal not found, cancelling tasks', { moderatorId, proposalId });
+      this.cancelProposalTasks(moderatorId, proposalId);
       return; // Gracefully exit instead of throwing
     }
 
     // Check if proposal has ended
     const now = Date.now();
     if (now >= proposal.finalizedAt) {
-      console.log(`Proposal #${proposalId} has ended, stopping TWAP cranking`);
-      this.cancelTask(`twap-${proposalId}`);
-      this.cancelTask(`price-${proposalId}`);
-      this.cancelTask(`spot-${proposalId}`);
+      this.logger.info(`Proposal #${proposalId} from moderator #${moderatorId} has ended, stopping TWAP cranking`);
+      this.cancelTask(`twap-${moderatorId}-${proposalId}`);
+      this.cancelTask(`price-${moderatorId}-${proposalId}`);
+      this.cancelTask(`spot-${moderatorId}-${proposalId}`);
       return;
     }
 
     // Get the TWAP oracle and crank it
     const twapOracle = proposal.twapOracle;
     await twapOracle.crankTWAP();
-    console.log(`Cranked TWAP for proposal #${proposalId}`);
+    this.logger.info('TWAP cranked successfully', { moderatorId, proposalId });
     
     // Record TWAP data to history
     const historyService = HistoryService.getInstance();
@@ -225,48 +262,47 @@ export class SchedulerService implements ISchedulerService {
     });
     
     // Save updated proposal state to database
-    const persistenceService = PersistenceService.getInstance();
-    await persistenceService.saveProposal(proposal);
+    await moderator.saveProposal(proposal);
     
     // Database is now the source of truth - no cache to invalidate
   }
   
   /**
    * Records prices for a specific proposal
+   * @param moderatorId - The moderator ID that owns the proposal
    * @param proposalId - The proposal ID
    */
-  private async recordPricesForProposal(proposalId: number): Promise<void> {
-    if (!this.moderator) {
-      throw new Error('Moderator not set in scheduler');
+  private async recordPricesForProposal(moderatorId: number, proposalId: number): Promise<void> {
+    const router = this.getRouter();
+    const moderator = router.getModerator(moderatorId);
+
+    if (!moderator) {
+      this.logger.error(`Moderator #${moderatorId} not found, cancelling tasks for proposal #${proposalId}`);
+      this.cancelProposalTasks(moderatorId, proposalId);
+      return;
     }
 
     let proposal;
     try {
-      proposal = await this.moderator.getProposal(proposalId);
+      proposal = await moderator.getProposal(proposalId);
     } catch (error) {
-      console.error(`Failed to load proposal #${proposalId} for price recording:`, error);
-      this.cancelTask(`twap-${proposalId}`);
-      this.cancelTask(`price-${proposalId}`);
-      this.cancelTask(`spot-${proposalId}`);
-      this.cancelTask(`finalize-${proposalId}`);
+      this.logger.error(`Failed to load proposal #${proposalId} from moderator #${moderatorId} for price recording:`, error);
+      this.cancelProposalTasks(moderatorId, proposalId);
       return; // Gracefully exit instead of throwing
     }
 
     if (!proposal) {
-      console.warn(`Proposal #${proposalId} not found, cancelling price recording tasks`);
-      this.cancelTask(`twap-${proposalId}`);
-      this.cancelTask(`price-${proposalId}`);
-      this.cancelTask(`spot-${proposalId}`);
-      this.cancelTask(`finalize-${proposalId}`);
+      this.logger.warn(`Proposal #${proposalId} not found in moderator #${moderatorId}, cancelling tasks`);
+      this.cancelProposalTasks(moderatorId, proposalId);
       return; // Gracefully exit instead of throwing
     }
 
     // Check if proposal has ended
     const now = Date.now();
     if (now >= proposal.finalizedAt) {
-      console.log(`Proposal #${proposalId} has ended, stopping price recording`);
-      this.cancelTask(`price-${proposalId}`);
-      this.cancelTask(`spot-${proposalId}`);
+      this.logger.info(`Proposal #${proposalId} from moderator #${moderatorId} has ended, stopping price recording`);
+      this.cancelTask(`price-${moderatorId}-${proposalId}`);
+      this.cancelTask(`spot-${moderatorId}-${proposalId}`);
       return;
     }
 
@@ -293,40 +329,46 @@ export class SchedulerService implements ISchedulerService {
       });
     }
     
-    console.log(`Recorded prices for proposal #${proposalId}`);
+    this.logger.info(`Recorded prices for proposal #${proposalId}`);
   }
 
   /**
    * Records spot price for a specific proposal
    * Fetches price from Meteora spot pool and converts to market cap USD
+   * @param moderatorId - The moderator ID that owns the proposal
    * @param proposalId - The proposal ID
    * @param spotPoolAddress - The Meteora pool address
    */
-  private async recordSpotPriceForProposal(proposalId: number, spotPoolAddress: string): Promise<void> {
-    if (!this.moderator) {
-      throw new Error('Moderator not set in scheduler');
+  private async recordSpotPriceForProposal(moderatorId: number, proposalId: number, spotPoolAddress: string): Promise<void> {
+    const router = this.getRouter();
+    const moderator = router.getModerator(moderatorId);
+
+    if (!moderator) {
+      this.logger.error(`Moderator #${moderatorId} not found, cancelling spot price tasks for proposal #${proposalId}`);
+      this.cancelTask(`spot-${moderatorId}-${proposalId}`);
+      return;
     }
 
     let proposal;
     try {
-      proposal = await this.moderator.getProposal(proposalId);
+      proposal = await moderator.getProposal(proposalId);
     } catch (error) {
-      console.error(`Failed to load proposal #${proposalId} for spot price recording:`, error);
-      this.cancelTask(`spot-${proposalId}`);
+      this.logger.error(`Failed to load proposal #${proposalId} from moderator #${moderatorId} for spot price recording:`, error);
+      this.cancelTask(`spot-${moderatorId}-${proposalId}`);
       return;
     }
 
     if (!proposal) {
-      console.warn(`Proposal #${proposalId} not found, cancelling spot price recording`);
-      this.cancelTask(`spot-${proposalId}`);
+      this.logger.warn(`Proposal #${proposalId} not found in moderator #${moderatorId}, cancelling spot price recording`);
+      this.cancelTask(`spot-${moderatorId}-${proposalId}`);
       return;
     }
 
     // Check if proposal has ended
     const now = Date.now();
     if (now >= proposal.finalizedAt) {
-      console.log(`Proposal #${proposalId} has ended, stopping spot price recording`);
-      this.cancelTask(`spot-${proposalId}`);
+      this.logger.info(`Proposal #${proposalId} from moderator #${moderatorId} has ended, stopping spot price recording`);
+      this.cancelTask(`spot-${moderatorId}-${proposalId}`);
       return;
     }
 
@@ -357,7 +399,7 @@ export class SchedulerService implements ISchedulerService {
       const solPrice = await solPriceService.getSolPrice();
 
       // Convert to market cap USD: price × total supply × SOL/USD
-      const totalSupply = proposal.totalSupply;
+      const totalSupply = proposal.config.totalSupply;
       const marketCapUSD = spotPriceInSol * totalSupply * solPrice;
 
       // Record to database
@@ -368,35 +410,57 @@ export class SchedulerService implements ISchedulerService {
         price: new Decimal(marketCapUSD),
       });
 
-      console.log(`Recorded spot price for proposal #${proposalId}: $${marketCapUSD.toFixed(2)}`);
+      this.logger.info(`Recorded spot price for proposal #${proposalId}: $${marketCapUSD.toFixed(2)}`);
     } catch (error) {
-      console.error(`Failed to record spot price for proposal #${proposalId}:`, error);
+      this.logger.error(`Failed to record spot price for proposal #${proposalId}:`, error);
       // Don't cancel task on individual failures - might be transient network issues
     }
   }
 
   /**
    * Finalizes a proposal
+   * @param moderatorId - The moderator ID that owns the proposal
    * @param proposalId - The proposal ID
    */
-  private async finalizeProposal(proposalId: number): Promise<void> {
-    if (!this.moderator) {
-      throw new Error('Moderator not set in scheduler');
+  private async finalizeProposal(moderatorId: number, proposalId: number): Promise<void> {
+    const router = this.getRouter();
+    const moderator = router.getModerator(moderatorId);
+
+    if (!moderator) {
+      this.logger.error(`Moderator #${moderatorId} not found, cannot finalize proposal #${proposalId}`);
+      this.cancelProposalTasks(moderatorId, proposalId);
+      return;
     }
 
-    console.log(`Auto-finalizing proposal #${proposalId}`);
+    this.logger.info('Auto-finalizing proposal', { moderatorId, proposalId });
     try {
-      const status = await this.moderator.finalizeProposal(proposalId);
-      console.log(`Proposal #${proposalId} finalized with status: ${status}`);
+      const status = await moderator.finalizeProposal(proposalId);
+      this.logger.info('Proposal finalized successfully', {
+        moderatorId,
+        proposalId,
+        status
+      });
     } catch (error) {
-      console.error(`Failed to finalize proposal #${proposalId}:`, error);
+      this.logger.error('Failed to finalize proposal', {
+        moderatorId,
+        proposalId,
+        error: error instanceof Error ? error.message : String(error)
+      });
     }
-    
-    // Cancel TWAP cranking, price recording, and spot price recording for this proposal regardless of finalization success
-    this.cancelTask(`twap-${proposalId}`);
-    this.cancelTask(`price-${proposalId}`);
-    this.cancelTask(`spot-${proposalId}`);
-    this.cancelTask(`finalize-${proposalId}`);
+
+    // Cancel all tasks for this proposal regardless of finalization success
+    this.cancelProposalTasks(moderatorId, proposalId);
+  }
+
+  /**
+   * Helper to check if a task type uses setInterval (periodic) or setTimeout (one-time)
+   * @param type - The task type to check
+   * @returns true if the task is periodic (uses setInterval)
+   */
+  private isPeriodicTask(type: ScheduledTaskType): boolean {
+    return type === ScheduledTaskType.TWAPCrank ||
+           type === ScheduledTaskType.PriceRecord ||
+           type === ScheduledTaskType.SpotPriceRecord;
   }
 
   /**
@@ -407,52 +471,55 @@ export class SchedulerService implements ISchedulerService {
     const task = this.tasks.get(taskId);
     if (task) {
       if (task.timer) {
-        if (task.type === 'twap-crank') {
+        if (this.isPeriodicTask(task.type)) {
           clearInterval(task.timer);
         } else {
           clearTimeout(task.timer);
         }
       }
       this.tasks.delete(taskId);
-      console.log(`Cancelled task: ${taskId}`);
+      this.logger.debug('Task cancelled', { taskId, type: task.type });
     }
   }
 
   /**
    * Cancels all tasks for a specific proposal
+   * @param moderatorId - The moderator ID that owns the proposal
    * @param proposalId - The proposal ID
    */
-  cancelProposalTasks(proposalId: number): void {
-    this.cancelTask(`twap-${proposalId}`);
-    this.cancelTask(`price-${proposalId}`);
-    this.cancelTask(`spot-${proposalId}`);
-    this.cancelTask(`finalize-${proposalId}`);
+  cancelProposalTasks(moderatorId: number, proposalId: number): void {
+    this.cancelTask(`twap-${moderatorId}-${proposalId}`);
+    this.cancelTask(`price-${moderatorId}-${proposalId}`);
+    this.cancelTask(`spot-${moderatorId}-${proposalId}`);
+    this.cancelTask(`finalize-${moderatorId}-${proposalId}`);
   }
 
   /**
    * Stops all scheduled tasks
    */
   stopAll(): void {
-    for (const [taskId, task] of this.tasks.entries()) {
+    for (const [_, task] of this.tasks.entries()) {
       if (task.timer) {
-        if (task.type === 'twap-crank') {
+        if (this.isPeriodicTask(task.type)) {
           clearInterval(task.timer);
         } else {
           clearTimeout(task.timer);
         }
       }
     }
+    const taskCount = this.tasks.size;
     this.tasks.clear();
-    console.log('All scheduled tasks stopped');
+    this.logger.info('All scheduled tasks stopped', { taskCount });
   }
 
   /**
    * Gets information about all active tasks
    */
-  getActiveTasks(): Array<{id: string; type: string; proposalId: number; nextRunTime: number}> {
+  getActiveTasks(): Array<{id: string; type: string; moderatorId: number; proposalId: number; nextRunTime: number}> {
     return Array.from(this.tasks.values()).map(task => ({
       id: task.id,
       type: task.type,
+      moderatorId: task.moderatorId,
       proposalId: task.proposalId,
       nextRunTime: task.nextRunTime
     }));

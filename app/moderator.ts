@@ -39,7 +39,6 @@ export class Moderator implements IModerator {
     const commitment: Commitment = config.commitment || Commitment.Confirmed;
 
     this.scheduler = SchedulerService.getInstance();
-    this.scheduler.setModerator(this);
     this.persistenceService = new PersistenceService(id);
 
     // Initialize execution service with default config
@@ -162,20 +161,20 @@ export class Moderator implements IModerator {
       this.logger.info('Proposal initialized and saved');
       
       // Schedule automatic TWAP cranking (every minute)
-      this.scheduler.scheduleTWAPCranking(proposalIdCounter, params.twap.minUpdateInterval);
+      this.scheduler.scheduleTWAPCranking(this.id, proposalIdCounter, params.twap.minUpdateInterval);
 
       // Also schedule price recording for this proposal
-      this.scheduler.schedulePriceRecording(proposalIdCounter, 5000); // 5 seconds
+      this.scheduler.schedulePriceRecording(this.id, proposalIdCounter, 5000); // 5 seconds
 
       // Schedule spot price recording if spot pool address is provided
       if (params.spotPoolAddress) {
-        this.scheduler.scheduleSpotPriceRecording(proposalIdCounter, params.spotPoolAddress, 60000); // 1 minute
+        this.scheduler.scheduleSpotPriceRecording(this.id, proposalIdCounter, params.spotPoolAddress, 60000); // 1 minute
         this.logger.info('Scheduled spot price recording', { spotPoolAddress: params.spotPoolAddress });
       }
 
       // Schedule automatic finalization 1 second after the proposal's end time
       // This buffer ensures all TWAP data is collected and attempts to avoid race conditions
-      this.scheduler.scheduleProposalFinalization(proposalIdCounter, proposal.finalizedAt + 1000);
+      this.scheduler.scheduleProposalFinalization(this.id, proposalIdCounter, proposal.finalizedAt + 1000);
       this.logger.info('Scheduled proposal finalization', { finalizedAt: proposal.finalizedAt });
 
       return proposal;

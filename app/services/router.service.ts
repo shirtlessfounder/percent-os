@@ -18,7 +18,7 @@ export class RouterService implements IRouterService {
   private logger: LoggerService;
 
   private constructor() {
-    this.logger = new LoggerService('ROUTER');
+    this.logger = new LoggerService('router');
   }
 
   /**
@@ -164,11 +164,11 @@ export class RouterService implements IRouterService {
   public async recoverPendingProposals(): Promise<void> {
     this.logger.info('Starting recovery of pending proposals for all moderators...');
 
-    for (const [moderatorId, moderator] of this.moderators) {
+    for (const [_, moderator] of this.moderators) {
       try {
-        await this.recoverModeratorProposals(moderatorId, moderator);
+        await this.recoverModeratorProposals(moderator);
       } catch (error) {
-        this.logger.error(`Failed to recover proposals for moderator ${moderatorId}:`, error);
+        this.logger.error(`Failed to recover proposals for moderator ${moderator.id}:`, error);
         // Continue with other moderators even if one fails
       }
     }
@@ -178,10 +178,10 @@ export class RouterService implements IRouterService {
 
   /**
    * Recovers pending proposals for a specific moderator
-   * @param moderatorId - The ID of the moderator
    * @param moderator - The moderator instance
    */
-  private async recoverModeratorProposals(moderatorId: number, moderator: Moderator): Promise<void> {
+  private async recoverModeratorProposals(moderator: Moderator): Promise<void> {
+    const moderatorId = moderator.id;
     const scheduler = SchedulerService.getInstance();
     const persistenceService = new PersistenceService(moderatorId);
 
@@ -213,19 +213,19 @@ export class RouterService implements IRouterService {
             this.logger.info(`Rescheduling tasks for active proposal #${proposal.config.id} for moderator ${moderatorId}`);
 
             // Schedule price recording (every 5 seconds)
-            scheduler.schedulePriceRecording(proposal.config.id, 5000);
+            scheduler.schedulePriceRecording(moderatorId, proposal.config.id, 5000);
 
             // Schedule TWAP cranking (default 1 minute interval)
-            scheduler.scheduleTWAPCranking(proposal.config.id, 60000);
+            scheduler.scheduleTWAPCranking(moderatorId, proposal.config.id, 60000);
 
             // Schedule spot price recording if spot pool address exists
             if (proposal.config.spotPoolAddress) {
-              scheduler.scheduleSpotPriceRecording(proposal.config.id, proposal.config.spotPoolAddress, 60000);
+              scheduler.scheduleSpotPriceRecording(moderatorId, proposal.config.id, proposal.config.spotPoolAddress, 60000);
               this.logger.info(`Scheduled spot price recording for proposal #${proposal.config.id}`);
             }
 
             // Schedule finalization 1 second after the proposal's end time
-            scheduler.scheduleProposalFinalization(proposal.config.id, proposal.finalizedAt + 1000);
+            scheduler.scheduleProposalFinalization(moderatorId, proposal.config.id, proposal.finalizedAt + 1000);
 
             rescheduledCount++;
           }
