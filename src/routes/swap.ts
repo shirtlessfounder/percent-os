@@ -1,32 +1,39 @@
 import { Router } from 'express';
-import { getModerator } from '../services/moderator.service';
+import { requireModeratorId, getModerator } from '../middleware/validation';
+import { getProposalId } from '../utils';
 import { PublicKey, Transaction } from '@solana/web3.js';
 import { BN } from '@coral-xyz/anchor';
 import { IAMM } from '../../app/types/amm.interface';
 import { HistoryService } from '../../app/services/history.service';
+import { LoggerService } from '@app/services/logger.service';
 import { Decimal } from 'decimal.js';
 
 const router = Router();
+const logger = new LoggerService('api').createChild('swap');
+
+// Apply requireModeratorId to all swap routes - no fallback allowed
+router.use(requireModeratorId);
 
 /**
  * Helper function to get AMM from proposal
+ * @param moderatorId - The moderator ID
  * @param proposalId - The proposal ID
  * @param market - Either 'pass' or 'fail' to select the AMM
  * @returns The requested AMM instance
  */
-async function getAMM(proposalId: number, market: string): Promise<IAMM> {
-  const moderator = await getModerator();
-  
+async function getAMM(moderatorId: number, proposalId: number, market: string): Promise<IAMM> {
+  const moderator = getModerator(moderatorId);
+
   // Get proposal from database (always fresh data)
   const proposal = await moderator.getProposal(proposalId);
-  
+
   if (!proposal) {
     throw new Error('Proposal not found');
   }
-  
+
   // Use the proposal's getAMMs() method which handles initialization checks
   const [pAMM, fAMM] = proposal.getAMMs();
-  
+
   if (market === 'pass') {
     return pAMM;
   } else if (market === 'fail') {
@@ -49,43 +56,48 @@ async function getAMM(proposalId: number, market: string): Promise<IAMM> {
  */
 router.post('/:id/buildSwapTx', async (req, res, next) => {
   try {
-    const proposalId = parseInt(req.params.id);
-    
+    const moderatorId = req.moderatorId;
+    const proposalId = getProposalId(req);
+
     // Validate request body
     const { user, market, isBaseToQuote, amountIn, slippageBps } = req.body;
-    
+
     if (!user || !market || isBaseToQuote === undefined || amountIn === undefined) {
-      return res.status(400).json({ 
+      logger.warn('Missing required fields for buildSwapTx', { proposalId, user, market });
+      return res.status(400).json({
         error: 'Missing required fields',
         required: ['user', 'market', 'isBaseToQuote', 'amountIn'],
         optional: ['slippageBps']
       });
     }
-    
+
     // Validate market is valid
     if (market !== 'pass' && market !== 'fail') {
-      return res.status(400).json({ 
+      logger.warn('Invalid market for buildSwapTx', { proposalId, market });
+      return res.status(400).json({
         error: 'Invalid market: must be "pass" or "fail"'
       });
     }
-    
+
     // Validate isBaseToQuote is boolean
     if (typeof isBaseToQuote !== 'boolean') {
-      return res.status(400).json({ 
+      logger.warn('Invalid isBaseToQuote type', { proposalId, isBaseToQuote });
+      return res.status(400).json({
         error: 'Invalid field type: isBaseToQuote must be a boolean'
       });
     }
-    
+
     // Validate slippageBps if provided
     if (slippageBps !== undefined && (typeof slippageBps !== 'number' || slippageBps < 0)) {
-      return res.status(400).json({ 
+      logger.warn('Invalid slippageBps', { proposalId, slippageBps });
+      return res.status(400).json({
         error: 'Invalid slippageBps: must be a positive number'
       });
     }
-    
+
     // Get the appropriate AMM
-    const amm = await getAMM(proposalId, market);
-    
+    const amm = await getAMM(moderatorId, proposalId, market);
+
     // Convert values
     const userPubkey = new PublicKey(user);
     const amountInBN = new BN(amountIn);
@@ -101,12 +113,25 @@ router.post('/:id/buildSwapTx', async (req, res, next) => {
       slippageBps
     );
 
+    logger.info('Swap transaction built', {
+      proposalId,
+      market,
+      user,
+      isBaseToQuote,
+      amountIn: amountIn.toString(),
+      expectedAmountOut: quote.swapOutAmount.toString()
+    });
+
     res.json({
       transaction: transaction.serialize({ requireAllSignatures: false }).toString('base64'),
       expectedAmountOut: quote.swapOutAmount.toString(),
       message: 'Swap transaction built successfully. User must sign before execution.'
     });
   } catch (error) {
+    logger.error('Failed to build swap transaction', {
+      error: error instanceof Error ? error.message : String(error),
+      proposalId: req.params.id
+    });
     next(error);
   }
 });
@@ -125,40 +150,43 @@ router.post('/:id/buildSwapTx', async (req, res, next) => {
  */
 router.post('/:id/executeSwapTx', async (req, res, next) => {
   try {
-    const proposalId = parseInt(req.params.id);
-    
+    const moderatorId = req.moderatorId;
+    const proposalId = getProposalId(req);
+
     // Validate request body
     const { transaction, market, user, isBaseToQuote, amountIn, amountOut } = req.body;
     if (!transaction || !market || !user || isBaseToQuote === undefined || !amountIn) {
-      return res.status(400).json({ 
+      logger.warn('Missing required fields for executeSwapTx', { proposalId });
+      return res.status(400).json({
         error: 'Missing required fields',
         required: ['transaction', 'market', 'user', 'isBaseToQuote', 'amountIn'],
         optional: ['amountOut']
       });
     }
-    
+
     // Validate market is valid
     if (market !== 'pass' && market !== 'fail') {
-      return res.status(400).json({ 
+      logger.warn('Invalid market for executeSwapTx', { proposalId, market });
+      return res.status(400).json({
         error: 'Invalid market: must be "pass" or "fail"'
       });
     }
-    
+
     // Get the appropriate AMM
-    const amm = await getAMM(proposalId, market);
-    
+    const amm = await getAMM(moderatorId, proposalId, market);
+
     // Deserialize the transaction
     const tx = Transaction.from(Buffer.from(transaction, 'base64'));
-    
+
     // Execute the swap
     const signature = await amm.executeSwapTx(tx);
-    
+
     // Save the updated proposal state to database after the swap
-    const moderator = await getModerator();
+    const moderator = getModerator(moderatorId);
     const updatedProposal = await moderator.getProposal(proposalId);
     if (updatedProposal) {
       await moderator.saveProposal(updatedProposal);
-      console.log(`Proposal #${proposalId} state saved after swap execution`);
+      logger.info('Swap executed and saved', { proposalId, market, signature });
     }
     
     // Log trade to history (required parameters are now validated above)
@@ -202,10 +230,14 @@ router.post('/:id/executeSwapTx', async (req, res, next) => {
         price: currentPrice,
         txSignature: signature,
       });
-      
-      console.log(`Trade logged for proposal #${proposalId}, market: ${market}, user: ${user}`);
+
+      logger.info('Trade logged', { proposalId, market, user });
     } catch (logError) {
-      console.error('Failed to log trade to history:', logError);
+      logger.error('Failed to log trade to history', {
+        error: logError instanceof Error ? logError.message : String(logError),
+        proposalId,
+        market
+      });
       // Continue even if logging fails
     }
     
@@ -215,6 +247,10 @@ router.post('/:id/executeSwapTx', async (req, res, next) => {
       message: `Swap executed successfully on ${market} market`
     });
   } catch (error) {
+    logger.error('Failed to execute swap transaction', {
+      error: error instanceof Error ? error.message : String(error),
+      proposalId: req.params.id
+    });
     next(error);
   }
 });
@@ -230,40 +266,44 @@ router.post('/:id/executeSwapTx', async (req, res, next) => {
  */
 router.get('/:id/:market/quote', async (req, res, next) => {
   try {
-    const proposalId = parseInt(req.params.id);
+    const moderatorId = req.moderatorId;
+    const proposalId = getProposalId(req);
     const market = req.params.market;
-    
+
     // Validate market
     if (market !== 'pass' && market !== 'fail') {
+      logger.warn('Invalid market for quote', { proposalId, market });
       return res.status(400).json({
         error: 'Invalid market: must be "pass" or "fail"'
       });
     }
-    
+
     // Validate query parameters
     const { isBaseToQuote, amountIn, slippageBps } = req.query;
-    
+
     if (isBaseToQuote === undefined || !amountIn) {
+      logger.warn('Missing required query params for quote', { proposalId });
       return res.status(400).json({
         error: 'Missing required query parameters',
         required: ['isBaseToQuote', 'amountIn'],
         optional: ['slippageBps']
       });
     }
-    
+
     // Parse isBaseToQuote
     const direction = isBaseToQuote === 'true';
-    
+
     // Validate slippageBps if provided
     const slippage = slippageBps ? parseInt(slippageBps as string) : 50;
     if (isNaN(slippage) || slippage < 0) {
+      logger.warn('Invalid slippageBps for quote', { proposalId, slippageBps });
       return res.status(400).json({
         error: 'Invalid slippageBps: must be a positive number'
       });
     }
-    
+
     // Get the appropriate AMM
-    const amm = await getAMM(proposalId, market);
+    const amm = await getAMM(moderatorId, proposalId, market);
 
     // Convert amount
     const amountInBN = new BN(amountIn as string);
@@ -293,6 +333,14 @@ router.get('/:id/:market/quote', async (req, res, next) => {
     const inputMint = direction ? amm.baseMint : amm.quoteMint;
     const outputMint = direction ? amm.quoteMint : amm.baseMint;
 
+    logger.info('Quote fetched', {
+      proposalId,
+      market,
+      isBaseToQuote: direction,
+      amountIn: amountIn as string,
+      amountOut: quote.swapOutAmount.toString()
+    });
+
     res.json({
       proposalId,
       market: market as 'pass' | 'fail',
@@ -308,6 +356,11 @@ router.get('/:id/:market/quote', async (req, res, next) => {
       outputMint: outputMint.toString()
     });
   } catch (error) {
+    logger.error('Failed to get quote', {
+      error: error instanceof Error ? error.message : String(error),
+      proposalId: req.params.id,
+      market: req.params.market
+    });
     next(error);
   }
 });
