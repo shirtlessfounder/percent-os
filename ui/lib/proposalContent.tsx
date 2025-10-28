@@ -377,6 +377,10 @@ export const proposalContentMap: Record<number, ProposalContent> = {
           Should ZC merge PR #13 into main?
         </p>
 
+        <p>
+          The proposal passes if pass-fail gap &gt; 0%. Pass-fail gap is calculated using TWAP.
+        </p>
+
         <div>
           <h3 className="text-lg font-semibold text-white mb-2">Links</h3>
           <ul className="list-disc list-inside space-y-1">
