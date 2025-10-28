@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireModeratorId, getModerator } from '../middleware/validation';
-import { getProposalId } from '../utils/route-helpers';
+import { getProposalId } from '../utils';
 import { PublicKey, Transaction } from '@solana/web3.js';
 import { LoggerService } from '@app/services/logger.service';
 
@@ -63,7 +63,11 @@ router.post('/:id/:type/buildSplitTx', async (req, res, next) => {
       message: 'Transaction built successfully. User must sign before execution.'
     });
   } catch (error) {
-    logger.error('Failed to build split transaction', { vaultType: req.params.type, moderatorId, proposalId });
+    logger.error('Failed to build split transaction', {
+      error: error instanceof Error ? error.message : String(error),
+      proposalId: req.params.id,
+      vaultType: req.params.type
+    });
     next(error);
   }
 });
@@ -102,7 +106,10 @@ router.post('/:id/:type/executeSplitTx', async (req, res, next) => {
       status: 'success'
     });
   } catch (error) {
-    logger.error('Failed to execute split transaction', { error: error.message, proposalId });
+    logger.error('Failed to execute split transaction', {
+      error: error instanceof Error ? error.message : String(error),
+      proposalId: req.params.id
+    });
     next(error);
   }
 });
@@ -138,7 +145,11 @@ router.post('/:id/:type/buildMergeTx', async (req, res, next) => {
       message: 'Transaction built successfully. User must sign before execution.'
     });
   } catch (error) {
-    logger.error('Failed to build merge transaction', { error: error.message, proposalId, vaultType: req.params.type });
+    logger.error('Failed to build merge transaction', {
+      error: error instanceof Error ? error.message : String(error),
+      proposalId: req.params.id,
+      vaultType: req.params.type
+    });
     next(error);
   }
 });
@@ -177,7 +188,10 @@ router.post('/:id/:type/executeMergeTx', async (req, res, next) => {
       status: 'success'
     });
   } catch (error) {
-    logger.error('Failed to execute merge transaction', { error: error.message, proposalId });
+    logger.error('Failed to execute merge transaction', {
+      error: error instanceof Error ? error.message : String(error),
+      proposalId: req.params.id
+    });
     next(error);
   }
 });
@@ -211,7 +225,11 @@ router.post('/:id/:type/buildRedeemWinningTokensTx', async (req, res, next) => {
       message: 'Transaction built successfully. User must sign before execution.'
     });
   } catch (error) {
-    logger.error('Failed to build redeem transaction', { error: error.message, proposalId, vaultType: req.params.type });
+    logger.error('Failed to build redeem transaction', {
+      error: error instanceof Error ? error.message : String(error),
+      proposalId: req.params.id,
+      vaultType: req.params.type
+    });
     next(error);
   }
 });
@@ -250,7 +268,10 @@ router.post('/:id/:type/executeRedeemWinningTokensTx', async (req, res, next) =>
       status: 'success'
     });
   } catch (error) {
-    logger.error('Failed to execute redeem transaction', { error: error.message, proposalId });
+    logger.error('Failed to execute redeem transaction', {
+      error: error instanceof Error ? error.message : String(error),
+      proposalId: req.params.id
+    });
     next(error);
   }
 });
@@ -306,7 +327,11 @@ router.get('/:id/getUserBalances', async (req, res, next) => {
 
     res.json(balances);
   } catch (error) {
-    logger.error('Failed to get user balances', { error: error.message, proposalId, user: req.query.user });
+    logger.error('Failed to get user balances', {
+      error: error instanceof Error ? error.message : String(error),
+      proposalId: req.params.id,
+      user: req.query.user
+    });
     next(error);
   }
 });
