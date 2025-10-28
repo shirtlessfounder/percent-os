@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { requireModeratorId, requireProposalId, getModerator } from '../middleware/validation';
+import { requireModeratorId, getModerator } from '../middleware/validation';
+import { getProposalId } from '../utils/route-helpers';
 import { PublicKey, Transaction } from '@solana/web3.js';
 import { LoggerService } from '@app/services/logger.service';
 
@@ -32,10 +33,10 @@ async function getVault(moderatorId: number, proposalId: number, vaultType: stri
 
 
 // Build split transaction
-router.post('/:id/:type/buildSplitTx', requireProposalId, async (req, res, next) => {
+router.post('/:id/:type/buildSplitTx', async (req, res, next) => {
   try {
     const moderatorId = req.moderatorId;
-    const proposalId = req.proposalId!; // Non-null assertion since middleware guarantees it
+    const proposalId = getProposalId(req);
     const vaultType = req.params.type;
 
     // Validate request body
@@ -62,16 +63,16 @@ router.post('/:id/:type/buildSplitTx', requireProposalId, async (req, res, next)
       message: 'Transaction built successfully. User must sign before execution.'
     });
   } catch (error) {
-    logger.error('Failed to build split transaction', { error: error.message, proposalId, vaultType: req.params.type });
+    logger.error('Failed to build split transaction', { vaultType: req.params.type, moderatorId, proposalId });
     next(error);
   }
 });
 
 // Execute split transaction
-router.post('/:id/:type/executeSplitTx', requireProposalId, async (req, res, next) => {
+router.post('/:id/:type/executeSplitTx', async (req, res, next) => {
   try {
     const moderatorId = req.moderatorId;
-    const proposalId = req.proposalId!;
+    const proposalId = getProposalId(req);
     const vaultType = req.params.type;
 
     // Validate request body
@@ -107,10 +108,10 @@ router.post('/:id/:type/executeSplitTx', requireProposalId, async (req, res, nex
 });
 
 // Build merge transaction
-router.post('/:id/:type/buildMergeTx', requireProposalId, async (req, res, next) => {
+router.post('/:id/:type/buildMergeTx', async (req, res, next) => {
   try {
     const moderatorId = req.moderatorId;
-    const proposalId = req.proposalId!;
+    const proposalId = getProposalId(req);
     const vaultType = req.params.type;
 
     // Validate request body
@@ -143,10 +144,10 @@ router.post('/:id/:type/buildMergeTx', requireProposalId, async (req, res, next)
 });
 
 // Execute merge transaction
-router.post('/:id/:type/executeMergeTx', requireProposalId, async (req, res, next) => {
+router.post('/:id/:type/executeMergeTx', async (req, res, next) => {
   try {
     const moderatorId = req.moderatorId;
-    const proposalId = req.proposalId!;
+    const proposalId = getProposalId(req);
     const vaultType = req.params.type;
 
     // Validate request body
@@ -182,10 +183,10 @@ router.post('/:id/:type/executeMergeTx', requireProposalId, async (req, res, nex
 });
 
 // Build redeem winning tokens transaction
-router.post('/:id/:type/buildRedeemWinningTokensTx', requireProposalId, async (req, res, next) => {
+router.post('/:id/:type/buildRedeemWinningTokensTx', async (req, res, next) => {
   try {
     const moderatorId = req.moderatorId;
-    const proposalId = req.proposalId!;
+    const proposalId = getProposalId(req);
     const vaultType = req.params.type;
 
     // Validate request body
@@ -216,10 +217,10 @@ router.post('/:id/:type/buildRedeemWinningTokensTx', requireProposalId, async (r
 });
 
 // Execute redeem winning tokens transaction
-router.post('/:id/:type/executeRedeemWinningTokensTx', requireProposalId, async (req, res, next) => {
+router.post('/:id/:type/executeRedeemWinningTokensTx', async (req, res, next) => {
   try {
     const moderatorId = req.moderatorId;
-    const proposalId = req.proposalId!;
+    const proposalId = getProposalId(req);
     const vaultType = req.params.type;
 
     // Validate request body
@@ -255,10 +256,10 @@ router.post('/:id/:type/executeRedeemWinningTokensTx', requireProposalId, async 
 });
 
 // Get user balances for both vaults
-router.get('/:id/getUserBalances', requireProposalId, async (req, res, next) => {
+router.get('/:id/getUserBalances', async (req, res, next) => {
   try {
     const moderatorId = req.moderatorId;
-    const proposalId = req.proposalId!;
+    const proposalId = getProposalId(req);
     const { user } = req.query;
 
     if (!user) {

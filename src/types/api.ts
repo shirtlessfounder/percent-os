@@ -141,6 +141,7 @@ export interface CreateProposalRequest {
 }
 
 export interface CreateProposalResponse {
+  moderatorId: number;
   id: number;
   description: string;
   status: ProposalStatus;

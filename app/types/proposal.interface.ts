@@ -1,11 +1,10 @@
 import { Transaction, PublicKey, Keypair } from '@solana/web3.js';
 import { BN } from '@coral-xyz/anchor';
-import { IAMM } from './amm.interface';
-import { IVault } from './vault.interface';
-import { ITWAPOracle, ITWAPConfig } from './twap-oracle.interface';
+import { IAMM, IAMMSerializedData } from './amm.interface';
+import { IVault, IVaultSerializedData } from './vault.interface';
+import { ITWAPOracle, ITWAPConfig, ITWAPOracleSerializedData } from './twap-oracle.interface';
 import { ProposalStatus } from './moderator.interface';
 import { IExecutionResult, IExecutionService } from './execution.interface';
-import { JitoService } from '@slateos/jito';
 import { LoggerService } from '../services/logger.service';
 
 /**
@@ -84,4 +83,72 @@ export interface IProposal {
    * @throws Error if proposal hasn't passed or already executed
    */
   execute(signer: Keypair): Promise<IExecutionResult>;
+
+  /**
+   * Serializes the proposal state for persistence
+   * @returns Serialized proposal data that can be saved to database
+   */
+  serialize(): IProposalSerializedData;
+}
+
+/**
+ * Serialized proposal data structure for persistence
+ */
+export interface IProposalSerializedData {
+  // Core configuration
+  id: number;
+  moderatorId: number;
+  title: string;
+  description?: string;
+  createdAt: number;
+  proposalLength: number;
+  finalizedAt: number;
+  status: ProposalStatus;
+
+  // Token configuration
+  baseMint: string;
+  quoteMint: string;
+  baseDecimals: number;
+  quoteDecimals: number;
+
+  // Transaction data (instructions only, not full transaction)
+  transactionInstructions: {
+    programId: string;
+    keys: {
+      pubkey: string;
+      isSigner: boolean;
+      isWritable: boolean;
+    }[];
+    data: string; // base64 encoded
+  }[];
+  transactionFeePayer?: string;
+
+  // AMM configuration
+  ammConfig: {
+    initialBaseAmount: string;
+    initialQuoteAmount: string;
+  };
+
+  // Optional fields
+  spotPoolAddress?: string;
+  totalSupply: number;
+
+  // TWAP configuration
+  twapConfig: ITWAPConfig;
+
+  // Serialized components
+  pAMMData: IAMMSerializedData;
+  fAMMData: IAMMSerializedData;
+  baseVaultData: IVaultSerializedData;
+  quoteVaultData: IVaultSerializedData;
+  twapOracleData: ITWAPOracleSerializedData;
+}
+
+/**
+ * Configuration for deserializing a proposal
+ */
+export interface IProposalDeserializeConfig {
+  authority: Keypair;
+  executionService: IExecutionService;
+  logger: LoggerService;
 }

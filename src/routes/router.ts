@@ -5,7 +5,7 @@ import { PublicKey, Keypair } from '@solana/web3.js';
 import { LoggerService } from '../../app/services/logger.service';
 
 const router = Router();
-const logger = new LoggerService('ROUTER_ROUTES');
+const logger = new LoggerService('router');
 
 /**
  * Get all moderators info (public endpoint)

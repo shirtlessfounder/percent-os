@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireApiKey } from '../middleware/auth';
-import { getModerator } from '../services/moderator.service';
+import { attachModerator, requireModeratorId, getModerator } from '../middleware/validation';
 import { CreateProposalRequest, CreateProposalResponse } from '../types/api';
 import { Transaction, PublicKey } from '@solana/web3.js';
 import BN from 'bn.js';
@@ -9,11 +9,15 @@ import { PersistenceService } from '../../app/services/persistence.service';
 
 const router = Router();
 
-router.get('/', async (_req, res, next) => {
+// Apply moderator middleware to all routes
+router.use(attachModerator);
+
+router.get('/', async (req, res, next) => {
   try {
-    const persistenceService = PersistenceService.getInstance();
+    const moderatorId = req.moderatorId;
+    const persistenceService = new PersistenceService(moderatorId);
     const proposals = await persistenceService.getProposalsForFrontend();
-    
+
     const publicProposals = proposals.map(p => ({
       id: p.id,
       description: p.description,
@@ -22,8 +26,9 @@ router.get('/', async (_req, res, next) => {
       finalizedAt: new Date(p.finalized_at).getTime(),
       passThresholdBps: p.twap_oracle_state?.passThresholdBps ?? 5000, // Default to 50% if not set
     }));
-    
+
     res.json({
+      moderatorId,
       proposals: publicProposals,
     });
   } catch (error) {
@@ -34,19 +39,21 @@ router.get('/', async (_req, res, next) => {
 router.get('/:id', async (req, res, next) => {
   try {
     const id = parseInt(req.params.id);
-    
+    const moderatorId = req.moderatorId;
+
     if (isNaN(id) || id < 0) {
       return res.status(400).json({ error: 'Invalid proposal ID' });
     }
-    
-    const persistenceService = PersistenceService.getInstance();
+
+    const persistenceService = new PersistenceService(moderatorId);
     const proposal = await persistenceService.getProposalForFrontend(id);
-    
+
     if (!proposal) {
       return res.status(404).json({ error: 'Proposal not found' });
     }
-    
+
     const response = {
+      moderatorId,
       id: proposal.id,
       description: proposal.description,
       status: proposal.status,
@@ -74,19 +81,25 @@ router.get('/:id', async (req, res, next) => {
 });
 
 
-router.post('/', requireApiKey, async (req, res, next) => {
+// For creating proposals, we should require explicit moderatorId for clarity
+router.post('/', requireApiKey, requireModeratorId, async (req, res, next) => {
   try {
-    const moderator = await getModerator();
+    const moderatorId = req.moderatorId;
+    const moderator = getModerator(moderatorId);
     const body = req.body as CreateProposalRequest;
-    
+
     // Validate required fields
     if (!body.description || !body.proposalLength || !body.twap || !body.amm) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Missing required fields',
         required: ['description', 'proposalLength', 'twap', 'amm']
       });
     }
-    
+
+    // Get the proposal counter for this moderator
+    const persistenceService = new PersistenceService(moderatorId);
+    const proposalCounter = await persistenceService.getProposalIdCounter();
+
     // Create the transaction - use memo program if no transaction provided
     let transaction: Transaction;
     if (body.transaction) {
@@ -98,10 +111,10 @@ router.post('/', requireApiKey, async (req, res, next) => {
       transaction = new Transaction().add({
         programId: new PublicKey(MEMO_PROGRAM_ID),
         keys: [],
-        data: Buffer.from(`Proposal #${moderator.proposalIdCounter}: ${body.description}`)
+        data: Buffer.from(`Moderator ${moderatorId} Proposal #${proposalCounter}: ${body.description}`)
       });
     }
-    
+
     // Create the proposal
     const proposal = await moderator.createProposal({
       description: body.description,
@@ -123,13 +136,14 @@ router.post('/', requireApiKey, async (req, res, next) => {
     });
     
     const response: CreateProposalResponse = {
+      moderatorId,
       id: proposal.id,
       description: proposal.description,
       status: proposal.status,
       createdAt: proposal.createdAt,
       finalizedAt: proposal.finalizedAt
     };
-    
+
     res.status(201).json(response);
   } catch (error) {
     next(error);
@@ -138,24 +152,26 @@ router.post('/', requireApiKey, async (req, res, next) => {
 
 router.post('/:id/finalize', async (req, res, next) => {
   try {
-    const moderator = await getModerator();
+    const moderatorId = req.moderatorId;
+    const moderator = getModerator(moderatorId);
     const id = parseInt(req.params.id);
-    
+
     if (isNaN(id) || id < 0) {
       return res.status(400).json({ error: 'Invalid proposal ID' });
     }
-    
+
     // Get proposal from database (always fresh data)
     const proposal = await moderator.getProposal(id);
-    
+
     if (!proposal) {
       return res.status(404).json({ error: 'Proposal not found' });
     }
-    
+
     // Finalize the proposal
     const status = await moderator.finalizeProposal(id);
-    
+
     res.json({
+      moderatorId,
       id,
       status,
       message: `Proposal #${id} finalized with status: ${status}`
@@ -167,29 +183,26 @@ router.post('/:id/finalize', async (req, res, next) => {
 
 router.post('/:id/execute', async (req, res, next) => {
   try {
-    const moderator = await getModerator();
+    const moderatorId = req.moderatorId;
+    const moderator = getModerator(moderatorId);
     const id = parseInt(req.params.id);
-    
+
     if (isNaN(id) || id < 0) {
       return res.status(400).json({ error: 'Invalid proposal ID' });
     }
-    
+
     // Get proposal from database (always fresh data)
     const proposal = await moderator.getProposal(id);
-    
+
     if (!proposal) {
       return res.status(404).json({ error: 'Proposal not found' });
     }
 
-    
     // Execute the proposal using the moderator's authority
-    const result = await moderator.executeProposal(id, moderator.config.authority, {
-      rpcEndpoint: process.env.SOLANA_RPC_URL || 'https://bernie-zo3q7f-fast-mainnet.helius-rpc.com',
-      maxRetries: 3,
-      commitment: 'confirmed'
-    });
-    
+    const result = await moderator.executeProposal(id, moderator.config.authority);
+
     res.json({
+      moderatorId,
       id,
       status: proposal.status,
       executed: result.status === ExecutionStatus.Success,

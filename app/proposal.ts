@@ -1,5 +1,5 @@
-import { Keypair } from '@solana/web3.js';
-import { IProposal, IProposalConfig } from './types/proposal.interface';
+import { Keypair, Transaction, PublicKey } from '@solana/web3.js';
+import { IProposal, IProposalConfig, IProposalSerializedData, IProposalDeserializeConfig } from './types/proposal.interface';
 import { IAMM } from './types/amm.interface';
 import { IVault, VaultType } from './types/vault.interface';
 import { ITWAPOracle, TWAPStatus } from './types/twap-oracle.interface';
@@ -8,6 +8,7 @@ import { TWAPOracle } from './twap-oracle';
 import { IExecutionResult, IExecutionService } from './types/execution.interface';
 import { Vault } from './vault';
 import { AMM } from './amm';
+import { BN } from '@coral-xyz/anchor';
 import { LoggerService } from './services/logger.service';
 
 /**
@@ -304,5 +305,172 @@ export class Proposal implements IProposal {
     this._status = ProposalStatus.Executed;
     this.logger.info('Proposal execution returned', { result: result });
     return result;
+  }
+
+  /**
+   * Serializes the proposal state for persistence
+   * @returns Serialized proposal data that can be saved to database
+   */
+  serialize(): IProposalSerializedData {
+    // Serialize transaction instructions (not the full transaction due to blockhash expiry)
+    const transactionInstructions = this.config.transaction.instructions.map(ix => ({
+      programId: ix.programId.toBase58(),
+      keys: ix.keys.map(key => ({
+        pubkey: key.pubkey.toBase58(),
+        isSigner: key.isSigner,
+        isWritable: key.isWritable
+      })),
+      data: Buffer.from(ix.data).toString('base64')
+    }));
+
+    return {
+      // Core configuration
+      id: this.config.id,
+      moderatorId: this.config.moderatorId,
+      title: this.config.title,
+      description: this.config.description,
+      createdAt: this.config.createdAt,
+      proposalLength: this.config.proposalLength,
+      finalizedAt: this.finalizedAt,
+      status: this._status,
+
+      // Token configuration
+      baseMint: this.config.baseMint.toBase58(),
+      quoteMint: this.config.quoteMint.toBase58(),
+      baseDecimals: this.config.baseDecimals,
+      quoteDecimals: this.config.quoteDecimals,
+
+      // Transaction data
+      transactionInstructions,
+      transactionFeePayer: this.config.transaction.feePayer?.toBase58(),
+
+      // AMM configuration
+      ammConfig: {
+        initialBaseAmount: this.config.ammConfig.initialBaseAmount.toString(),
+        initialQuoteAmount: this.config.ammConfig.initialQuoteAmount.toString(),
+      },
+
+      // Optional fields
+      spotPoolAddress: this.config.spotPoolAddress,
+      totalSupply: this.config.totalSupply,
+
+      // TWAP configuration
+      twapConfig: this.config.twap,
+
+      // Serialize components using their individual serialize methods
+      pAMMData: this.pAMM.serialize(),
+      fAMMData: this.fAMM.serialize(),
+      baseVaultData: this.baseVault.serialize(),
+      quoteVaultData: this.quoteVault.serialize(),
+      twapOracleData: this.twapOracle.serialize(),
+    };
+  }
+
+  /**
+   * Deserializes proposal data and restores the proposal state
+   * @param data - Serialized proposal data from database
+   * @param config - Configuration for reconstructing the proposal
+   * @returns Restored proposal instance
+   */
+  static async deserialize(data: IProposalSerializedData, config: IProposalDeserializeConfig): Promise<Proposal> {
+    // Reconstruct transaction from instructions
+    const transaction = new Transaction();
+
+    // Reconstruct instructions
+    for (const ixData of data.transactionInstructions) {
+      transaction.add({
+        programId: new PublicKey(ixData.programId),
+        keys: ixData.keys.map(key => ({
+          pubkey: new PublicKey(key.pubkey),
+          isSigner: key.isSigner,
+          isWritable: key.isWritable
+        })),
+        data: Buffer.from(ixData.data, 'base64')
+      });
+    }
+
+    // Set fee payer if it was stored
+    if (data.transactionFeePayer) {
+      transaction.feePayer = new PublicKey(data.transactionFeePayer);
+    }
+
+    // Reconstruct proposal config
+    const proposalConfig: IProposalConfig = {
+      id: data.id,
+      moderatorId: data.moderatorId,
+      title: data.title,
+      description: data.description,
+      transaction,
+      createdAt: data.createdAt,
+      proposalLength: data.proposalLength,
+      baseMint: new PublicKey(data.baseMint),
+      quoteMint: new PublicKey(data.quoteMint),
+      baseDecimals: data.baseDecimals,
+      quoteDecimals: data.quoteDecimals,
+      authority: config.authority,
+      executionService: config.executionService,
+      twap: data.twapConfig,
+      spotPoolAddress: data.spotPoolAddress,
+      totalSupply: data.totalSupply,
+      ammConfig: {
+        initialBaseAmount: new BN(data.ammConfig.initialBaseAmount),
+        initialQuoteAmount: new BN(data.ammConfig.initialQuoteAmount),
+      },
+      logger: config.logger
+    };
+
+    // Create proposal instance
+    const proposal = new Proposal(proposalConfig);
+
+    // Restore the status
+    proposal._status = data.status;
+
+    // Only deserialize components if the proposal isn't in Uninitialized state
+    if (data.status !== ProposalStatus.Uninitialized) {
+      // Deserialize vaults
+      const baseVault = await Vault.deserialize(data.baseVaultData, {
+        authority: config.authority,
+        executionService: config.executionService,
+        logger: config.logger.createChild('baseVault')
+      });
+
+      const quoteVault = await Vault.deserialize(data.quoteVaultData, {
+        authority: config.authority,
+        executionService: config.executionService,
+        logger: config.logger.createChild('quoteVault')
+      });
+
+      // Replace the default vaults with the deserialized ones
+      proposal.baseVault = baseVault;
+      proposal.quoteVault = quoteVault;
+
+      // Deserialize AMMs
+      const pAMM = AMM.deserialize(data.pAMMData, {
+        authority: config.authority,
+        executionService: config.executionService,
+        logger: config.logger.createChild('pAMM')
+      });
+
+      const fAMM = AMM.deserialize(data.fAMMData, {
+        authority: config.authority,
+        executionService: config.executionService,
+        logger: config.logger.createChild('fAMM')
+      });
+
+      // Replace the default AMMs with the deserialized ones
+      proposal.pAMM = pAMM;
+      proposal.fAMM = fAMM;
+
+      // Deserialize TWAP oracle
+      const twapOracle = TWAPOracle.deserialize(data.twapOracleData);
+
+      // Set AMMs in TWAP oracle
+      twapOracle.setAMMs(pAMM, fAMM);
+
+      // Replace the default TWAP oracle with the deserialized one
+      (proposal as any).twapOracle = twapOracle; // Need to cast since it's readonly
+    }
+
+    return proposal;
   }
 }
