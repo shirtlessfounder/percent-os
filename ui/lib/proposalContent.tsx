@@ -367,6 +367,36 @@ export const proposalContentMap: Record<number, ProposalContent> = {
         </div>
       </div>
     )
+  },
+  8: {
+    id: 8,
+    title: "ZC Application Redesign by Shirtless (ZC-4)",
+    content: (
+      <div className="space-y-4 text-gray-300">
+        <p>
+          Should ZC merge PR #13 into main?
+        </p>
+
+        <div>
+          <h3 className="text-lg font-semibold text-white mb-2">Links</h3>
+          <ul className="list-disc list-inside space-y-1">
+            <li>
+              GitHub PR: <a href="https://github.com/zcombinatorio/zcombinator/pull/13" className="text-blue-400 hover:text-blue-300 underline" target="_blank" rel="noopener noreferrer">https://github.com/zcombinatorio/zcombinator/pull/13</a>
+            </li>
+            <li>
+              Discord Discussion: <a href="https://discord.com/channels/1419789513382826006/1424768819330682993" className="text-blue-400 hover:text-blue-300 underline" target="_blank" rel="noopener noreferrer">View Discussion</a>
+            </li>
+          </ul>
+        </div>
+
+        <div>
+          <h3 className="text-lg font-semibold text-white mb-2">I need help - who can I talk to?</h3>
+          <p>
+            Come join our Discord: <a href="https://discord.gg/Vf38Mqhxu5" className="text-blue-400 hover:text-blue-300 underline" target="_blank" rel="noopener noreferrer">https://discord.gg/Vf38Mqhxu5</a>
+          </p>
+        </div>
+      </div>
+    )
   }
 };
 
