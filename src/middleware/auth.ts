@@ -1,15 +1,18 @@
+import { LoggerService } from '@app/services/logger.service';
 import { Request, Response, NextFunction } from 'express';
 
 export interface AuthRequest extends Request {
   isAuthenticated?: boolean;
 }
 
+const logger = new LoggerService('api').createChild('auth');
+
 export const requireApiKey = (req: AuthRequest, res: Response, next: NextFunction) => {
   const apiKey = req.headers['x-api-key'] || req.query.api_key;
   const validApiKey = process.env.API_KEY;
 
   if (!validApiKey) {
-    console.error('API_KEY not configured in environment variables');
+    logger.error('API_KEY not configured in environment variables');
     return res.status(500).json({ error: 'Server configuration error' });
   }
 
