@@ -10,7 +10,6 @@ import { ILoggerService } from '../types/logger.interface';
 export class LoggerService implements ILoggerService {
   private logger: winston.Logger;
   private category: string;
-  private static instances: Map<string, LoggerService> = new Map();
 
   constructor(category: string) {
     this.category = category;
@@ -73,19 +72,6 @@ export class LoggerService implements ILoggerService {
       transports,
       exitOnError: false
     });
-  }
-
-  /**
-   * Get or create a logger instance for a specific category
-   * Uses singleton pattern to reuse logger instances
-   * @param category - Logger category name
-   * @returns Logger service instance for the category
-   */
-  static getInstance(category: string): LoggerService {
-    if (!this.instances.has(category)) {
-      this.instances.set(category, new LoggerService(category));
-    }
-    return this.instances.get(category)!;
   }
 
   /**

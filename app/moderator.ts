@@ -51,7 +51,7 @@ export class Moderator implements IModerator {
     };
 
     // Initialize logger with a category based on protocol name and moderator ID
-    this.logger = LoggerService.getInstance(`moderator-${protocolName || id}`);
+    this.logger = new LoggerService(`moderator-${protocolName || id}`);
     this.logger.info('Moderator initialized', {
       moderatorId: id,
       protocolName: protocolName,
