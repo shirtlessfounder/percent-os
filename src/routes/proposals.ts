@@ -227,7 +227,7 @@ router.post('/', requireApiKey, requireModeratorId, async (req, res, next) => {
   }
 });
 
-router.post('/:id/finalize', async (req, res, next) => {
+router.post('/:id/finalize', requireModeratorId, async (req, res, next) => {
   try {
     const moderatorId = req.moderatorId;
     const moderator = getModerator(moderatorId);
@@ -275,7 +275,7 @@ router.post('/:id/finalize', async (req, res, next) => {
   }
 });
 
-router.post('/:id/execute', async (req, res, next) => {
+router.post('/:id/execute', requireModeratorId, async (req, res, next) => {
   try {
     const moderatorId = req.moderatorId;
     const moderator = getModerator(moderatorId);
