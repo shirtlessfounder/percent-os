@@ -7,6 +7,7 @@ import {
   PublicKey
 } from '@solana/web3.js';
 import * as fs from 'fs';
+import bs58 from 'bs58';
 import {
   IExecutionService,
   IExecutionResult,
@@ -45,16 +46,28 @@ export class ExecutionService implements IExecutionService {
   }
 
   /**
-   * Load keypair from JSON file
-   * @param path - Path to JSON keypair file
+   * Load keypair from JSON file or private key string
+   * @param input - Path to JSON keypair file or base58 private key string
    * @returns Keypair instance
    */
-  static loadKeypair(path: string): Keypair {
-    try {
-      const secretKey = JSON.parse(fs.readFileSync(path, 'utf-8'));
-      return Keypair.fromSecretKey(Uint8Array.from(secretKey));
-    } catch (error) {
-      throw new Error(`Failed to load keypair from file: ${error}`);
+  static loadKeypair(input: string): Keypair {
+    // Check if the input is a file path that exists
+    if (fs.existsSync(input)) {
+      // It's a file path
+      try {
+        const secretKey = JSON.parse(fs.readFileSync(input, 'utf-8'));
+        return Keypair.fromSecretKey(Uint8Array.from(secretKey));
+      } catch (error) {
+        throw new Error(`Failed to load keypair from file: ${error}`);
+      }
+    } else {
+      // Assume it's a base58 encoded private key
+      try {
+        const secretKey = bs58.decode(input);
+        return Keypair.fromSecretKey(secretKey);
+      } catch (error) {
+        throw new Error(`Failed to decode private key from base58 string: ${error}`);
+      }
     }
   }
 
