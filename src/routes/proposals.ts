@@ -63,7 +63,7 @@ router.get('/', async (req, res, next) => {
     const proposals = await persistenceService.getProposalsForFrontend();
 
     const publicProposals = proposals.map(p => ({
-      id: p.id,
+      id: p.proposal_id,
       title: p.title,
       description: p.description,
       status: p.status,

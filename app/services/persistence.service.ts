@@ -306,7 +306,7 @@ export class PersistenceService implements IPersistenceService {
 
       // Parse the serialized data from the database
       const serializedData: IProposalSerializedData = {
-        id: row.id,
+        id: row.proposal_id,
         moderatorId: row.moderator_id,
         title: row.title || '',
         description: row.description || undefined,
