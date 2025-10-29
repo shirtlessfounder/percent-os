@@ -3,6 +3,7 @@ import { requireApiKey } from '../middleware/auth';
 import { RouterService } from '../../app/services/router.service';
 import { PublicKey, Keypair } from '@solana/web3.js';
 import { LoggerService } from '../../app/services/logger.service';
+import { decryptKeypair } from '../../app/utils/crypto';
 
 const router = Router();
 const logger = new LoggerService('router');
@@ -53,17 +54,28 @@ router.post('/moderators', requireApiKey, async (req, res, next) => {
       quoteMint,
       baseDecimals,
       quoteDecimals,
+      authority,
       protocolName
     } = req.body;
 
     // Validate required fields
-    if (!baseMint || !quoteMint || baseDecimals === undefined || quoteDecimals === undefined) {
+    if (!baseMint || !quoteMint || !authority || baseDecimals === undefined || quoteDecimals === undefined) {
       logger.warn('[POST /moderators] Missing required fields', {
         receivedFields: Object.keys(req.body)
       });
       return res.status(400).json({
         error: 'Missing required fields',
-        required: ['baseMint', 'quoteMint', 'baseDecimals', 'quoteDecimals']
+        required: ['baseMint', 'quoteMint', 'authority', 'baseDecimals', 'quoteDecimals']
+      });
+    }
+
+    // Validate authority is a string
+    if (typeof authority !== 'string') {
+      logger.warn('[POST /moderators] Invalid authority type', {
+        authorityType: typeof authority
+      });
+      return res.status(400).json({
+        error: 'authority must be an encrypted string'
       });
     }
 
@@ -106,6 +118,27 @@ router.post('/moderators', requireApiKey, async (req, res, next) => {
       });
     }
 
+    // Decrypt authority keypair
+    let authorityKeypair: Keypair;
+    try {
+      const encryptionKey = process.env.ENCRYPTION_KEY;
+      if (!encryptionKey) {
+        logger.error('[POST /moderators] ENCRYPTION_KEY environment variable not set');
+        return res.status(500).json({
+          error: 'Server configuration error: encryption key not configured'
+        });
+      }
+
+      authorityKeypair = decryptKeypair(authority, encryptionKey);
+    } catch (error) {
+      logger.warn('[POST /moderators] Failed to decrypt authority keypair', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+      return res.status(400).json({
+        error: 'Invalid encrypted authority keypair'
+      });
+    }
+
     // Create the moderator
     const routerService = RouterService.getInstance();
     const { moderator, id } = await routerService.createModerator(
@@ -113,6 +146,7 @@ router.post('/moderators', requireApiKey, async (req, res, next) => {
       quoteMintPubkey,
       baseDecimals,
       quoteDecimals,
+      authorityKeypair,
       protocolName
     );
 
