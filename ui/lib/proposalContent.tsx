@@ -419,7 +419,7 @@ export const proposalContentMap: Record<number, ProposalContent> = {
           <h3 className="text-lg font-semibold text-white mb-2">Links</h3>
           <ul className="list-disc list-inside space-y-1">
             <li>
-              GitHub PR: <a href="https://github.com/zcombinatorio/zcombinator/pull/17" className="text-blue-400 hover:text-blue-300 underline" target="_blank" rel="noopener noreferrer">https://github.com/zcombinatorio/zcombinator/pull/13</a>
+              GitHub PR: <a href="https://github.com/zcombinatorio/zcombinator/pull/17" className="text-blue-400 hover:text-blue-300 underline" target="_blank" rel="noopener noreferrer">https://github.com/zcombinatorio/zcombinator/pull/17</a>
             </li>
             <li>
               Discord Discussion: <a href="discord.gg/MQfcX9QM2r" className="text-blue-400 hover:text-blue-300 underline" target="_blank" rel="noopener noreferrer">View Discussion</a>
