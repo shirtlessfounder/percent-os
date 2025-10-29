@@ -4,6 +4,9 @@ import * as dotenv from 'dotenv';
 
 dotenv.config();
 
+// Global configuration
+const MODERATOR_ID = 1; // Change this to target different moderators
+
 async function finalizeProposal(proposalId?: number) {
   const API_URL = process.env.API_URL || 'http://localhost:3000';
   
@@ -17,7 +20,7 @@ async function finalizeProposal(proposalId?: number) {
   }
   
   try {
-    const response = await fetch(`${API_URL}/api/proposals/${id}/finalize`, {
+    const response = await fetch(`${API_URL}/api/proposals/${id}/finalize?moderatorId=${MODERATOR_ID}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
