@@ -23,15 +23,25 @@ export class LoggerService implements ILoggerService {
     // Configure transports
     const transports: winston.transport[] = [];
 
-    // Console transport (only in development)
+    // Console transport
     if (process.env.LOG_TO_CONSOLE !== 'false') {
       transports.push(
         new winston.transports.Console({
           format: winston.format.combine(
             winston.format.colorize(),
-            winston.format.printf(({ level, message, ...meta }) => {
-              const metaStr = Object.keys(meta).length > 0 ? ` ${JSON.stringify(meta)}` : '';
-              return `[${this.category}] ${level}: ${message}${metaStr}`;
+            winston.format.printf(({ level, message, category, ...meta }) => {
+              // Filter out the category from meta
+              const filteredMeta = { ...meta };
+              delete filteredMeta.category;
+
+              // Pretty print metadata on multiple lines if present
+              let metaStr = '';
+              if (Object.keys(filteredMeta).length > 0) {
+                metaStr = '\n' + JSON.stringify(filteredMeta, null, 2);
+              }
+
+              // Use the category from metadata which will be updated for child loggers
+              return `[${category}] ${level}: ${message}${metaStr}`;
             })
           )
         })
@@ -68,7 +78,6 @@ export class LoggerService implements ILoggerService {
     // Create logger instance
     this.logger = winston.createLogger({
       level: process.env.LOG_LEVEL || 'info',
-      defaultMeta: { category: this.category },
       transports,
       exitOnError: false
     });
@@ -85,6 +94,8 @@ export class LoggerService implements ILoggerService {
     const child = Object.create(this);
     // Extend the category with dot notation
     child.category = `${this.category}.${subCategory}`;
+    // Keep the same winston logger instance (category is added in log methods)
+    child.logger = this.logger;
     return child;
   }
 
@@ -94,7 +105,7 @@ export class LoggerService implements ILoggerService {
    * @param meta - Optional metadata object (will be sanitized)
    */
   error(message: string, meta?: any): void {
-    this.logger.error(message, this.sanitizeMeta(meta));
+    this.logger.error(message, { category: this.category, ...this.sanitizeMeta(meta) });
   }
 
   /**
@@ -103,7 +114,7 @@ export class LoggerService implements ILoggerService {
    * @param meta - Optional metadata object (will be sanitized)
    */
   warn(message: string, meta?: any): void {
-    this.logger.warn(message, this.sanitizeMeta(meta));
+    this.logger.warn(message, { category: this.category, ...this.sanitizeMeta(meta) });
   }
 
   /**
@@ -112,7 +123,7 @@ export class LoggerService implements ILoggerService {
    * @param meta - Optional metadata object (will be sanitized)
    */
   info(message: string, meta?: any): void {
-    this.logger.info(message, this.sanitizeMeta(meta));
+    this.logger.info(message, { category: this.category, ...this.sanitizeMeta(meta) });
   }
 
   /**
@@ -121,7 +132,7 @@ export class LoggerService implements ILoggerService {
    * @param meta - Optional metadata object (will be sanitized)
    */
   debug(message: string, meta?: any): void {
-    this.logger.debug(message, this.sanitizeMeta(meta));
+    this.logger.debug(message, { category: this.category, ...this.sanitizeMeta(meta) });
   }
 
   /**
