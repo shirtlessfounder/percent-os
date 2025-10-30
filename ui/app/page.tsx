@@ -435,6 +435,7 @@ export default function HomePage() {
               proposalId={proposal.id}
               status={proposal.status as 'Pending' | 'Passed' | 'Failed' | 'Executed'}
               finalizedAt={proposal.finalizedAt}
+              title={proposal.title}
               description={proposal.description}
               activeTab={activeTab}
               onTabChange={setActiveTab}

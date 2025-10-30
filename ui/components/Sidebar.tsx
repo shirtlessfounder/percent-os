@@ -84,7 +84,7 @@ const Sidebar = memo(({ selectedProposal, onSelectProposal, proposals, loading }
               >
                 <div className="relative overflow-hidden">
                   <div className="text-sm font-medium text-gray-200 whitespace-nowrap pr-6">
-                    {proposal.description.length > 40 ? proposal.description.substring(0, 40) + '...' : proposal.description}
+                    {proposal.title.length > 40 ? proposal.title.substring(0, 40) + '...' : proposal.title}
                   </div>
                   <div 
                     className="absolute top-0 right-0 h-full w-10 pointer-events-none"

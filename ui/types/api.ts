@@ -2,6 +2,7 @@ export type ProposalStatus = 'Pending' | 'Passed' | 'Failed' | 'Executed';
 
 export interface ProposalListItem {
   id: number;
+  title: string;
   description: string;
   status: ProposalStatus;
   createdAt: number;
@@ -15,6 +16,7 @@ export interface ProposalListResponse {
 
 export interface ProposalDetailResponse {
   id: number;
+  title: string;
   description: string;
   status: ProposalStatus;
   createdAt: number;
