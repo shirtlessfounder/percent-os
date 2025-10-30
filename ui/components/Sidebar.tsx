@@ -2,6 +2,7 @@
 
 import { useState, useMemo, memo } from 'react';
 import { ProposalListSkeleton } from '@/components/ProposalSkeleton';
+import { getProposalContent } from '@/lib/proposalContent';
 import type { ProposalListItem } from '@/types/api';
 
 interface SidebarProps {
@@ -13,8 +14,9 @@ interface SidebarProps {
 
 const Sidebar = memo(({ selectedProposal, onSelectProposal, proposals, loading }: SidebarProps) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
-  
-  const sortedProposals = useMemo(() => 
+  const moderatorId = process.env.NEXT_PUBLIC_MODERATOR_ID;
+
+  const sortedProposals = useMemo(() =>
     [...proposals].sort((a, b) => b.finalizedAt - a.finalizedAt),
     [proposals]
   );
@@ -72,20 +74,31 @@ const Sidebar = memo(({ selectedProposal, onSelectProposal, proposals, loading }
             </div>
           ) : (
           <div className="space-y-1">
-            {sortedProposals.map((proposal) => (
-              <button
-                key={proposal.id}
-                onClick={() => onSelectProposal(proposal.id)}
-                className={`group w-full text-left p-3 rounded-lg transition cursor-pointer ${
-                  selectedProposal === proposal.id
-                    ? 'bg-[#1F1F1F]'
-                    : 'hover:bg-[#2A2A2A]'
-                }`}
-              >
-                <div className="relative overflow-hidden">
-                  <div className="text-sm font-medium text-gray-200 whitespace-nowrap pr-6">
-                    {proposal.title.length > 40 ? proposal.title.substring(0, 40) + '...' : proposal.title}
-                  </div>
+            {sortedProposals.map((proposal) => {
+              const { title: displayTitle } = getProposalContent(
+                proposal.id,
+                proposal.title,
+                proposal.description,
+                moderatorId
+              );
+              const truncatedTitle = displayTitle.length > 40
+                ? displayTitle.substring(0, 40) + '...'
+                : displayTitle;
+
+              return (
+                <button
+                  key={proposal.id}
+                  onClick={() => onSelectProposal(proposal.id)}
+                  className={`group w-full text-left p-3 rounded-lg transition cursor-pointer ${
+                    selectedProposal === proposal.id
+                      ? 'bg-[#1F1F1F]'
+                      : 'hover:bg-[#2A2A2A]'
+                  }`}
+                >
+                  <div className="relative overflow-hidden">
+                    <div className="text-sm font-medium text-gray-200 whitespace-nowrap pr-6">
+                      {truncatedTitle}
+                    </div>
                   <div 
                     className="absolute top-0 right-0 h-full w-10 pointer-events-none"
                     style={{
@@ -134,7 +147,8 @@ const Sidebar = memo(({ selectedProposal, onSelectProposal, proposals, loading }
                   </span>
                 </div>
               </button>
-            ))}
+            );
+            })}
           </div>
           )}
         </div>
