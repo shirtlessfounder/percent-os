@@ -1,23 +1,23 @@
 import { Keypair, PublicKey, Transaction} from '@solana/web3.js';
-import { IAMM, AMMState } from './types/amm.interface';
-import { ExecutionService } from './services/execution.service';
+import { IAMM, AMMState, IAMMSerializedData, IAMMDeserializeConfig } from './types/amm.interface';
 import { createMemoIx } from './utils/memo';
-import { 
-  CpAmm, 
-  MAX_SQRT_PRICE, 
-  MIN_SQRT_PRICE, 
-  PoolFeesParams, 
-  PoolState, 
+import {
+  CpAmm,
+  MAX_SQRT_PRICE,
+  MIN_SQRT_PRICE,
+  PoolFeesParams,
+  PoolState,
   PositionState,
   RemoveAllLiquidityAndClosePositionParams,
   SwapParams,
   getPriceFromSqrtPrice,
   derivePositionNftAccount
 } from "@meteora-ag/cp-amm-sdk";
-import { IExecutionConfig } from './types/execution.interface';
+import { IExecutionService } from './types/execution.interface';
 import { BN } from '@coral-xyz/anchor';
 import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { Decimal } from 'decimal.js';
+import { LoggerService } from '@app/services/logger.service';
 
 /**
  * AMM class implementing automated market maker functionality
@@ -30,12 +30,20 @@ export class AMM implements IAMM {
   public readonly baseDecimals: number;         // Decimal precision for base token
   public readonly quoteDecimals: number;        // Decimal precision for quote token
   public authority: Keypair;                    // Authority keypair for signing transactions
-  private executionService: ExecutionService;   // Service for executing blockchain transactions
   public cpAmm: CpAmm;                          // Meteora CP-AMM SDK instance
   public pool?: PublicKey;                      // Pool address (set after initialization)
   public position?: PublicKey;                  // Position account (tracks LP ownership)
   public positionNft?: PublicKey;               // NFT mint representing position ownership
-  private _state: AMMState = AMMState.Uninitialized;  // Current operational state
+  public state: AMMState = AMMState.Uninitialized;  // Current operational state
+  private executionService: IExecutionService;  // Service for executing blockchain transactions
+  private logger: LoggerService;
+
+  /**
+   * Whether the AMM has been finalized
+   */
+  get isFinalized(): boolean {
+    return this.state === AMMState.Finalized;
+  }
 
   /**
    * Creates a new AMM instance
@@ -44,7 +52,8 @@ export class AMM implements IAMM {
    * @param baseDecimals - Number of decimals for base token
    * @param quoteDecimals - Number of decimals for quote token
    * @param authority - Keypair with authority to manage the AMM
-   * @param executionConfig - Configuration for transaction execution
+   * @param executionService - Execution service for transactions
+   * @param logger - Logger service for this AMM
    */
   constructor(
     baseMint: PublicKey,
@@ -52,37 +61,17 @@ export class AMM implements IAMM {
     baseDecimals: number,
     quoteDecimals: number,
     authority: Keypair,
-    executionConfig: IExecutionConfig
+    executionService: IExecutionService,
+    logger: LoggerService
   ) {
     this.baseMint = baseMint;
     this.quoteMint = quoteMint;
     this.baseDecimals = baseDecimals;
     this.quoteDecimals = quoteDecimals;
     this.authority = authority;
-    this.executionService = new ExecutionService(executionConfig);
+    this.executionService = executionService;
     this.cpAmm = new CpAmm(this.executionService.connection);
-  }
-
-  /**
-   * Getter for AMM state (read-only access)
-   */
-  get state(): AMMState {
-    return this._state;
-  }
-
-  /**
-   * Getter for finalized state (read-only access)
-   */
-  get isFinalized(): boolean {
-    return this._state === AMMState.Finalized;
-  }
-
-  /**
-   * Sets the AMM state (useful for deserialization or testing)
-   * @param state - The new AMM state
-   */
-  setState(state: AMMState): void {
-    this._state = state;
+    this.logger = logger;
   }
 
   /**
@@ -97,7 +86,7 @@ export class AMM implements IAMM {
     initialBaseTokenAmount: BN,
     initialQuoteAmount: BN
   ): Promise<Transaction> {
-    if (this._state !== AMMState.Uninitialized) {
+    if (this.state !== AMMState.Uninitialized) {
       throw new Error('AMM already initialized');
     }
 
@@ -156,6 +145,9 @@ export class AMM implements IAMM {
     tx.recentBlockhash = blockhash;
     tx.feePayer = this.authority.publicKey;
 
+    // Add compute budget instructions before signing
+    await this.executionService.addComputeBudgetInstructions(tx);
+
     // Pre-sign the transaction with authority and position NFT keypair
     tx.sign(this.authority, positionNftKeypair);
 
@@ -185,7 +177,7 @@ export class AMM implements IAMM {
     );
 
     // Execute pool creation transaction (already has all signatures)
-    console.log('Executing transaction to create custom pool');
+    this.logger.debug('Executing transaction to create custom pool');
     const result = await this.executionService.executeTx(transaction);
 
     if (result.status === 'failed') {
@@ -193,7 +185,7 @@ export class AMM implements IAMM {
     }
 
     // Update state to Trading
-    this.setState(AMMState.Trading);
+    this.state = AMMState.Trading;
   }
 
   /**
@@ -203,7 +195,7 @@ export class AMM implements IAMM {
    * @throws Error if AMM is finalized or pool uninitialized
    */
   async fetchPrice(): Promise<Decimal> {
-    if (this._state === AMMState.Uninitialized || !this.pool) {
+    if (this.state === AMMState.Uninitialized || !this.pool) {
       throw new Error('AMM not initialized');
     }
     
@@ -218,7 +210,7 @@ export class AMM implements IAMM {
    * @throws Error if AMM is finalized or pool uninitialized
    */
   async fetchLiquidity(): Promise<BN> {
-    if (this._state === AMMState.Uninitialized || !this.pool) {
+    if (this.state === AMMState.Uninitialized || !this.pool) {
       throw new Error('AMM not initialized');
     }
     
@@ -234,7 +226,7 @@ export class AMM implements IAMM {
    * @throws Error if AMM is not initialized, already finalized, or pool uninitialized
    */
   async buildRemoveLiquidityTx(): Promise<Transaction> {
-    if (this._state === AMMState.Uninitialized
+    if (this.state === AMMState.Uninitialized
        || !this.pool 
        || !this.position 
        || !this.positionNft
@@ -242,7 +234,7 @@ export class AMM implements IAMM {
       throw new Error('AMM not initialized');
     }
 
-    if (this._state === AMMState.Finalized) {
+    if (this.state === AMMState.Finalized) {
       throw new Error('AMM is already finalized');
     }
 
@@ -274,6 +266,9 @@ export class AMM implements IAMM {
     tx.recentBlockhash = blockhash;
     tx.feePayer = this.authority.publicKey;
 
+    // Add compute budget instructions before signing
+    await this.executionService.addComputeBudgetInstructions(tx);
+
     // Pre-sign the transaction with authority
     tx.sign(this.authority);
 
@@ -290,7 +285,7 @@ export class AMM implements IAMM {
     const tx = await this.buildRemoveLiquidityTx();
 
     // Execute the pre-signed transaction
-    console.log('Executing transaction to remove liquidity and close position');
+    this.logger.debug('Executing transaction to remove liquidity and close position');
     const result = await this.executionService.executeTx(tx);
 
     if (result.status === 'failed') {
@@ -302,7 +297,7 @@ export class AMM implements IAMM {
     delete this.positionNft;
 
     // Mark AMM as finalized - no further operations allowed
-    this.setState(AMMState.Finalized);
+    this.state = AMMState.Finalized;
 
     return result.signature;
   }
@@ -327,11 +322,11 @@ export class AMM implements IAMM {
     totalFee: BN;
     priceImpact: number;
   }> {
-    if (this._state === AMMState.Uninitialized || !this.pool) {
+    if (this.state === AMMState.Uninitialized || !this.pool) {
       throw new Error('AMM not initialized');
     }
     
-    if (this._state === AMMState.Finalized) {
+    if (this.state === AMMState.Finalized) {
       throw new Error('AMM is finalized - cannot get quote');
     }
     
@@ -384,11 +379,11 @@ export class AMM implements IAMM {
     amountIn: BN,
     slippageBps: number = 50
   ): Promise<Transaction> {
-    if (this._state === AMMState.Uninitialized || !this.pool) {
+    if (this.state === AMMState.Uninitialized || !this.pool) {
       throw new Error('AMM not initialized');
     }
     
-    if (this._state === AMMState.Finalized) {
+    if (this.state === AMMState.Finalized) {
       throw new Error('AMM is finalized - cannot execute swaps');
     }
     
@@ -450,6 +445,9 @@ export class AMM implements IAMM {
     swapTx.recentBlockhash = blockhash;
     swapTx.feePayer = user;
 
+    // Add compute budget instructions (swap needs high priority)
+    await this.executionService.addComputeBudgetInstructions(swapTx);
+
     return swapTx;
   }
 
@@ -460,23 +458,84 @@ export class AMM implements IAMM {
    * @throws Error if transaction execution fails
    */
   async executeSwapTx(tx: Transaction): Promise<string> {
-    if (this._state === AMMState.Uninitialized) {
+    if (this.state === AMMState.Uninitialized) {
       throw new Error('AMM not initialized - cannot execute swap');
     }
     
-    if (this._state === AMMState.Finalized) {
+    if (this.state === AMMState.Finalized) {
       throw new Error('AMM is finalized - cannot execute swaps');
     }
     
     // Execute without adding authority signature (swaps only need user signature)
-    console.log('Executing transaction to swap tokens');
+    this.logger.debug('Executing transaction to swap tokens');
     const result = await this.executionService.executeTx(tx);
-    
+
     if (result.status === 'failed') {
       throw new Error(`Swap transaction failed: ${result.error}`);
     }
-    
+
     return result.signature;
+  }
+
+  /**
+   * Serializes the AMM state for persistence
+   * @returns Serialized AMM data that can be saved to database
+   */
+  serialize(): IAMMSerializedData {
+    return {
+      // Token configuration
+      baseMint: this.baseMint.toBase58(),
+      quoteMint: this.quoteMint.toBase58(),
+      baseDecimals: this.baseDecimals,
+      quoteDecimals: this.quoteDecimals,
+
+      // Pool state - handle optional fields
+      state: this.state,
+      pool: this.pool?.toBase58(),
+      position: this.position?.toBase58(),
+      positionNft: this.positionNft?.toBase58(),
+
+      // Note: We don't serialize authority, cpAmm instance, or services
+      // as those are reconstructed during deserialization
+    };
+  }
+
+  /**
+   * Deserializes AMM data and restores the AMM state
+   * @param data - Serialized AMM data from database
+   * @param config - Configuration for reconstructing the AMM
+   * @returns Restored AMM instance
+   */
+  static deserialize(data: IAMMSerializedData, config: IAMMDeserializeConfig): AMM {
+    // Create a new AMM instance with the provided config
+    const amm = new AMM(
+      new PublicKey(data.baseMint),
+      new PublicKey(data.quoteMint),
+      data.baseDecimals,
+      data.quoteDecimals,
+      config.authority,
+      config.executionService,
+      config.logger
+    );
+
+    // Restore the state
+    amm.state = data.state;
+
+    // Restore the pool references if they exist
+    if (data.pool) {
+      amm.pool = new PublicKey(data.pool);
+    }
+    if (data.position) {
+      amm.position = new PublicKey(data.position);
+    }
+    if (data.positionNft) {
+      amm.positionNft = new PublicKey(data.positionNft);
+    }
+
+    // The cpAmm instance is already created in the constructor
+    // Authority and services are provided through config
+
+    return amm;
   }
 
 }

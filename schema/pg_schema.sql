@@ -1,39 +1,54 @@
 -- Create proposals table for storing all proposal data
 CREATE TABLE IF NOT EXISTS proposals (
-  id SERIAL PRIMARY KEY,
-  description TEXT NOT NULL,
+  id SERIAL PRIMARY KEY,                      -- Global unique ID
+  moderator_id INTEGER NOT NULL,              -- Reference to moderator_state
+  proposal_id INTEGER NOT NULL,               -- Per-moderator proposal ID (1, 2, 3...)
+  title VARCHAR(255),                         -- Proposal title
+  description TEXT,                           -- Proposal description (optional)
   status VARCHAR(20) NOT NULL,
   created_at TIMESTAMPTZ NOT NULL,
   finalized_at TIMESTAMPTZ NOT NULL,
   proposal_length BIGINT NOT NULL,
-  transaction_data JSONB NOT NULL,
+
+  -- Transaction data (instructions only)
+  transaction_instructions JSONB NOT NULL,
+  transaction_fee_payer VARCHAR(64),
 
   -- Token configuration
   base_mint VARCHAR(64) NOT NULL,
   quote_mint VARCHAR(64) NOT NULL,
   base_decimals INTEGER NOT NULL,
   quote_decimals INTEGER NOT NULL,
-  authority VARCHAR(64) NOT NULL,
 
   -- AMM configuration
-  amm_config JSONB,
+  amm_config JSONB NOT NULL,
 
-  -- AMM states
-  pass_amm_state JSONB,
-  fail_amm_state JSONB,
+  -- TWAP configuration
+  twap_config JSONB NOT NULL,
 
-  -- Vault states
-  base_vault_state JSONB,
-  quote_vault_state JSONB,
+  -- AMM serialized states
+  pass_amm_data JSONB,
+  fail_amm_data JSONB,
 
-  -- TWAP Oracle state
-  twap_oracle_state JSONB,
+  -- Vault serialized states
+  base_vault_data JSONB,
+  quote_vault_data JSONB,
 
-  -- Chart configuration
+  -- TWAP Oracle serialized state
+  twap_oracle_data JSONB,
+
+  -- Optional fields
   spot_pool_address VARCHAR(64),
   total_supply BIGINT NOT NULL DEFAULT 1000000000,
 
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+  -- Ensure unique proposal IDs per moderator
+  CONSTRAINT unique_moderator_proposal UNIQUE (moderator_id, proposal_id),
+
+  -- Foreign key to moderator
+  CONSTRAINT fk_proposals_moderator FOREIGN KEY (moderator_id)
+    REFERENCES moderator_state(id) ON DELETE CASCADE
 );
 
 -- Create index on status for filtering
@@ -42,21 +57,24 @@ CREATE INDEX IF NOT EXISTS idx_proposals_status ON proposals(status);
 -- Create index on created_at for sorting
 CREATE INDEX IF NOT EXISTS idx_proposals_created_at ON proposals(created_at DESC);
 
+-- Create index on moderator_id for filtering by moderator
+CREATE INDEX IF NOT EXISTS idx_proposals_moderator ON proposals(moderator_id);
+
 -- Create moderator state table for server restarts
+-- Supports multiple moderators, each with their own configuration and proposal counter
 CREATE TABLE IF NOT EXISTS moderator_state (
   id SERIAL PRIMARY KEY,
   proposal_id_counter INTEGER NOT NULL DEFAULT 0,
   config JSONB NOT NULL,
+  protocol_name VARCHAR(255),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-
--- Ensure only one moderator state row exists
-CREATE UNIQUE INDEX IF NOT EXISTS idx_moderator_state_single ON moderator_state((id = 1));
 
 -- Create price history table for charting
 CREATE TABLE IF NOT EXISTS price_history (
   id SERIAL PRIMARY KEY,
   timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  moderator_id INTEGER NOT NULL,
   proposal_id INTEGER NOT NULL REFERENCES proposals(id) ON DELETE CASCADE,
   market VARCHAR(4) NOT NULL CHECK (market IN ('pass', 'fail', 'spot')),
   price DECIMAL(20, 10) NOT NULL,
@@ -65,15 +83,16 @@ CREATE TABLE IF NOT EXISTS price_history (
 );
 
 -- Create indexes for price history queries
-CREATE INDEX IF NOT EXISTS idx_price_history_proposal_timestamp 
-  ON price_history(proposal_id, timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_price_history_timestamp 
+CREATE INDEX IF NOT EXISTS idx_price_history_moderator_proposal_timestamp
+  ON price_history(moderator_id, proposal_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_price_history_timestamp
   ON price_history(timestamp DESC);
 
 -- Create TWAP history table
 CREATE TABLE IF NOT EXISTS twap_history (
   id SERIAL PRIMARY KEY,
   timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  moderator_id INTEGER NOT NULL,
   proposal_id INTEGER NOT NULL REFERENCES proposals(id) ON DELETE CASCADE,
   pass_twap DECIMAL(20, 10) NOT NULL,
   fail_twap DECIMAL(20, 10) NOT NULL,
@@ -82,15 +101,16 @@ CREATE TABLE IF NOT EXISTS twap_history (
 );
 
 -- Create indexes for TWAP history queries
-CREATE INDEX IF NOT EXISTS idx_twap_history_proposal_timestamp 
-  ON twap_history(proposal_id, timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_twap_history_timestamp 
+CREATE INDEX IF NOT EXISTS idx_twap_history_moderator_proposal_timestamp
+  ON twap_history(moderator_id, proposal_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_twap_history_timestamp
   ON twap_history(timestamp DESC);
 
 -- Create trade history table
 CREATE TABLE IF NOT EXISTS trade_history (
   id SERIAL PRIMARY KEY,
   timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  moderator_id INTEGER NOT NULL,
   proposal_id INTEGER NOT NULL REFERENCES proposals(id) ON DELETE CASCADE,
   market VARCHAR(4) NOT NULL CHECK (market IN ('pass', 'fail')),
   user_address VARCHAR(64) NOT NULL,
@@ -102,11 +122,11 @@ CREATE TABLE IF NOT EXISTS trade_history (
 );
 
 -- Create indexes for trade history queries
-CREATE INDEX IF NOT EXISTS idx_trade_history_proposal_timestamp 
-  ON trade_history(proposal_id, timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_trade_history_user 
+CREATE INDEX IF NOT EXISTS idx_trade_history_moderator_proposal_timestamp
+  ON trade_history(moderator_id, proposal_id, timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_trade_history_user
   ON trade_history(user_address);
-CREATE INDEX IF NOT EXISTS idx_trade_history_timestamp 
+CREATE INDEX IF NOT EXISTS idx_trade_history_timestamp
   ON trade_history(timestamp DESC);
 
 -- Add update trigger for proposals updated_at

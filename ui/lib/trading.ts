@@ -1,5 +1,6 @@
 import { Transaction } from '@solana/web3.js';
 import toast from 'react-hot-toast';
+import { buildApiUrl, withModeratorId } from './api-utils';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -282,7 +283,7 @@ async function mergeTokens(
     amount: amount
   };
   
-  const mergeResponse = await fetch(`${API_BASE_URL}/api/vaults/${proposalId}/${vaultType}/buildMergeTx`, {
+  const mergeResponse = await fetch(buildApiUrl(API_BASE_URL, `/api/vaults/${proposalId}/${vaultType}/buildMergeTx`), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
@@ -302,7 +303,7 @@ async function mergeTokens(
   const signedMergeTx = await signTransaction(mergeTx);
   
   // Execute the signed merge transaction
-  const executeMergeResponse = await fetch(`${API_BASE_URL}/api/vaults/${proposalId}/${vaultType}/executeMergeTx`, {
+  const executeMergeResponse = await fetch(buildApiUrl(API_BASE_URL, `/api/vaults/${proposalId}/${vaultType}/executeMergeTx`), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
@@ -323,7 +324,7 @@ async function mergeTokens(
  */
 async function getUserBalances(proposalId: number, userAddress: string): Promise<any> {
   const balancesResponse = await fetch(
-    `${API_BASE_URL}/api/vaults/${proposalId}/getUserBalances?user=${userAddress}`
+    buildApiUrl(API_BASE_URL, `/api/vaults/${proposalId}/getUserBalances`, { user: userAddress })
   );
   
   if (balancesResponse.ok) {
@@ -331,186 +332,6 @@ async function getUserBalances(proposalId: number, userAddress: string): Promise
   }
   
   return null;
-}
-
-/**
- * Get the current network (devnet or mainnet)
- */
-async function getNetwork(): Promise<'devnet' | 'mainnet'> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/network`);
-    if (!response.ok) {
-      console.error('Failed to get network info, defaulting to mainnet');
-      return 'mainnet';
-    }
-    const data = await response.json();
-    return data.network;
-  } catch (error) {
-    console.error('Failed to get network info, defaulting to mainnet:', error);
-    return 'mainnet';
-  }
-}
-
-/**
- * Perform the initial 50/50 swap
- * On devnet: simulates the swap
- * On mainnet: executes real swap via Jupiter
- */
-async function simulateInitialSwap(
-  inputAmount: string,
-  inputCurrency: 'sol' | 'zc',
-  proposalId: number,
-  userAddress?: string,
-  signTransaction?: (transaction: Transaction) => Promise<Transaction>
-): Promise<{ baseAmount: string; quoteAmount: string }> {
-  
-  const amount = parseFloat(inputAmount);
-  if (isNaN(amount) || amount <= 0) {
-    throw new Error('Invalid input amount');
-  }
-  
-  // ZC has 6 decimals, SOL has 9 decimals
-  const ZC_DECIMALS = 6;
-  const SOL_DECIMALS = 9;
-  
-  // Check if we're on devnet
-  const network = await getNetwork();
-  
-  if (network === 'devnet') {
-    // For devnet, simulate a 1:1 exchange rate
-    if (inputCurrency === 'sol') {
-      // User inputs SOL, split 50/50 into base (ZC) and quote (SOL)
-      const solAmountInSmallestUnits = Math.floor(amount * Math.pow(10, SOL_DECIMALS));
-      const halfSolAmount = Math.floor(solAmountInSmallestUnits / 2);
-      const halfInZC = Math.floor((amount / 2) * Math.pow(10, ZC_DECIMALS));
-      
-      return {
-        baseAmount: halfInZC.toString(),     // ZC (6 decimals)
-        quoteAmount: halfSolAmount.toString()    // SOL (9 decimals)
-      };
-    } else {
-      // User inputs ZC, split 50/50 into base (ZC) and quote (SOL)
-      const zcAmountInSmallestUnits = Math.floor(amount * Math.pow(10, ZC_DECIMALS));
-      const halfZCAmount = Math.floor(zcAmountInSmallestUnits / 2);
-      const halfInSol = Math.floor((amount / 2) * Math.pow(10, SOL_DECIMALS));
-      
-      return {
-        baseAmount: halfZCAmount.toString(),  // ZC (6 decimals)
-        quoteAmount: halfInSol.toString()         // SOL (9 decimals)
-      };
-    }
-  } else {
-    // On mainnet, perform real swap via Jupiter
-    if (!userAddress || !signTransaction) {
-      throw new Error('User address and signTransaction are required for mainnet swaps');
-    }
-    
-    // Calculate the amount to swap (half of input)
-    let inputMint: string;
-    let outputMint: string;
-    let swapAmount: string;
-    
-    if (inputCurrency === 'sol') {
-      // User has SOL, swap half to ZC
-      inputMint = SOL_MINT;
-      outputMint = ZC_MINT;
-      const solAmountInSmallestUnits = Math.floor(amount * Math.pow(10, SOL_DECIMALS));
-      const halfSolAmount = Math.floor(solAmountInSmallestUnits / 2);
-      swapAmount = halfSolAmount.toString();
-      
-      // Build swap transaction
-      const buildResponse = await fetch(`${API_BASE_URL}/api/swap/${proposalId}/jupiter/buildSwapTx`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user: userAddress,
-          inputMint,
-          outputMint,
-          amount: swapAmount,
-          slippageBps: 100
-        })
-      });
-      
-      if (!buildResponse.ok) {
-        throw new Error('Failed to build swap transaction');
-      }
-      
-      const buildData = await buildResponse.json();
-      
-      // Sign the transaction
-      const swapTx = Transaction.from(Buffer.from(buildData.transaction, 'base64'));
-      const signedTx = await signTransaction(swapTx);
-      
-      // Execute the swap
-      const executeResponse = await fetch(`${API_BASE_URL}/api/swap/${proposalId}/jupiter/executeSwapTx`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          transaction: Buffer.from(signedTx.serialize({ requireAllSignatures: false })).toString('base64')
-        })
-      });
-      
-      if (!executeResponse.ok) {
-        throw new Error('Failed to execute swap');
-      }
-      
-      // Use the actual quote amounts from Jupiter
-      return {
-        baseAmount: buildData.quote.outAmount,      // ZC received from swap (actual)
-        quoteAmount: halfSolAmount.toString()       // Remaining SOL
-      };
-      
-    } else {
-      // User has ZC, swap half to SOL
-      inputMint = ZC_MINT;
-      outputMint = SOL_MINT;
-      const zcAmountInSmallestUnits = Math.floor(amount * Math.pow(10, ZC_DECIMALS));
-      const halfZCAmount = Math.floor(zcAmountInSmallestUnits / 2);
-      swapAmount = halfZCAmount.toString();
-      
-      // Build swap transaction
-      const buildResponse = await fetch(`${API_BASE_URL}/api/swap/${proposalId}/jupiter/buildSwapTx`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user: userAddress,
-          inputMint,
-          outputMint,
-          amount: swapAmount,
-          slippageBps: 100
-        })
-      });
-      
-      if (!buildResponse.ok) {
-        throw new Error('Failed to build swap transaction');
-      }
-      
-      const buildData = await buildResponse.json();
-      
-      // Sign the transaction
-      const swapTx = Transaction.from(Buffer.from(buildData.transaction, 'base64'));
-      const signedTx = await signTransaction(swapTx);
-      
-      // Execute the swap
-      const executeResponse = await fetch(`${API_BASE_URL}/api/swap/${proposalId}/jupiter/executeSwapTx`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          transaction: Buffer.from(signedTx.serialize({ requireAllSignatures: false })).toString('base64')
-        })
-      });
-      
-      if (!executeResponse.ok) {
-        throw new Error('Failed to execute swap');
-      }
-      
-      // Use the actual quote amounts from Jupiter
-      return {
-        baseAmount: halfZCAmount.toString(),    // Remaining ZC
-        quoteAmount: buildData.quote.outAmount      // SOL received from swap (actual)
-      };
-    }
-  }
 }
 
 /**
@@ -530,7 +351,7 @@ async function splitTokens(
     amount: amount
   };
   
-  const splitResponse = await fetch(`${API_BASE_URL}/api/vaults/${proposalId}/${vaultType}/buildSplitTx`, {
+  const splitResponse = await fetch(buildApiUrl(API_BASE_URL, `/api/vaults/${proposalId}/${vaultType}/buildSplitTx`), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
@@ -550,7 +371,7 @@ async function splitTokens(
   const signedTx = await signTransaction(splitTx);
   
   // Execute the signed split transaction
-  const executeSplitResponse = await fetch(`${API_BASE_URL}/api/vaults/${proposalId}/${vaultType}/executeSplitTx`, {
+  const executeSplitResponse = await fetch(buildApiUrl(API_BASE_URL, `/api/vaults/${proposalId}/${vaultType}/executeSplitTx`), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
@@ -622,7 +443,7 @@ export async function claimWinnings(config: {
     for (const vaultType of vaultsToRedeem) {
       // Build redeem transaction
       const redeemResponse = await fetch(
-        `${API_BASE_URL}/api/vaults/${proposalId}/${vaultType}/buildRedeemWinningTokensTx`,
+        buildApiUrl(API_BASE_URL, `/api/vaults/${proposalId}/${vaultType}/buildRedeemWinningTokensTx`),
         {
           method: 'POST',
           headers: {
@@ -647,7 +468,7 @@ export async function claimWinnings(config: {
 
       // Execute the signed redeem transaction
       const executeRedeemResponse = await fetch(
-        `${API_BASE_URL}/api/vaults/${proposalId}/${vaultType}/executeRedeemWinningTokensTx`,
+        buildApiUrl(API_BASE_URL, `/api/vaults/${proposalId}/${vaultType}/executeRedeemWinningTokensTx`),
         {
           method: 'POST',
           headers: {
@@ -703,7 +524,7 @@ async function executeMarketSwap(
     slippageBps: 2000 // 20% slippage for large swaps
   };
   
-  const buildSwapResponse = await fetch(`${API_BASE_URL}/api/swap/${proposalId}/buildSwapTx`, {
+  const buildSwapResponse = await fetch(buildApiUrl(API_BASE_URL, `/api/swap/${proposalId}/buildSwapTx`), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
@@ -723,7 +544,7 @@ async function executeMarketSwap(
   const signedSwapTx = await signTransaction(swapTx);
 
   // Execute the signed swap transaction
-  const executeSwapResponse = await fetch(`${API_BASE_URL}/api/swap/${proposalId}/executeSwapTx`, {
+  const executeSwapResponse = await fetch(buildApiUrl(API_BASE_URL, `/api/swap/${proposalId}/executeSwapTx`), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'

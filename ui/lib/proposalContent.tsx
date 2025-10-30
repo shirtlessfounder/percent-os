@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatDescription } from './formatDescription';
 
 interface ProposalContent {
   id: number;
@@ -431,19 +432,30 @@ export const proposalContentMap: Record<number, ProposalContent> = {
   }
 };
 
-export function getProposalContent(proposalId: number, defaultDescription?: string) {
-  const content = proposalContentMap[proposalId];
-
-  if (content) {
-    return {
-      title: content.title,
-      content: content.content
-    };
+export function getProposalContent(
+  proposalId: number,
+  title: string,
+  description: string,
+  moderatorId?: string
+) {
+  // Only use hardcoded content for moderator ID 2
+  if (moderatorId === '2') {
+    const content = proposalContentMap[proposalId];
+    if (content) {
+      return {
+        title: content.title,
+        content: content.content
+      };
+    }
   }
 
-  // Fallback for proposals without custom content
+  // For all other moderators, use database title/description
   return {
-    title: defaultDescription || `Proposal #${proposalId}`,
-    content: null
+    title: title,
+    content: description ? (
+      <div className="space-y-4 text-gray-300 whitespace-pre-wrap">
+        {formatDescription(description)}
+      </div>
+    ) : null
   };
 }

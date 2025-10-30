@@ -3,9 +3,14 @@ import { Transaction, Keypair, Connection } from '@solana/web3.js';
 /**
  * Interface for Execution Service
  * Defines methods for handling Solana transaction execution
+ *
+ * Implementation note: The constructor should accept:
+ * - config: IExecutionConfig - Configuration for the service
+ * - logger: LoggerService - Logger instance for the service
  */
 export interface IExecutionService {
   readonly connection: Connection; // Connection to the Solana cluster
+  config: IExecutionConfig; // Configuration for the service
 
   /**
    * Executes a transaction on Solana
@@ -19,6 +24,25 @@ export interface IExecutionService {
     signer?: Keypair,
     additionalSigners?: Keypair[]
   ): Promise<IExecutionResult>;
+
+  /**
+   * Add compute budget instructions to the beginning of a transaction
+   * MUST be called before signing the transaction
+   * @param transaction - Transaction to add compute budget to
+   * @returns Promise that resolves when instructions are added
+   */
+  addComputeBudgetInstructions(transaction: Transaction): Promise<void>;
+}
+
+/**
+ * Priority fee mode for transaction execution
+ */
+export enum PriorityFeeMode {
+  None = 'none',
+  Low = 'low',
+  Medium = 'medium',
+  High = 'high',
+  Dynamic = 'dynamic'
 }
 
 /**
@@ -28,6 +52,15 @@ export enum ExecutionStatus {
   Success = 'success',
   Failed = 'failed',
   Pending = 'pending'
+}
+
+/**
+ * Commitment level for transaction execution
+ */
+export enum Commitment {
+  Processed = 'processed',
+  Confirmed = 'confirmed',
+  Finalized = 'finalized'
 }
 
 /**
@@ -46,9 +79,12 @@ export interface IExecutionResult {
  */
 export interface IExecutionConfig {
   rpcEndpoint: string;        // Solana RPC endpoint URL
-  commitment?: 'processed' | 'confirmed' | 'finalized';  // Commitment level
+  commitment?: Commitment;  // Commitment level
   maxRetries?: number;        // Max retry attempts on failure
   skipPreflight?: boolean;    // Skip preflight simulation
+  priorityFeeMode?: PriorityFeeMode;  // Priority fee strategy
+  maxPriorityFeeLamports?: number;  // Max priority fee in microlamports per CU (default 25000)
+  computeUnitLimit?: number;  // Override compute unit limit (default auto-calculated)
 }
 
 /**
@@ -56,7 +92,7 @@ export interface IExecutionConfig {
  */
 export interface IExecutionLog {
   signature: string;
-  status: 'success' | 'failed';
+  status: ExecutionStatus;
   timestamp: number;
   error?: string;
 }

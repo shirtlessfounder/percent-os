@@ -1,22 +1,25 @@
 #!/usr/bin/env ts-node
 
-import { CreateProposalRequest } from '../src/types/api';
+import { CreateProposalRequest } from '@src/routes/proposals';
 import * as dotenv from 'dotenv';
 
 dotenv.config();
 
+// Global configuration
+const MODERATOR_ID = 1; // Change this to target different moderators
+
 async function createProposal() {
-  const API_URL = process.env.API_URL || 'http://localhost:3000';
+  const API_URL = process.env.API_URL || 'http://localhost:3001';
   const API_KEY = process.env.API_KEY;
-  
+
   if (!API_KEY) {
     console.error('API_KEY environment variable is required');
     process.exit(1);
   }
   
-  // Token decimals (from moderator.service.ts)
-  const baseDecimals = 6;
-  const quoteDecimals = 9;
+  // Token decimals
+  const BASE_DECIMALS = 6;
+  const QUOTE_DECIMALS = 9;
   
   // Raw token amounts (smallest units)
   // Current_spot = ~0.010 SOL per ZC
@@ -25,14 +28,15 @@ async function createProposal() {
   
   // Calculate decimal-adjusted price (same as AMM will return)
   // Convert to actual token amounts: raw / 10^decimals
-  const baseTokens = parseInt(initialBaseAmount) / Math.pow(10, baseDecimals); // 10,000 tokens
-  const quoteTokens = parseInt(initialQuoteAmount) / Math.pow(10, quoteDecimals); // 1,000 tokens
+  const baseTokens = parseInt(initialBaseAmount) / Math.pow(10, BASE_DECIMALS); // 10,000 tokens
+  const quoteTokens = parseInt(initialQuoteAmount) / Math.pow(10, QUOTE_DECIMALS); // 1,000 tokens
   const ammPrice = quoteTokens / baseTokens; // 1,000 / 10,000 = 0.1
   console.log(ammPrice);
   
   const request: CreateProposalRequest = {
-    description: 'percent Pre-sale Mechanics Adjustment (ZC-3)',
-    proposalLength: 57600, // 16 hours
+    title: 'SolPay Retroactive Holder Redistribution (ZC-2)',
+    description: 'ENTER FULL DESCRIPTION HERE',
+    proposalLength: 10800, // 3 hours
     spotPoolAddress: 'CCZdbVvDqPN8DmMLVELfnt9G1Q9pQNt3bTGifSpUY9Ad', // ZC/SOL spot pool
     totalSupply: 1037781155, // 1 billion tokens for market cap calculation
     twap: {
@@ -49,7 +53,7 @@ async function createProposal() {
   };
   
   try {
-    const response = await fetch(`${API_URL}/api/proposals`, {
+    const response = await fetch(`${API_URL}/api/proposals?moderatorId=${MODERATOR_ID}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
