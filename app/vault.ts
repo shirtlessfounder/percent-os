@@ -182,16 +182,12 @@ export class Vault implements IVault {
 
     // Add memo for transaction identification
     const memoMessage = `%[Vault/${this.vaultType}] Init Proposal #${this.proposalId}`;
-    const memoMessage = `%[Vault/${this.vaultType}] Init Proposal #${this.proposalId}`;
     transaction.add(createMemoIx(memoMessage));
 
     // Add blockhash and fee payer
     const { blockhash } = await this.executionService.connection.getLatestBlockhash();
     transaction.recentBlockhash = blockhash;
     transaction.feePayer = this.authority.publicKey;
-
-    // Add compute budget instructions before signing
-    await this.executionService.addComputeBudgetInstructions(transaction);
 
     // Add compute budget instructions before signing
     await this.executionService.addComputeBudgetInstructions(transaction);
@@ -217,7 +213,6 @@ export class Vault implements IVault {
     const result = await this.executionService.executeTx(transaction);
 
     if (result.status === 'failed') {
-      throw new Error(`${this.vaultType} vault initialization failed: ${result.error}`);
       throw new Error(`${this.vaultType} vault initialization failed: ${result.error}`);
     }
 
@@ -347,9 +342,6 @@ export class Vault implements IVault {
     const { blockhash } = await this.executionService.connection.getLatestBlockhash();
     tx.recentBlockhash = blockhash;
     tx.feePayer = user;
-
-    // Add compute budget instructions before any signing
-    await this.executionService.addComputeBudgetInstructions(tx);
 
     // Add compute budget instructions before any signing
     await this.executionService.addComputeBudgetInstructions(tx);
@@ -501,9 +493,6 @@ export class Vault implements IVault {
     const { blockhash } = await this.executionService.connection.getLatestBlockhash();
     tx.recentBlockhash = blockhash;
     tx.feePayer = user;
-
-    // Add compute budget instructions before any signing
-    await this.executionService.addComputeBudgetInstructions(tx);
 
     // Add compute budget instructions before any signing
     await this.executionService.addComputeBudgetInstructions(tx);
@@ -781,9 +770,6 @@ export class Vault implements IVault {
     const { blockhash } = await this.executionService.connection.getLatestBlockhash();
     tx.recentBlockhash = blockhash;
     tx.feePayer = user;
-
-    // Add compute budget instructions before any signing
-    await this.executionService.addComputeBudgetInstructions(tx);
 
     // Add compute budget instructions before any signing
     await this.executionService.addComputeBudgetInstructions(tx);

@@ -12,8 +12,6 @@ import {
   IExecutionService,
   IExecutionResult,
   IExecutionConfig,
-  IExecutionResult,
-  IExecutionConfig,
   ExecutionStatus,
   IExecutionLog,
   PriorityFeeMode,
@@ -241,7 +239,6 @@ export class ExecutionService implements IExecutionService {
     try {
       // Only set blockhash if not already set (for pre-signed transactions)
       if (!transaction.recentBlockhash) {
-        const { blockhash } =
         const { blockhash } =
           await this.connection.getLatestBlockhash(this.config.commitment);
         transaction.recentBlockhash = blockhash;
