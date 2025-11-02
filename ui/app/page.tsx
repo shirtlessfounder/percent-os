@@ -707,7 +707,7 @@ export default function HomePage() {
                   style={{ marginLeft: '-16px' }}
                 >
                   {sortedProposals.map((proposal) => {
-                    const proposalContent = getProposalContent(proposal.id, proposal.title, proposal.description);
+                    const proposalContent = getProposalContent(proposal.id, proposal.title, proposal.description, process.env.NEXT_PUBLIC_MODERATOR_ID);
                     const isHovered = hoveredProposalId === proposal.id;
 
                     // Extract first section (Executive Summary) for preview
@@ -760,9 +760,12 @@ export default function HomePage() {
                             );
                           }
                         }}
-                        className={`bg-[#121212] border border-[#191919] rounded-[9px] p-3 hover:border-[#2A2A2A] transition-all duration-300 ml-4 mb-4 ${
-                          hasClaimableRewards ? 'cursor-pointer' : ''
+                        className={`bg-[#121212] border rounded-[9px] p-3 transition-all duration-300 ml-4 mb-4 ${
+                          hasClaimableRewards ? 'cursor-pointer' : 'border-[#191919] hover:border-[#2A2A2A]'
                         } ${isCurrentlyClaiming ? 'opacity-60 pointer-events-none' : ''}`}
+                        style={hasClaimableRewards ? {
+                          borderColor: isHovered ? 'rgba(239, 99, 0, 0.3)' : 'rgba(239, 99, 0, 0.1)'
+                        } : undefined}
                       >
                         <div className="text-white flex flex-col gap-4">
                           <div className="flex items-center justify-between gap-2">
@@ -818,7 +821,7 @@ export default function HomePage() {
                               </div>
 
                               {/* Rewards display */}
-                              <div className="flex items-center gap-2 text-sm text-white">
+                              <div className="flex items-center gap-2 text-sm" style={{ color: '#EF6300' }}>
                                 {proposalRewards.map((reward, idx) => (
                                   <div key={idx} className="flex items-center gap-2">
                                     {idx > 0 && (
