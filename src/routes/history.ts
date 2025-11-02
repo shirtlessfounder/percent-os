@@ -1,68 +1,12 @@
 import { Router } from 'express';
 import { HistoryService } from '../../app/services/history.service';
+import { requireModeratorId, getProposalId } from '@src/middleware/validation';
+import { PersistenceService } from '@app/services/persistence.service';
+import { LoggerService } from '../../app/services/logger.service';
 
 const router = Router();
-
-/**
- * Get price history for a proposal
- * GET /:id/prices?from=&to=&interval=
- * 
- * Query parameters:
- * - from: ISO date string (optional)
- * - to: ISO date string (optional)  
- * - interval: string like '1m', '5m', '1h' (optional)
- */
-router.get('/:id/prices', async (req, res, next) => {
-  try {
-    const proposalId = parseInt(req.params.id);
-    
-    if (isNaN(proposalId) || proposalId < 0) {
-      return res.status(400).json({ error: 'Invalid proposal ID' });
-    }
-    
-    const { from, to, interval } = req.query;
-    
-    let fromDate: Date | undefined;
-    let toDate: Date | undefined;
-    
-    if (from && typeof from === 'string') {
-      fromDate = new Date(from);
-      if (isNaN(fromDate.getTime())) {
-        return res.status(400).json({ error: 'Invalid from date format' });
-      }
-    }
-    
-    if (to && typeof to === 'string') {
-      toDate = new Date(to);
-      if (isNaN(toDate.getTime())) {
-        return res.status(400).json({ error: 'Invalid to date format' });
-      }
-    }
-    
-    const historyService = HistoryService.getInstance();
-    const prices = await historyService.getPriceHistory(
-      proposalId,
-      fromDate,
-      toDate,
-      interval as string
-    );
-    
-    res.json({
-      proposalId,
-      count: prices.length,
-      data: prices.map(price => ({
-        id: price.id,
-        timestamp: price.timestamp.toISOString(),
-        market: price.market,
-        price: price.price.toString(),
-        baseLiquidity: price.baseLiquidity?.toString(),
-        quoteLiquidity: price.quoteLiquidity?.toString(),
-      }))
-    });
-  } catch (error) {
-    next(error);
-  }
-});
+const logger = new LoggerService('api').createChild('history');
+router.use(requireModeratorId); // require moderatorId for all history routes
 
 /**
  * Get TWAP history for a proposal
@@ -74,39 +18,53 @@ router.get('/:id/prices', async (req, res, next) => {
  */
 router.get('/:id/twap', async (req, res, next) => {
   try {
-    const proposalId = parseInt(req.params.id);
-    
-    if (isNaN(proposalId) || proposalId < 0) {
-      return res.status(400).json({ error: 'Invalid proposal ID' });
-    }
-    
+    const moderatorId = req.moderatorId;
+    const proposalId = getProposalId(req);
+
     const { from, to } = req.query;
-    
+
     let fromDate: Date | undefined;
     let toDate: Date | undefined;
-    
+
     if (from && typeof from === 'string') {
       fromDate = new Date(from);
       if (isNaN(fromDate.getTime())) {
+        logger.warn('[GET /:id/twap] Invalid from date format', {
+          proposalId,
+          from
+        });
         return res.status(400).json({ error: 'Invalid from date format' });
       }
     }
-    
+
     if (to && typeof to === 'string') {
       toDate = new Date(to);
       if (isNaN(toDate.getTime())) {
+        logger.warn('[GET /:id/twap] Invalid to date format', {
+          proposalId,
+          to
+        });
         return res.status(400).json({ error: 'Invalid to date format' });
       }
     }
-    
-    const historyService = HistoryService.getInstance();
-    const twapData = await historyService.getTWAPHistory(
+
+    const twapData = await HistoryService.getTWAPHistory(
+      moderatorId,
       proposalId,
       fromDate,
       toDate
     );
-    
+
+    logger.info('[GET /:id/twap] TWAP history retrieved', {
+      proposalId,
+      moderatorId,
+      count: twapData.length,
+      from: fromDate?.toISOString(),
+      to: toDate?.toISOString()
+    });
+
     res.json({
+      moderatorId,
       proposalId,
       count: twapData.length,
       data: twapData.map(twap => ({
@@ -119,6 +77,10 @@ router.get('/:id/twap', async (req, res, next) => {
       }))
     });
   } catch (error) {
+    logger.error('[GET /:id/twap] Failed to get TWAP history', {
+      error: error instanceof Error ? error.message : String(error),
+      proposalId: req.params.id
+    });
     next(error);
   }
 });
@@ -134,48 +96,67 @@ router.get('/:id/twap', async (req, res, next) => {
  */
 router.get('/:id/trades', async (req, res, next) => {
   try {
-    const proposalId = parseInt(req.params.id);
-    
-    if (isNaN(proposalId) || proposalId < 0) {
-      return res.status(400).json({ error: 'Invalid proposal ID' });
-    }
-    
+    const proposalId = getProposalId(req);
+    const moderatorId = req.moderatorId;
+
     const { from, to, limit } = req.query;
-    
+
     let fromDate: Date | undefined;
     let toDate: Date | undefined;
     let limitNum: number | undefined;
-    
+
     if (from && typeof from === 'string') {
       fromDate = new Date(from);
       if (isNaN(fromDate.getTime())) {
+        logger.warn('[GET /:id/trades] Invalid from date format', {
+          proposalId,
+          from
+        });
         return res.status(400).json({ error: 'Invalid from date format' });
       }
     }
-    
+
     if (to && typeof to === 'string') {
       toDate = new Date(to);
       if (isNaN(toDate.getTime())) {
+        logger.warn('[GET /:id/trades] Invalid to date format', {
+          proposalId,
+          to
+        });
         return res.status(400).json({ error: 'Invalid to date format' });
       }
     }
-    
+
     if (limit && typeof limit === 'string') {
       limitNum = parseInt(limit);
       if (isNaN(limitNum) || limitNum <= 0) {
+        logger.warn('[GET /:id/trades] Invalid limit value', {
+          proposalId,
+          limit
+        });
         return res.status(400).json({ error: 'Invalid limit - must be a positive number' });
       }
     }
-    
-    const historyService = HistoryService.getInstance();
-    const trades = await historyService.getTradeHistory(
+
+    const trades = await HistoryService.getTradeHistory(
+      moderatorId,
       proposalId,
       fromDate,
       toDate,
       limitNum || 100
     );
-    
+
+    logger.info('[GET /:id/trades] Trade history retrieved', {
+      proposalId,
+      moderatorId,
+      count: trades.length,
+      limit: limitNum || 100,
+      from: fromDate?.toISOString(),
+      to: toDate?.toISOString()
+    });
+
     res.json({
+      moderatorId,
       proposalId,
       count: trades.length,
       data: trades.map(trade => ({
@@ -191,6 +172,10 @@ router.get('/:id/trades', async (req, res, next) => {
       }))
     });
   } catch (error) {
+    logger.error('[GET /:id/trades] Failed to get trade history', {
+      error: error instanceof Error ? error.message : String(error),
+      proposalId: req.params.id
+    });
     next(error);
   }
 });
@@ -206,56 +191,83 @@ router.get('/:id/trades', async (req, res, next) => {
  */
 router.get('/:id/chart', async (req, res, next) => {
   try {
-    const proposalId = parseInt(req.params.id);
-    
-    if (isNaN(proposalId) || proposalId < 0) {
-      return res.status(400).json({ error: 'Invalid proposal ID' });
-    }
-    
+    const proposalId = getProposalId(req);
+    const moderatorId = req.moderatorId;
+
     const { interval, from, to } = req.query;
-    
+
     if (!interval || typeof interval !== 'string') {
-      return res.status(400).json({ 
+      logger.warn('[GET /:id/chart] Missing required interval parameter', {
+        proposalId,
+        receivedParams: Object.keys(req.query)
+      });
+      return res.status(400).json({
         error: 'Missing required interval parameter',
         validIntervals: ['1m', '5m', '15m', '1h', '4h', '1d']
       });
     }
-    
+
     const validIntervals = ['1m', '5m', '15m', '1h', '4h', '1d'];
     if (!validIntervals.includes(interval)) {
-      return res.status(400).json({ 
+      logger.warn('[GET /:id/chart] Invalid interval', {
+        proposalId,
+        interval
+      });
+      return res.status(400).json({
         error: 'Invalid interval',
         validIntervals
       });
     }
-    
+
     let fromDate: Date | undefined;
     let toDate: Date | undefined;
-    
+
     if (from && typeof from === 'string') {
       fromDate = new Date(from);
       if (isNaN(fromDate.getTime())) {
+        logger.warn('[GET /:id/chart] Invalid from date format', {
+          proposalId,
+          from
+        });
         return res.status(400).json({ error: 'Invalid from date format' });
       }
     }
-    
+
     if (to && typeof to === 'string') {
       toDate = new Date(to);
       if (isNaN(toDate.getTime())) {
+        logger.warn('[GET /:id/chart] Invalid to date format', {
+          proposalId,
+          to
+        });
         return res.status(400).json({ error: 'Invalid to date format' });
       }
     }
-    
-    const historyService = HistoryService.getInstance();
-    const chartData = await historyService.getChartData(
+
+    // For sparse data (like predictions markets with few trades),
+    // expand the lookback window to at least 24 hours to ensure we catch data points
+    const minLookbackMs = 24 * 60 * 60 * 1000; // 24 hours
+    let effectiveFromDate = fromDate;
+
+    if (fromDate) {
+      const requestedLookback = Date.now() - fromDate.getTime();
+      if (requestedLookback < minLookbackMs) {
+        effectiveFromDate = new Date(Date.now() - minLookbackMs);
+      }
+    } else {
+      effectiveFromDate = new Date(Date.now() - minLookbackMs);
+    }
+
+    const chartData = await HistoryService.getChartData(
+      moderatorId,
       proposalId,
       interval as '1m' | '5m' | '15m' | '1h' | '4h' | '1d',
-      fromDate,
+      effectiveFromDate,
       toDate
     );
 
     // Get proposal to access totalSupply
-    const persistenceService = (await import('../../app/services/persistence.service')).PersistenceService.getInstance();
+    const persistenceService = new PersistenceService(moderatorId, logger.createChild('persistence'));
     const proposal = await persistenceService.getProposalForFrontend(proposalId);
     const totalSupply = proposal?.total_supply || 1000000000;
 
@@ -281,13 +293,28 @@ router.get('/:id/chart', async (req, res, next) => {
       };
     });
 
+    logger.info('[GET /:id/chart] Chart data retrieved', {
+      proposalId,
+      moderatorId,
+      interval,
+      count: formattedData.length,
+      from: fromDate?.toISOString(),
+      to: toDate?.toISOString()
+    });
+
     res.json({
+      moderatorId,
       proposalId,
       interval,
       count: formattedData.length,
       data: formattedData
     });
   } catch (error) {
+    logger.error('[GET /:id/chart] Failed to get chart data', {
+      error: error instanceof Error ? error.message : String(error),
+      proposalId: req.params.id,
+      interval: req.query.interval
+    });
     next(error);
   }
 });

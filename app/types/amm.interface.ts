@@ -1,6 +1,8 @@
 import { BN } from "@coral-xyz/anchor";
-import { PublicKey, Transaction } from "@solana/web3.js";
+import { Keypair, PublicKey, Transaction } from "@solana/web3.js";
 import { Decimal } from "decimal.js";
+import { IExecutionService } from './execution.interface';
+import { LoggerService } from '@app/services/logger.service';
 
 /**
  * Enum representing the operational state of the AMM
@@ -20,17 +22,11 @@ export interface IAMM {
   readonly quoteMint: PublicKey;      // Quote token mint address (immutable)
   readonly baseDecimals: number;      // Decimals for base token (immutable)
   readonly quoteDecimals: number;     // Decimals for quote token (immutable)
-  readonly state: AMMState;           // Current operational state (readonly)
+  state: AMMState;                    // Current operational state
   readonly isFinalized: boolean;      // Whether the AMM has been finalized
   pool?: PublicKey;                   // Pool address (set after initialization)
   position?: PublicKey;               // Position account address
   positionNft?: PublicKey;            // Position NFT mint address
-  
-  /**
-   * Sets the AMM state (useful for deserialization or testing)
-   * @param state - The new AMM state
-   */
-  setState(state: AMMState): void;
 
   /**
    * Builds a transaction for initializing the AMM pool with initial liquidity
@@ -129,4 +125,36 @@ export interface IAMM {
    * @throws Error if transaction execution fails
    */
   executeSwapTx(tx: Transaction): Promise<string>;
+
+  /**
+   * Serializes the AMM state for persistence
+   * @returns Serialized AMM data that can be saved to database
+   */
+  serialize(): IAMMSerializedData;
+}
+
+/**
+ * Serialized AMM data structure for persistence
+ */
+export interface IAMMSerializedData {
+  // Token configuration
+  baseMint: string;
+  quoteMint: string;
+  baseDecimals: number;
+  quoteDecimals: number;
+
+  // Pool state
+  state: AMMState;
+  pool?: string;
+  position?: string;
+  positionNft?: string;
+}
+
+/**
+ * Configuration for deserializing an AMM
+ */
+export interface IAMMDeserializeConfig {
+  authority: Keypair;
+  executionService: IExecutionService;
+  logger: LoggerService;
 }

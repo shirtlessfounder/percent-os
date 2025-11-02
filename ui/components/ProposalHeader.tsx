@@ -10,6 +10,7 @@ interface ProposalHeaderProps {
   proposalId: number;
   status: ProposalStatus;
   finalizedAt: number;
+  title: string;
   description: string;
   activeTab: TabType;
   onTabChange: (tab: TabType) => void;
@@ -21,13 +22,15 @@ export function ProposalHeader({
   proposalId,
   status,
   finalizedAt,
+  title,
   description,
   activeTab,
   onTabChange,
   onTimerEnd,
   pfgPercentage
 }: ProposalHeaderProps) {
-  const { title, content } = getProposalContent(proposalId, description);
+  const moderatorId = process.env.NEXT_PUBLIC_MODERATOR_ID;
+  const { title: displayTitle, content } = getProposalContent(proposalId, title, description, moderatorId);
 
   return (
     <div className="mb-4">
@@ -70,7 +73,7 @@ export function ProposalHeader({
       </div>
       <div className="mb-4">
         <h1 className="text-3xl font-semibold mb-4">
-          {title}
+          {displayTitle}
         </h1>
 
         {/* Trade/Description Toggle */}

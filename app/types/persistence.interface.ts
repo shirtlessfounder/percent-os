@@ -1,7 +1,6 @@
-import { IModeratorConfig } from './moderator.interface';
+import { IModeratorConfig, ProposalStatus } from './moderator.interface';
 import { IProposal } from './proposal.interface';
-import { AMMState } from './amm.interface';
-import { VaultState } from './vault.interface';
+import { ITWAPConfig } from './twap-oracle.interface';
 
 /**
  * Serialized transaction instruction data
@@ -17,83 +16,47 @@ export interface ITransactionInstructionData {
 }
 
 /**
- * Serialized transaction data for storage
- */
-export interface ITransactionData {
-  instructions: ITransactionInstructionData[];
-  feePayer: string | null;
-}
-
-/**
- * Database representation of a proposal
+ * Database representation of a proposal (new schema)
  */
 export interface IProposalDB {
-  id: number;
-  description: string;
-  status: string;
+  id: number;                          // Global unique ID
+  moderator_id: number;                 // Reference to moderator
+  proposal_id: number;                  // Per-moderator proposal ID
+  title: string;                       // Proposal title
+  description?: string;                 // Proposal description (optional)
+  status: ProposalStatus;               // Proposal status enum
   created_at: Date;
   finalized_at: Date;
-  proposal_length: string; // bigint stored as string
-  transaction_data: string | ITransactionData; // JSON string or parsed object containing ITransactionData
-  
+  proposal_length: string;              // bigint stored as string
+
+  // Transaction data
+  transaction_instructions: string | ITransactionInstructionData[]; // JSON string or parsed array
+  transaction_fee_payer?: string;       // Optional fee payer
+
   // Token configuration
   base_mint: string;
   quote_mint: string;
   base_decimals: number;
   quote_decimals: number;
-  authority: string;
-  
+
   // AMM configuration
-  amm_config: {
+  amm_config: string | {                // JSON string or parsed object
     initialBaseAmount: string;
     initialQuoteAmount: string;
-  } | null;
-  
-  // AMM states
-  pass_amm_state: {
-    state: AMMState;
-    pool?: string;
-    position?: string;
-    positionNft?: string;
-  } | null;
-  
-  fail_amm_state: {
-    state: AMMState;
-    pool?: string;
-    position?: string;
-    positionNft?: string;
-  } | null;
-  
-  // Vault states
-  base_vault_state: {
-    state: VaultState;
-    escrow: string;
-    passConditionalMint: string;
-    failConditionalMint: string;
-  } | null;
-  
-  quote_vault_state: {
-    state: VaultState;
-    escrow: string;
-    passConditionalMint: string;
-    failConditionalMint: string;
-  } | null;
-  
-  // TWAP Oracle state
-  twap_oracle_state: {
-    passObservation: number;
-    failObservation: number;
-    passAggregation: number;
-    failAggregation: number;
-    lastUpdateTime: number;
-    initialTwapValue: number;
-    twapMaxObservationChangePerUpdate: number;
-    twapStartDelay: number;
-    passThresholdBps: number;
-  } | null;
+  };
 
-  // Chart configuration
-  spot_pool_address: string | null;
+  // TWAP configuration
+  twap_config: string | ITWAPConfig;    // JSON string or parsed object
+
+  // Serialized component data
+  pass_amm_data: string | any;          // JSON string or parsed object
+  fail_amm_data: string | any;          // JSON string or parsed object
+  base_vault_data: string | any;        // JSON string or parsed object
+  quote_vault_data: string | any;       // JSON string or parsed object
+  twap_oracle_data: string | any;       // JSON string or parsed object
+
+  // Optional fields
+  spot_pool_address?: string;
   total_supply: number;
 
   updated_at: Date;
@@ -113,6 +76,7 @@ export interface IModeratorStateDB {
     authority: string;
     rpcUrl: string;
   };
+  protocol_name?: string;
   updated_at: Date;
 }
 
@@ -148,10 +112,10 @@ export interface IPersistenceService {
   /**
    * Save moderator state to the database
    */
-  saveModeratorState(proposalCounter: number, config: IModeratorConfig): Promise<void>;
-  
+  saveModeratorState(proposalCounter: number, config: IModeratorConfig, protocolName?: string): Promise<void>;
+
   /**
    * Load moderator state from the database
    */
-  loadModeratorState(): Promise<{ proposalCounter: number; config: IModeratorConfig } | null>;
+  loadModeratorState(): Promise<{ proposalCounter: number; config: IModeratorConfig; protocolName?: string } | null>;
 }

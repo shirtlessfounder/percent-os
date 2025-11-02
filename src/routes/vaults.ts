@@ -1,12 +1,18 @@
 import { Router } from 'express';
-import { getModerator } from '../services/moderator.service';
+import { requireModeratorId, getModerator } from '../middleware/validation';
+import { getProposalId } from '../middleware/validation';
 import { PublicKey, Transaction } from '@solana/web3.js';
+import { LoggerService } from '@app/services/logger.service';
 
 const router = Router();
+const logger = new LoggerService('api').createChild('vaults');
+
+// Apply requireModeratorId to all vault routes - no fallback allowed
+router.use(requireModeratorId);
 
 // Helper function to get vault from proposal
-async function getVault(proposalId: number, vaultType: string) {
-  const moderator = await getModerator();
+async function getVault(moderatorId: number, proposalId: number, vaultType: string) {
+  const moderator = getModerator(moderatorId);
   
   const proposal = await moderator.getProposal(proposalId);
   if (!proposal) {
@@ -29,30 +35,48 @@ async function getVault(proposalId: number, vaultType: string) {
 // Build split transaction
 router.post('/:id/:type/buildSplitTx', async (req, res, next) => {
   try {
-    const proposalId = parseInt(req.params.id);
+    const moderatorId = req.moderatorId;
+    const proposalId = getProposalId(req);
     const vaultType = req.params.type;
 
     // Validate request body
     const { user, amount } = req.body;
     if (!user || amount === undefined) {
+      logger.warn('[POST /:id/:type/buildSplitTx] Missing required fields', {
+        proposalId,
+        vaultType,
+        receivedFields: Object.keys(req.body)
+      });
       return res.status(400).json({
         error: 'Missing required fields',
         required: ['user', 'amount']
       });
     }
 
-    const vault = await getVault(proposalId, vaultType);
+    const vault = await getVault(moderatorId, proposalId, vaultType);
     const userPubkey = new PublicKey(user);
     const amountBigInt = BigInt(amount);
 
     // Vault handles SOL wrapping internally for mainnet quote vaults
     const transaction = await vault.buildSplitTx(userPubkey, amountBigInt);
 
+    logger.info('[POST /:id/:type/buildSplitTx] Split transaction built', {
+      proposalId,
+      vaultType,
+      user,
+      amount: amount.toString()
+    });
+
     res.json({
       transaction: transaction.serialize({ requireAllSignatures: false }).toString('base64'),
       message: 'Transaction built successfully. User must sign before execution.'
     });
   } catch (error) {
+    logger.error('[POST /:id/:type/buildSplitTx] Failed to build split transaction', {
+      error: error instanceof Error ? error.message : String(error),
+      proposalId: req.params.id,
+      vaultType: req.params.type
+    });
     next(error);
   }
 });
@@ -60,35 +84,49 @@ router.post('/:id/:type/buildSplitTx', async (req, res, next) => {
 // Execute split transaction
 router.post('/:id/:type/executeSplitTx', async (req, res, next) => {
   try {
-    const proposalId = parseInt(req.params.id);
+    const moderatorId = req.moderatorId;
+    const proposalId = getProposalId(req);
     const vaultType = req.params.type;
-    
+
     // Validate request body
     const { transaction } = req.body;
     if (!transaction) {
-      return res.status(400).json({ 
+      logger.warn('[POST /:id/:type/executeSplitTx] Missing transaction', {
+        proposalId,
+        vaultType
+      });
+      return res.status(400).json({
         error: 'Missing required field: transaction'
       });
     }
-    
-    const vault = await getVault(proposalId, vaultType);
+
+    const vault = await getVault(moderatorId, proposalId, vaultType);
     const tx = Transaction.from(Buffer.from(transaction, 'base64'));
-    
+
     const signature = await vault.executeSplitTx(tx);
-    
+
     // Save the updated proposal state to database after the split
-    const moderator = await getModerator();
+    const moderator = getModerator(moderatorId);
     const updatedProposal = await moderator.getProposal(proposalId);
     if (updatedProposal) {
       await moderator.saveProposal(updatedProposal);
-      console.log(`Proposal #${proposalId} state saved after split execution`);
+      logger.info('[POST /:id/:type/executeSplitTx] Split executed and saved', {
+        proposalId,
+        vaultType,
+        signature
+      });
     }
-    
+
     res.json({
       signature,
       status: 'success'
     });
   } catch (error) {
+    logger.error('[POST /:id/:type/executeSplitTx] Failed to execute split transaction', {
+      error: error instanceof Error ? error.message : String(error),
+      proposalId: req.params.id,
+      vaultType: req.params.type
+    });
     next(error);
   }
 });
@@ -96,30 +134,48 @@ router.post('/:id/:type/executeSplitTx', async (req, res, next) => {
 // Build merge transaction
 router.post('/:id/:type/buildMergeTx', async (req, res, next) => {
   try {
-    const proposalId = parseInt(req.params.id);
+    const moderatorId = req.moderatorId;
+    const proposalId = getProposalId(req);
     const vaultType = req.params.type;
 
     // Validate request body
     const { user, amount } = req.body;
     if (!user || amount === undefined) {
+      logger.warn('[POST /:id/:type/buildMergeTx] Missing required fields', {
+        proposalId,
+        vaultType,
+        receivedFields: Object.keys(req.body)
+      });
       return res.status(400).json({
         error: 'Missing required fields',
         required: ['user', 'amount']
       });
     }
 
-    const vault = await getVault(proposalId, vaultType);
+    const vault = await getVault(moderatorId, proposalId, vaultType);
     const userPubkey = new PublicKey(user);
     const amountBigInt = BigInt(amount);
 
     // Vault handles SOL unwrapping internally for mainnet quote vaults
     const transaction = await vault.buildMergeTx(userPubkey, amountBigInt);
 
+    logger.info('[POST /:id/:type/buildMergeTx] Merge transaction built', {
+      proposalId,
+      vaultType,
+      user,
+      amount: amount.toString()
+    });
+
     res.json({
       transaction: transaction.serialize({ requireAllSignatures: false }).toString('base64'),
       message: 'Transaction built successfully. User must sign before execution.'
     });
   } catch (error) {
+    logger.error('[POST /:id/:type/buildMergeTx] Failed to build merge transaction', {
+      error: error instanceof Error ? error.message : String(error),
+      proposalId: req.params.id,
+      vaultType: req.params.type
+    });
     next(error);
   }
 });
@@ -127,35 +183,49 @@ router.post('/:id/:type/buildMergeTx', async (req, res, next) => {
 // Execute merge transaction
 router.post('/:id/:type/executeMergeTx', async (req, res, next) => {
   try {
-    const proposalId = parseInt(req.params.id);
+    const moderatorId = req.moderatorId;
+    const proposalId = getProposalId(req);
     const vaultType = req.params.type;
-    
+
     // Validate request body
     const { transaction } = req.body;
     if (!transaction) {
-      return res.status(400).json({ 
+      logger.warn('[POST /:id/:type/executeMergeTx] Missing transaction', {
+        proposalId,
+        vaultType
+      });
+      return res.status(400).json({
         error: 'Missing required field: transaction'
       });
     }
-    
-    const vault = await getVault(proposalId, vaultType);
+
+    const vault = await getVault(moderatorId, proposalId, vaultType);
     const tx = Transaction.from(Buffer.from(transaction, 'base64'));
-    
+
     const signature = await vault.executeMergeTx(tx);
-    
+
     // Save the updated proposal state to database after the merge
-    const moderator = await getModerator();
+    const moderator = getModerator(moderatorId);
     const updatedProposal = await moderator.getProposal(proposalId);
     if (updatedProposal) {
       await moderator.saveProposal(updatedProposal);
-      console.log(`Proposal #${proposalId} state saved after merge execution`);
+      logger.info('[POST /:id/:type/executeMergeTx] Merge executed and saved', {
+        proposalId,
+        vaultType,
+        signature
+      });
     }
-    
+
     res.json({
       signature,
       status: 'success'
     });
   } catch (error) {
+    logger.error('[POST /:id/:type/executeMergeTx] Failed to execute merge transaction', {
+      error: error instanceof Error ? error.message : String(error),
+      proposalId: req.params.id,
+      vaultType: req.params.type
+    });
     next(error);
   }
 });
@@ -163,28 +233,44 @@ router.post('/:id/:type/executeMergeTx', async (req, res, next) => {
 // Build redeem winning tokens transaction
 router.post('/:id/:type/buildRedeemWinningTokensTx', async (req, res, next) => {
   try {
-    const proposalId = parseInt(req.params.id);
+    const moderatorId = req.moderatorId;
+    const proposalId = getProposalId(req);
     const vaultType = req.params.type;
 
     // Validate request body
     const { user } = req.body;
     if (!user) {
+      logger.warn('[POST /:id/:type/buildRedeemWinningTokensTx] Missing user', {
+        proposalId,
+        vaultType
+      });
       return res.status(400).json({
         error: 'Missing required field: user'
       });
     }
 
-    const vault = await getVault(proposalId, vaultType);
+    const vault = await getVault(moderatorId, proposalId, vaultType);
     const userPubkey = new PublicKey(user);
 
     // Vault handles SOL unwrapping internally for mainnet quote vaults
     const transaction = await vault.buildRedeemWinningTokensTx(userPubkey);
+
+    logger.info('[POST /:id/:type/buildRedeemWinningTokensTx] Redeem transaction built', {
+      proposalId,
+      vaultType,
+      user
+    });
 
     res.json({
       transaction: transaction.serialize({ requireAllSignatures: false }).toString('base64'),
       message: 'Transaction built successfully. User must sign before execution.'
     });
   } catch (error) {
+    logger.error('[POST /:id/:type/buildRedeemWinningTokensTx] Failed to build redeem transaction', {
+      error: error instanceof Error ? error.message : String(error),
+      proposalId: req.params.id,
+      vaultType: req.params.type
+    });
     next(error);
   }
 });
@@ -192,35 +278,49 @@ router.post('/:id/:type/buildRedeemWinningTokensTx', async (req, res, next) => {
 // Execute redeem winning tokens transaction
 router.post('/:id/:type/executeRedeemWinningTokensTx', async (req, res, next) => {
   try {
-    const proposalId = parseInt(req.params.id);
+    const moderatorId = req.moderatorId;
+    const proposalId = getProposalId(req);
     const vaultType = req.params.type;
-    
+
     // Validate request body
     const { transaction } = req.body;
     if (!transaction) {
-      return res.status(400).json({ 
+      logger.warn('[POST /:id/:type/executeRedeemWinningTokensTx] Missing transaction', {
+        proposalId,
+        vaultType
+      });
+      return res.status(400).json({
         error: 'Missing required field: transaction'
       });
     }
-    
-    const vault = await getVault(proposalId, vaultType);
+
+    const vault = await getVault(moderatorId, proposalId, vaultType);
     const tx = Transaction.from(Buffer.from(transaction, 'base64'));
-    
+
     const signature = await vault.executeRedeemWinningTokensTx(tx);
-    
+
     // Save the updated proposal state to database after the redeem
-    const moderator = await getModerator();
+    const moderator = getModerator(moderatorId);
     const updatedProposal = await moderator.getProposal(proposalId);
     if (updatedProposal) {
       await moderator.saveProposal(updatedProposal);
-      console.log(`Proposal #${proposalId} state saved after redeem execution`);
+      logger.info('[POST /:id/:type/executeRedeemWinningTokensTx] Redeem executed and saved', {
+        proposalId,
+        vaultType,
+        signature
+      });
     }
-    
+
     res.json({
       signature,
       status: 'success'
     });
   } catch (error) {
+    logger.error('[POST /:id/:type/executeRedeemWinningTokensTx] Failed to execute redeem transaction', {
+      error: error instanceof Error ? error.message : String(error),
+      proposalId: req.params.id,
+      vaultType: req.params.type
+    });
     next(error);
   }
 });
@@ -228,32 +328,40 @@ router.post('/:id/:type/executeRedeemWinningTokensTx', async (req, res, next) =>
 // Get user balances for both vaults
 router.get('/:id/getUserBalances', async (req, res, next) => {
   try {
-    const proposalId = parseInt(req.params.id);
+    const moderatorId = req.moderatorId;
+    const proposalId = getProposalId(req);
     const { user } = req.query;
-    
+
     if (!user) {
-      return res.status(400).json({ 
+      logger.warn('[GET /:id/getUserBalances] Missing user parameter', {
+        proposalId
+      });
+      return res.status(400).json({
         error: 'Missing required query parameter: user'
       });
     }
-    
-    const moderator = await getModerator();
-    
+
+    const moderator = getModerator(moderatorId);
+
     const proposal = await moderator.getProposal(proposalId);
     if (!proposal) {
+      logger.warn('[GET /:id/getUserBalances] Proposal not found', {
+        proposalId,
+        moderatorId
+      });
       return res.status(404).json({ error: 'Proposal not found' });
     }
     const userPubkey = new PublicKey(user as string);
-    
+
     // Use getVaults() to get both vaults with proper initialization checks
     const [baseVault, quoteVault] = proposal.getVaults();
-    
+
     // Get balances from both vaults in parallel
     const [baseBalances, quoteBalances] = await Promise.all([
       baseVault.getUserBalances(userPubkey),
       quoteVault.getUserBalances(userPubkey)
     ]);
-    
+
     const balances = {
       proposalId,
       user: user as string,
@@ -268,9 +376,19 @@ router.get('/:id/getUserBalances', async (req, res, next) => {
         failConditional: quoteBalances.failConditional.toString()
       }
     };
-    
+
+    logger.info('[GET /:id/getUserBalances] User balances retrieved', {
+      proposalId,
+      user: user as string
+    });
+
     res.json(balances);
   } catch (error) {
+    logger.error('[GET /:id/getUserBalances] Failed to get user balances', {
+      error: error instanceof Error ? error.message : String(error),
+      proposalId: req.params.id,
+      user: req.query.user
+    });
     next(error);
   }
 });

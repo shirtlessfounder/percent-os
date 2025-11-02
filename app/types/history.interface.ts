@@ -2,16 +2,15 @@ import { Decimal } from 'decimal.js';
 
 /**
  * Price history record for AMM price tracking
- * Captures point-in-time price and liquidity snapshots
+ * Captures point-in-time price snapshots
  */
 export interface IPriceHistory {
   id?: number;                   // Database primary key (auto-generated)
   timestamp: Date;                // Snapshot timestamp
+  moderatorId: number;            // Associated moderator ID
   proposalId: number;             // Associated proposal ID
   market: 'pass' | 'fail' | 'global' | 'spot'; // Which market (pass/fail AMMs, global price, or spot pool)
   price: Decimal;                 // Current price at this point in time
-  baseLiquidity?: Decimal;        // Base token liquidity in the pool (optional)
-  quoteLiquidity?: Decimal;       // Quote token liquidity in the pool (optional)
 }
 
 /**
@@ -21,6 +20,7 @@ export interface IPriceHistory {
 export interface ITWAPHistory {
   id?: number;                   // Database primary key (auto-generated)
   timestamp: Date;                // Snapshot timestamp
+  moderatorId: number;            // Associated moderator ID
   proposalId: number;             // Associated proposal ID
   passTwap: Decimal;              // Current pass market TWAP
   failTwap: Decimal;              // Current fail market TWAP
@@ -35,6 +35,7 @@ export interface ITWAPHistory {
 export interface ITradeHistory {
   id?: number;                   // Database primary key (auto-generated)
   timestamp: Date;                // Trade execution timestamp
+  moderatorId: number;            // Associated moderator ID
   proposalId: number;             // Associated proposal ID
   market: 'pass' | 'fail';        // Which AMM market was traded
   userAddress: string;            // Trader's wallet address
@@ -51,71 +52,11 @@ export interface ITradeHistory {
  */
 export interface IChartDataPoint {
   timestamp: number;              // Unix timestamp in milliseconds
+  moderatorId: number;            // Associated moderator ID
   market: 'pass' | 'fail' | 'global' | 'spot'; // Which market this data is for (pass/fail AMMs, global price, or spot pool)
   open: number;                   // Opening price in the time bucket
   high: number;                   // Highest price in the time bucket
   low: number;                    // Lowest price in the time bucket
   close: number;                  // Closing price in the time bucket
   volume?: number;                // Trading volume in this time period (optional)
-}
-
-/**
- * Service interface for managing historical data
- * Provides methods for recording and retrieving price, TWAP, and trade history
- * All data is persisted in PostgreSQL for analytics and visualization
- */
-export interface IHistoryService {
-  /**
-   * Record a price snapshot
-   */
-  recordPrice(data: Omit<IPriceHistory, 'id' | 'timestamp'>): Promise<void>;
-  
-  /**
-   * Record a TWAP snapshot
-   */
-  recordTWAP(data: Omit<ITWAPHistory, 'id' | 'timestamp'>): Promise<void>;
-  
-  /**
-   * Record a trade
-   */
-  recordTrade(data: Omit<ITradeHistory, 'id' | 'timestamp'>): Promise<void>;
-  
-  /**
-   * Get price history for a proposal
-   */
-  getPriceHistory(
-    proposalId: number,
-    from?: Date,
-    to?: Date,
-    interval?: string
-  ): Promise<IPriceHistory[]>;
-  
-  /**
-   * Get TWAP history for a proposal
-   */
-  getTWAPHistory(
-    proposalId: number,
-    from?: Date,
-    to?: Date
-  ): Promise<ITWAPHistory[]>;
-  
-  /**
-   * Get trade history for a proposal
-   */
-  getTradeHistory(
-    proposalId: number,
-    from?: Date,
-    to?: Date,
-    limit?: number
-  ): Promise<ITradeHistory[]>;
-  
-  /**
-   * Get chart data for a proposal
-   */
-  getChartData(
-    proposalId: number,
-    interval: '1m' | '5m' | '15m' | '1h' | '4h' | '1d',
-    from?: Date,
-    to?: Date
-  ): Promise<IChartDataPoint[]>;
 }

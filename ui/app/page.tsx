@@ -26,6 +26,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { api } from '@/lib/api';
 import { claimWinnings } from '@/lib/trading';
+import { buildApiUrl } from '@/lib/api-utils';
 
 const LivePriceDisplay = dynamic(() => import('@/components/LivePriceDisplay').then(mod => mod.LivePriceDisplay), {
   ssr: false,
@@ -290,7 +291,7 @@ export default function HomePage() {
 
       // Build split transaction
       const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-      const buildResponse = await fetch(`${API_BASE_URL}/api/vaults/${proposal.id}/${vaultType}/buildSplitTx`, {
+      const buildResponse = await fetch(buildApiUrl(API_BASE_URL, `/api/vaults/${proposal.id}/${vaultType}/buildSplitTx`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -313,7 +314,7 @@ export default function HomePage() {
       const signedTx = await wallet.signTransaction(splitTx);
 
       // Execute split transaction
-      const executeResponse = await fetch(`${API_BASE_URL}/api/vaults/${proposal.id}/${vaultType}/executeSplitTx`, {
+      const executeResponse = await fetch(buildApiUrl(API_BASE_URL, `/api/vaults/${proposal.id}/${vaultType}/executeSplitTx`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -378,7 +379,7 @@ export default function HomePage() {
 
       // Build merge transaction
       const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-      const buildResponse = await fetch(`${API_BASE_URL}/api/vaults/${proposal.id}/${vaultType}/buildMergeTx`, {
+      const buildResponse = await fetch(buildApiUrl(API_BASE_URL, `/api/vaults/${proposal.id}/${vaultType}/buildMergeTx`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -401,7 +402,7 @@ export default function HomePage() {
       const signedTx = await wallet.signTransaction(mergeTx);
 
       // Execute merge transaction
-      const executeResponse = await fetch(`${API_BASE_URL}/api/vaults/${proposal.id}/${vaultType}/executeMergeTx`, {
+      const executeResponse = await fetch(buildApiUrl(API_BASE_URL, `/api/vaults/${proposal.id}/${vaultType}/executeMergeTx`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -515,6 +516,7 @@ export default function HomePage() {
               proposalId={proposal.id}
               status={proposal.status as 'Pending' | 'Passed' | 'Failed' | 'Executed'}
               finalizedAt={proposal.finalizedAt}
+              title={proposal.title}
               description={proposal.description}
               activeTab={activeTab}
               onTabChange={setActiveTab}
@@ -699,7 +701,7 @@ export default function HomePage() {
                 </div>
                 <div className="grid grid-cols-3 gap-4 auto-rows-auto items-start pb-8">
                   {sortedProposals.map((proposal) => {
-                    const proposalContent = getProposalContent(proposal.id, proposal.description);
+                    const proposalContent = getProposalContent(proposal.id, proposal.title, proposal.description);
                     const isHovered = hoveredProposalId === proposal.id;
 
                     // Extract first section (Executive Summary) for preview

@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatDescription } from './formatDescription';
 
 interface ProposalContent {
   id: number;
@@ -367,22 +368,94 @@ export const proposalContentMap: Record<number, ProposalContent> = {
         </div>
       </div>
     )
+  },
+  8: {
+    id: 8,
+    title: "ZC Application Redesign by Shirtless (ZC-4)",
+    content: (
+      <div className="space-y-4 text-gray-300">
+        <p>
+          Should ZC merge PR #13 into main?
+        </p>
+
+        <p>
+          The proposal passes if pass-fail gap &gt; 0%. Pass-fail gap is calculated using TWAP.
+        </p>
+
+        <div>
+          <h3 className="text-lg font-semibold text-white mb-2">Links</h3>
+          <ul className="list-disc list-inside space-y-1">
+            <li>
+              GitHub PR: <a href="https://github.com/zcombinatorio/zcombinator/pull/13" className="text-blue-400 hover:text-blue-300 underline" target="_blank" rel="noopener noreferrer">https://github.com/zcombinatorio/zcombinator/pull/13</a>
+            </li>
+            <li>
+              Discord Discussion: <a href="https://discord.com/channels/1419789513382826006/1424768819330682993" className="text-blue-400 hover:text-blue-300 underline" target="_blank" rel="noopener noreferrer">View Discussion</a>
+            </li>
+          </ul>
+        </div>
+
+        <div>
+          <h3 className="text-lg font-semibold text-white mb-2">I need help - who can I talk to?</h3>
+          <p>
+            Come join our Discord: <a href="https://discord.gg/Vf38Mqhxu5" className="text-blue-400 hover:text-blue-300 underline" target="_blank" rel="noopener noreferrer">https://discord.gg/Vf38Mqhxu5</a>
+          </p>
+        </div>
+      </div>
+    )
+  },
+  9: {
+    id: 9,
+    title: "Standardized ZC emissions to Percent, ZTORIO, and SolPay by Hands (ZC-5)",
+    content: (
+      <div className="space-y-4 text-gray-300">
+        <p>
+          Should ZC merge PR #17 into main?
+        </p>
+
+        <p>
+          The proposal passes if TWAP Pass-Fail Gap &gt; 0%.
+        </p>
+
+        <div>
+          <h3 className="text-lg font-semibold text-white mb-2">Links</h3>
+          <ul className="list-disc list-inside space-y-1">
+            <li>
+              GitHub PR: <a href="https://github.com/zcombinatorio/zcombinator/pull/17" className="text-blue-400 hover:text-blue-300 underline" target="_blank" rel="noopener noreferrer">https://github.com/zcombinatorio/zcombinator/pull/17</a>
+            </li>
+            <li>
+              Discord Discussion: <a href="discord.gg/MQfcX9QM2r" className="text-blue-400 hover:text-blue-300 underline" target="_blank" rel="noopener noreferrer">View Discussion</a>
+            </li>
+          </ul>
+        </div>
+      </div>
+    )
   }
 };
 
-export function getProposalContent(proposalId: number, defaultDescription?: string) {
-  const content = proposalContentMap[proposalId];
-
-  if (content) {
-    return {
-      title: content.title,
-      content: content.content
-    };
+export function getProposalContent(
+  proposalId: number,
+  title: string,
+  description: string,
+  moderatorId?: string
+) {
+  // Only use hardcoded content for moderator ID 2
+  if (moderatorId === '2') {
+    const content = proposalContentMap[proposalId];
+    if (content) {
+      return {
+        title: content.title,
+        content: content.content
+      };
+    }
   }
 
-  // Fallback for proposals without custom content
+  // For all other moderators, use database title/description
   return {
-    title: defaultDescription || `Proposal #${proposalId}`,
-    content: null
+    title: title,
+    content: description ? (
+      <div className="space-y-4 text-gray-300 whitespace-pre-wrap">
+        {formatDescription(description)}
+      </div>
+    ) : null
   };
 }
