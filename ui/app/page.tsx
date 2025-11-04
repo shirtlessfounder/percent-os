@@ -545,14 +545,7 @@ export default function HomePage() {
 
                       {/* Pass Price */}
                       <div
-                        className="flex-1 bg-[#121212] border rounded-[9px] py-3 px-5 transition-all duration-300 hover:border-opacity-100"
-                        style={{ borderColor: selectedMarket === 'pass' ? 'rgba(110, 204, 148, 0.1)' : '#191919' }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.borderColor = selectedMarket === 'pass' ? 'rgba(110, 204, 148, 0.3)' : '#2A2A2A';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.borderColor = selectedMarket === 'pass' ? 'rgba(110, 204, 148, 0.1)' : '#191919';
-                        }}
+                        className="flex-1 bg-[#121212] border border-[#191919] rounded-[9px] py-3 px-5 hover:border-[#2A2A2A] transition-all duration-300"
                       >
                         <div className="text-white flex flex-col">
                           <span className="text-sm text-white font-semibold uppercase mb-6">Pass Price</span>
@@ -564,14 +557,7 @@ export default function HomePage() {
 
                       {/* Fail Price */}
                       <div
-                        className="flex-1 bg-[#121212] border rounded-[9px] py-3 px-5 transition-all duration-300"
-                        style={{ borderColor: selectedMarket === 'fail' ? 'rgba(255, 111, 148, 0.1)' : '#191919' }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.borderColor = selectedMarket === 'fail' ? 'rgba(255, 111, 148, 0.3)' : '#2A2A2A';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.borderColor = selectedMarket === 'fail' ? 'rgba(255, 111, 148, 0.1)' : '#191919';
-                        }}
+                        className="flex-1 bg-[#121212] border border-[#191919] rounded-[9px] py-3 px-5 hover:border-[#2A2A2A] transition-all duration-300"
                       >
                         <div className="text-white flex flex-col">
                           <span className="text-sm text-white font-semibold uppercase mb-6">Fail Price</span>
@@ -611,14 +597,7 @@ export default function HomePage() {
                       <div className="flex gap-4">
                         {/* Pass Balances */}
                         <div
-                          className="flex-1 bg-[#121212] border rounded-[9px] py-3 px-5 transition-all duration-300"
-                          style={{ borderColor: selectedMarket === 'pass' ? 'rgba(110, 204, 148, 0.1)' : '#191919' }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.borderColor = selectedMarket === 'pass' ? 'rgba(110, 204, 148, 0.3)' : '#2A2A2A';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.borderColor = selectedMarket === 'pass' ? 'rgba(110, 204, 148, 0.1)' : '#191919';
-                          }}
+                          className="flex-1 bg-[#121212] border border-[#191919] rounded-[9px] py-3 px-5 hover:border-[#2A2A2A] transition-all duration-300"
                         >
                           <div className="text-white flex flex-col">
                             <span className="text-sm text-white font-semibold uppercase mb-6">If Pass</span>
@@ -652,14 +631,7 @@ export default function HomePage() {
 
                         {/* Fail Balances */}
                         <div
-                          className="flex-1 bg-[#121212] border rounded-[9px] py-3 px-5 transition-all duration-300"
-                          style={{ borderColor: selectedMarket === 'fail' ? 'rgba(255, 111, 148, 0.1)' : '#191919' }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.borderColor = selectedMarket === 'fail' ? 'rgba(255, 111, 148, 0.3)' : '#2A2A2A';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.borderColor = selectedMarket === 'fail' ? 'rgba(255, 111, 148, 0.1)' : '#191919';
-                          }}
+                          className="flex-1 bg-[#121212] border border-[#191919] rounded-[9px] py-3 px-5 hover:border-[#2A2A2A] transition-all duration-300"
                         >
                           <div className="text-white flex flex-col">
                             <span className="text-sm text-white font-semibold uppercase mb-6">If Fail</span>
@@ -695,22 +667,7 @@ export default function HomePage() {
 
                     {/* Trading Interface */}
                     <div
-                      className="bg-[#121212] border rounded-[9px] p-3 transition-all duration-300"
-                      style={{
-                        borderColor: selectedMarket === 'pass'
-                          ? 'rgba(110, 204, 148, 0.1)'
-                          : 'rgba(255, 111, 148, 0.1)'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = selectedMarket === 'pass'
-                          ? 'rgba(110, 204, 148, 0.3)'
-                          : 'rgba(255, 111, 148, 0.3)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = selectedMarket === 'pass'
-                          ? 'rgba(110, 204, 148, 0.1)'
-                          : 'rgba(255, 111, 148, 0.1)';
-                      }}
+                      className="bg-[#121212] border border-[#191919] rounded-[9px] p-3 hover:border-[#2A2A2A] transition-all duration-300"
                     >
                       <TradingInterface
                         proposalId={proposal.id}
