@@ -525,13 +525,6 @@ const TradingInterface = memo(({
       {/* Only show betting interface for pending proposals */}
       {proposalStatus === 'Pending' && (
         <div className={visualFocusClassName}>
-      {/* Market Selection (which AMM to trade on) */}
-      <div className="mb-2">
-        <div className="text-xs text-gray-400">
-          Select Market
-        </div>
-      </div>
-
       {/* Pass/Fail market toggle */}
       <div className="flex flex-row flex-1 min-h-[40px] max-h-[40px] gap-[2px] p-[3px] justify-center items-center rounded-full mb-2 border border-[#2A2A2A]">
         <button
@@ -541,9 +534,10 @@ const TradingInterface = memo(({
           }}
           className={`flex flex-row flex-1 min-h-[34px] max-h-[34px] px-4 justify-center items-center rounded-full transition cursor-pointer ${
             selectedMarket === 'pass'
-              ? 'bg-emerald-500 text-[#181818] font-bold'
+              ? 'text-[#181818] font-bold'
               : 'bg-transparent text-gray-400 font-medium hover:text-gray-300'
           }`}
+          style={selectedMarket === 'pass' ? { backgroundColor: '#6ECC94' } : undefined}
         >
           <span className="text-[12px] leading-[16px]">Pass</span>
         </button>
@@ -554,9 +548,10 @@ const TradingInterface = memo(({
           }}
           className={`flex flex-row flex-1 min-h-[34px] max-h-[34px] px-4 justify-center items-center rounded-full transition cursor-pointer ${
             selectedMarket === 'fail'
-              ? 'bg-rose-500 text-[#181818] font-bold'
+              ? 'text-[#181818] font-bold'
               : 'bg-transparent text-gray-400 font-medium hover:text-gray-300'
           }`}
+          style={selectedMarket === 'fail' ? { backgroundColor: '#FF6F94' } : undefined}
         >
           <span className="text-[12px] leading-[16px]">Fail</span>
         </button>
@@ -698,11 +693,16 @@ const TradingInterface = memo(({
               <div className="flex justify-between items-center text-xs">
                 <span className="text-gray-400">Price Impact:</span>
                 <span className={`font-medium ${
-                  quote.priceImpact < 1 ? 'text-emerald-400' :
+                  quote.priceImpact < 1 ? '' :
                   quote.priceImpact < 3 ? 'text-yellow-400' :
                   quote.priceImpact < 5 ? 'text-orange-400' :
-                  'text-red-400'
-                }`}>
+                  ''
+                }`}
+                style={
+                  quote.priceImpact < 1 ? { color: '#6ECC94' } :
+                  quote.priceImpact >= 5 ? { color: '#FF6F94' } :
+                  undefined
+                }>
                   {quote.priceImpact.toFixed(2)}%
                   {quote.priceImpact < 1 ? ' 🟢' :
                    quote.priceImpact < 3 ? ' 🟡' :
@@ -716,8 +716,9 @@ const TradingInterface = memo(({
                 <div className={`mt-2 pt-2 border-t border-[#2A2A2A] text-xs ${
                   quote.priceImpact < 3 ? 'text-yellow-400' :
                   quote.priceImpact < 5 ? 'text-orange-400' :
-                  'text-red-400'
-                }`}>
+                  ''
+                }`}
+                style={quote.priceImpact >= 5 ? { color: '#FF6F94' } : undefined}>
                   ⚠️ {quote.priceImpact < 3 ? 'Moderate' :
                        quote.priceImpact < 5 ? 'High' :
                        'Very high'} price impact
@@ -731,7 +732,7 @@ const TradingInterface = memo(({
 
       {/* Balance Error Message */}
       {balanceError && (
-        <div className="text-xs text-rose-400 px-1">
+        <div className="text-xs px-1" style={{ color: '#FF6F94' }}>
           {balanceError}
         </div>
       )}
@@ -743,12 +744,29 @@ const TradingInterface = memo(({
         className={`w-full py-3 rounded-full font-semibold transition cursor-pointer flex items-center justify-center gap-1 ${
           selectedMarket === 'pass'
             ? amount && parseFloat(amount) > 0 && !balanceError
-              ? 'bg-emerald-500 hover:bg-emerald-600 text-[#181818]'
+              ? 'text-[#181818]'
               : 'bg-[#2a2a2a] text-gray-600 cursor-not-allowed'
             : amount && parseFloat(amount) > 0 && !balanceError
-              ? 'bg-rose-500 hover:bg-rose-600 text-[#181818]'
+              ? 'text-[#181818]'
               : 'bg-[#2a2a2a] text-gray-600 cursor-not-allowed'
         }`}
+        style={
+          amount && parseFloat(amount) > 0 && !balanceError
+            ? selectedMarket === 'pass'
+              ? { backgroundColor: '#6ECC94' }
+              : { backgroundColor: '#FF6F94' }
+            : undefined
+        }
+        onMouseEnter={(e) => {
+          if (amount && parseFloat(amount) > 0 && !balanceError) {
+            e.currentTarget.style.backgroundColor = selectedMarket === 'pass' ? '#5DB685' : '#E65F84';
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (amount && parseFloat(amount) > 0 && !balanceError) {
+            e.currentTarget.style.backgroundColor = selectedMarket === 'pass' ? '#6ECC94' : '#FF6F94';
+          }
+        }}
       >
         <span>
           {isTrading ? (

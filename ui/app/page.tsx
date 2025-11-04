@@ -8,16 +8,15 @@ import { useTokenPrices } from '@/hooks/useTokenPrices';
 // import Sidebar from '@/components/Sidebar';
 import TradingInterface from '@/components/TradingInterface';
 import Header from '@/components/Header';
-import { ProposalHeader } from '@/components/ProposalHeader';
-import { MarketEntryControls } from '@/components/MarketEntryControls';
 import { TradeHistoryTable } from '@/components/TradeHistoryTable';
-import MarketChart from '@/components/MarketChart';
+import { CountdownTimer } from '@/components/CountdownTimer';
+import { ChartBox } from '@/components/ChartBox';
+import { ModeToggle } from '@/components/ModeToggle';
 import { useProposals } from '@/hooks/useProposals';
 import { useTradeHistory } from '@/hooks/useTradeHistory';
 import { useUserBalances } from '@/hooks/useUserBalances';
 import { useClaimablePositions } from '@/hooks/useClaimablePositions';
-import { useVisualFocus } from '@/hooks/useVisualFocus';
-import { formatNumber, formatVolume, formatCurrency } from '@/lib/formatters';
+import { formatNumber, formatCurrency } from '@/lib/formatters';
 import { useSolanaWallets } from '@privy-io/react-auth/solana';
 import { Transaction } from '@solana/web3.js';
 import toast from 'react-hot-toast';
@@ -49,13 +48,7 @@ export default function HomePage() {
   const { proposals, loading, refetch } = useProposals();
   const [livePrices, setLivePrices] = useState<{ pass: number | null; fail: number | null }>({ pass: null, fail: null });
   const [twapData, setTwapData] = useState<{ passTwap: number | null; failTwap: number | null }>({ passTwap: null, failTwap: null });
-  const [activeTab, setActiveTab] = useState<'trade' | 'description'>('trade');
   const [navTab, setNavTab] = useState<'live' | 'history'>('live');
-  const [marketMode, setMarketMode] = useState<'enter' | 'exit'>('enter');
-  const [amount, setAmount] = useState<string>('');
-  const [selectedToken, setSelectedToken] = useState<'sol' | 'zc'>('sol');
-  const [isEntering, setIsEntering] = useState(false);
-  const [isExiting, setIsExiting] = useState(false);
   const [hoveredProposalId, setHoveredProposalId] = useState<number | null>(null);
   const [proposalPfgs, setProposalPfgs] = useState<Record<number, number>>({});
   const [claimingProposalId, setClaimingProposalId] = useState<number | null>(null);
@@ -224,15 +217,8 @@ export default function HomePage() {
     return solBalance > 0 || zcBalance > 0;
   }, [solBalance, zcBalance]);
 
-  // Visual focus states for highlighting/dimming UI elements
-  const visualFocus = useVisualFocus(
-    hasPosition,
-    selectedMarket,
-    proposal?.status as 'Pending' | 'Passed' | 'Failed' | 'Executed',
-    hasWalletBalance
-  );
-
-  // Handle MAX button click
+  /* TRADING FUNCTIONS - COMMENTED OUT UNTIL TRADING MODAL IS IMPLEMENTED
+  // Handle MAX button click - TODO: Move to trading modal
   const handleMaxClick = useCallback(() => {
     if (marketMode === 'enter') {
       let maxBalance = selectedToken === 'sol' ? solBalance : zcBalance;
@@ -432,21 +418,17 @@ export default function HomePage() {
       setIsExiting(false);
     }
   }, [authenticated, walletAddress, amount, proposal, selectedToken, userBalances, wallets, refetchBalances]);
+  */
 
-  // Calculate PFG percentage and passing status to match backend logic
-  const { pfgPercentage, isPassing } = useMemo(() => {
+  // Calculate PFG percentage to match backend logic
+  const pfgPercentage = useMemo(() => {
     // Match backend calculation exactly from app/twap-oracle.ts
     if (twapData.passTwap !== null && twapData.failTwap !== null && twapData.failTwap > 0) {
       const percentage = ((twapData.passTwap - twapData.failTwap) / twapData.failTwap) * 100;
-      // Backend checks: difference > threshold
-      // Where threshold = (failTwap * passThresholdBps) / 10000
-      // Which simplifies to: percentage > passThresholdBps/100
-      const thresholdPercentage = proposal ? proposal.passThresholdBps / 100 : 0;
-      const passing = percentage > thresholdPercentage;
-      return { pfgPercentage: percentage, isPassing: passing };
+      return percentage;
     }
-    return { pfgPercentage: null, isPassing: false };
-  }, [twapData.passTwap, twapData.failTwap, proposal?.passThresholdBps]);
+    return null;
+  }, [twapData.passTwap, twapData.failTwap]);
 
   if (loading) {
     return (
@@ -507,191 +489,264 @@ export default function HomePage() {
         {/* Content Area */}
         <div className="flex-1 flex overflow-hidden">
           {navTab === 'live' && (
-            <>
-          <div className="flex-1 flex justify-center overflow-y-auto">
-            <div className="w-full max-w-[1332px] 2xl:max-w-[1512px] pt-8 pb-8">
-            <div className="text-white mb-6">
-              <h2 className="text-2xl font-medium">Live Proposal</h2>
-            </div>
-            <ProposalHeader
-              proposalId={proposal.id}
-              status={proposal.status as 'Pending' | 'Passed' | 'Failed' | 'Executed'}
-              finalizedAt={proposal.finalizedAt}
-              title={proposal.title}
-              description={proposal.description}
-              activeTab={activeTab}
-              onTabChange={setActiveTab}
-              onTimerEnd={handleTimerEnd}
-              pfgPercentage={pfgPercentage}
-            />
+            <div className="flex-1 flex justify-center overflow-y-auto">
+              <div className="w-full max-w-[1332px] 2xl:max-w-[1512px] pt-8 pb-8">
+                <div className="text-white mb-6">
+                  <h2 className="text-2xl font-medium">Live Proposal</h2>
+                </div>
 
-            {/* Trade Tab Content */}
-            {activeTab === 'trade' && (
-              <div className="mb-8">
-              {/* User Market Balances */}
-              {authenticated && walletAddress && userBalances && (
-                <div className="grid grid-cols-2 gap-4 mt-1">
-                  {/* Pass Market Column */}
-                  <div className={`overflow-hidden rounded-lg ${visualFocus.passMarket.className}`}>
-                    {/* Pass Market Balance */}
-                    <div className="bg-[#1A1A1A] p-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-semibold text-emerald-400">If Pass</span>
-                        <div className="flex items-center gap-2 text-base font-bold text-white">
-                          <span
-                            className="group relative cursor-default"
-                            title={zcPrice ? formatCurrency((parseFloat(userBalances.base.passConditional || '0') / 1e6) * zcPrice, 2) : 'Price unavailable'}
-                          >
-                            {formatNumber(parseFloat(userBalances.base.passConditional || '0') / 1e6, 0)} $ZC
-                            {zcPrice && (
-                              <span className="absolute left-0 top-full mt-1 px-2 py-1 bg-[#2a2a2a] border border-[#404040] rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                                {formatCurrency((parseFloat(userBalances.base.passConditional || '0') / 1e6) * zcPrice, 2)}
-                              </span>
-                            )}
-                          </span>
-                          <span className="text-gray-600">|</span>
-                          <div className="flex items-center gap-1 group relative cursor-default" title={solPrice ? formatCurrency((parseFloat(userBalances.quote.passConditional || '0') / 1e9) * solPrice, 2) : 'Price unavailable'}>
-                            <span>{formatNumber(parseFloat(userBalances.quote.passConditional || '0') / 1e9, 6)}</span>
-                            <svg className="h-3 w-3" viewBox="0 0 101 88" fill="none" xmlns="http://www.w3.org/2000/svg">
-                              <path d="M100.48 69.3817L83.8068 86.8015C83.4444 87.1799 83.0058 87.4816 82.5185 87.6878C82.0312 87.894 81.5055 88.0003 80.9743 88H1.93563C1.55849 88 1.18957 87.8926 0.874202 87.6912C0.558829 87.4897 0.31074 87.2029 0.160416 86.8659C0.0100923 86.529 -0.0359181 86.1566 0.0280382 85.7945C0.0919944 85.4324 0.263131 85.0964 0.520422 84.8278L17.2061 67.408C17.5676 67.0306 18.0047 66.7295 18.4904 66.5234C18.9762 66.3172 19.5002 66.2104 20.0301 66.2095H99.0644C99.4415 66.2095 99.8104 66.3169 100.126 66.5183C100.441 66.7198 100.689 67.0065 100.84 67.3435C100.99 67.6804 101.036 68.0529 100.972 68.415C100.908 68.7771 100.737 69.1131 100.48 69.3817ZM83.8068 36.3032C83.4444 35.9248 83.0058 35.6231 82.5185 35.4169C82.0312 35.2108 81.5055 35.1045 80.9743 35.1048H1.93563C1.55849 35.1048 1.18957 35.2121 0.874202 35.4136C0.558829 35.6151 0.31074 35.9019 0.160416 36.2388C0.0100923 36.5758 -0.0359181 36.9482 0.0280382 37.3103C0.0919944 37.6723 0.263131 38.0083 0.520422 38.277L17.2061 55.6968C17.5676 56.0742 18.0047 56.3752 18.4904 56.5814C18.9762 56.7875 19.5002 56.8944 20.0301 56.8952H99.0644C99.4415 56.8952 99.8104 56.7879 100.126 56.5864C100.441 56.3849 100.689 56.0981 100.84 55.7612C100.99 55.4242 101.036 55.0518 100.972 54.6897C100.908 54.3277 100.737 53.9917 100.48 53.723L83.8068 36.3032ZM1.93563 21.7905H80.9743C81.5055 21.7898 82.0312 21.6835 82.5185 21.4773C83.0058 21.2712 83.4444 20.9695 83.8068 20.5911L100.48 3.17133C100.737 2.90265 100.908 2.56667 100.972 2.2046C101.036 1.84253 100.99 1.47008 100.84 1.13314C100.689 0.796193 100.441 0.509443 100.126 0.307961C99.8104 0.106479 99.4415 -0.000854492 99.0644 -0.000854492H20.0301C19.5002 -0.00013126 18.9762 0.106791 18.4904 0.312929C18.0047 0.519068 17.5676 0.820087 17.2061 1.19754L0.524723 18.6173C0.267481 18.8859 0.0963642 19.2219 0.0323936 19.584C-0.0315771 19.946 0.0144792 20.3184 0.164862 20.6554C0.315245 20.9923 0.563347 21.2791 0.878727 21.4806C1.19411 21.682 1.56303 21.7894 1.94013 21.7896L1.93563 21.7905Z" fill="#AFAFAF"/>
-                            </svg>
-                            {solPrice && (
-                              <span className="absolute right-0 top-full mt-1 px-2 py-1 bg-[#2a2a2a] border border-[#404040] rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                                {formatCurrency((parseFloat(userBalances.quote.passConditional || '0') / 1e9) * solPrice, 2)}
-                              </span>
-                            )}
-                          </div>
+                {/* 2-column layout: 2/3 left, 1/3 right */}
+                <div className="grid grid-cols-3 gap-4">
+                  {/* Left Column (2/3 width) */}
+                  <div className="col-span-2 flex flex-col gap-4 pb-12">
+                    {/* Title and Description */}
+                    <div className="bg-[#121212] border border-[#191919] rounded-[9px] py-3 px-5 hover:border-[#2A2A2A] transition-all duration-300">
+                      <div className="flex flex-col">
+                        <h1 className="text-sm font-semibold text-white mb-6 uppercase">
+                          {getProposalContent(proposal.id, proposal.title, proposal.description, process.env.NEXT_PUBLIC_MODERATOR_ID).title}
+                        </h1>
+                        <div className="text-sm text-gray-300">
+                          {getProposalContent(proposal.id, proposal.title, proposal.description, process.env.NEXT_PUBLIC_MODERATOR_ID).content || proposal.description}
                         </div>
                       </div>
                     </div>
 
-                    {/* Pass Market Chart */}
-                    <div className="bg-[#1A1A1A] overflow-hidden">
-                      <MarketChart proposalId={proposal.id} market="pass" height={512} />
+                    {/* Top Row: Started, Time Left, Pass Price, Fail Price, PFG */}
+                    <div className="flex gap-4">
+                      {/* Start Date */}
+                      <div className="flex-1 bg-[#121212] border border-[#191919] rounded-[9px] py-3 px-5 hover:border-[#2A2A2A] transition-all duration-300">
+                        <div className="text-white flex flex-col">
+                          <span className="text-sm text-white font-semibold uppercase mb-6">Started</span>
+                          <span className="text-sm text-gray-300">
+                            {new Date(proposal.createdAt).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric'
+                            })} {new Date(proposal.createdAt).toLocaleTimeString('en-US', {
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Time Remaining */}
+                      <div className="flex-1 bg-[#121212] border border-[#191919] rounded-[9px] py-3 px-5 hover:border-[#2A2A2A] transition-all duration-300">
+                        <div className="text-white flex flex-col">
+                          <span className="text-sm text-white font-semibold uppercase mb-6">Time Left</span>
+                          <span className="text-sm text-gray-300 font-mono">
+                            <CountdownTimer
+                              endsAt={proposal.finalizedAt}
+                              onTimerEnd={handleTimerEnd}
+                              isPending={proposal.status === 'Pending'}
+                            />
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Pass Price */}
+                      <div
+                        className="flex-1 bg-[#121212] border rounded-[9px] py-3 px-5 transition-all duration-300 hover:border-opacity-100"
+                        style={{ borderColor: selectedMarket === 'pass' ? 'rgba(110, 204, 148, 0.1)' : '#191919' }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = selectedMarket === 'pass' ? 'rgba(110, 204, 148, 0.3)' : '#2A2A2A';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor = selectedMarket === 'pass' ? 'rgba(110, 204, 148, 0.1)' : '#191919';
+                        }}
+                      >
+                        <div className="text-white flex flex-col">
+                          <span className="text-sm text-white font-semibold uppercase mb-6">Pass Price</span>
+                          <span className="text-sm font-mono font-semibold" style={{ color: '#6ECC94' }}>
+                            {livePrices.pass !== null ? formatCurrency(livePrices.pass, 4) : '--'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Fail Price */}
+                      <div
+                        className="flex-1 bg-[#121212] border rounded-[9px] py-3 px-5 transition-all duration-300"
+                        style={{ borderColor: selectedMarket === 'fail' ? 'rgba(255, 111, 148, 0.1)' : '#191919' }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = selectedMarket === 'fail' ? 'rgba(255, 111, 148, 0.3)' : '#2A2A2A';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor = selectedMarket === 'fail' ? 'rgba(255, 111, 148, 0.1)' : '#191919';
+                        }}
+                      >
+                        <div className="text-white flex flex-col">
+                          <span className="text-sm text-white font-semibold uppercase mb-6">Fail Price</span>
+                          <span className="text-sm font-mono font-semibold" style={{ color: '#FF6F94' }}>
+                            {livePrices.fail !== null ? formatCurrency(livePrices.fail, 4) : '--'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* TWAP Pass-Fail Gap */}
+                      <div className="flex-1 bg-[#121212] border border-[#191919] rounded-[9px] py-3 px-5 hover:border-[#2A2A2A] transition-all duration-300">
+                        <div className="text-white flex flex-col">
+                          <span className="text-sm text-white font-semibold uppercase mb-6">PFG</span>
+                          <span className="text-sm font-mono font-semibold">
+                            {pfgPercentage !== null ? `${pfgPercentage.toFixed(2)}%` : '--'}
+                          </span>
+                        </div>
+                      </div>
                     </div>
+
+                    {/* Chart */}
+                    <ChartBox
+                      proposalId={proposal.id}
+                      selectedMarket={selectedMarket}
+                    />
                   </div>
 
-                  {/* Fail Market Column */}
-                  <div className={`overflow-hidden rounded-lg ${visualFocus.failMarket.className}`}>
-                    {/* Fail Market Balance */}
-                    <div className="bg-[#1A1A1A] p-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-semibold text-rose-400">If Fail</span>
-                        <div className="flex items-center gap-2 text-base font-bold text-white">
-                          <span
-                            className="group relative cursor-default"
-                            title={zcPrice ? formatCurrency((parseFloat(userBalances.base.failConditional || '0') / 1e6) * zcPrice, 2) : 'Price unavailable'}
-                          >
-                            {formatNumber(parseFloat(userBalances.base.failConditional || '0') / 1e6, 0)} $ZC
-                            {zcPrice && (
-                              <span className="absolute left-0 top-full mt-1 px-2 py-1 bg-[#2a2a2a] border border-[#404040] rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                                {formatCurrency((parseFloat(userBalances.base.failConditional || '0') / 1e6) * zcPrice, 2)}
+                  {/* Right Column (1/3 width) */}
+                  <div className="col-span-1 flex flex-col gap-4 pb-12">
+                    {/* Mode Toggle - Centered */}
+                    <div className="flex justify-center">
+                      <ModeToggle />
+                    </div>
+
+                    {/* User Balances - Side by Side */}
+                    {authenticated && walletAddress && userBalances && (
+                      <div className="flex gap-4">
+                        {/* Pass Balances */}
+                        <div
+                          className="flex-1 bg-[#121212] border rounded-[9px] py-3 px-5 transition-all duration-300"
+                          style={{ borderColor: selectedMarket === 'pass' ? 'rgba(110, 204, 148, 0.1)' : '#191919' }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.borderColor = selectedMarket === 'pass' ? 'rgba(110, 204, 148, 0.3)' : '#2A2A2A';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.borderColor = selectedMarket === 'pass' ? 'rgba(110, 204, 148, 0.1)' : '#191919';
+                          }}
+                        >
+                          <div className="text-white flex flex-col">
+                            <span className="text-sm text-white font-semibold uppercase mb-6">If Pass</span>
+                            <div className="flex items-center gap-2 text-sm text-gray-300">
+                              <span
+                                className="group relative cursor-default"
+                                title={zcPrice ? formatCurrency((parseFloat(userBalances.base.passConditional || '0') / 1e6) * zcPrice, 2) : 'Price unavailable'}
+                              >
+                                {formatNumber(parseFloat(userBalances.base.passConditional || '0') / 1e6, 0)} $ZC
+                                {zcPrice && (
+                                  <span className="absolute left-0 top-full mt-1 px-2 py-1 bg-[#2a2a2a] border border-[#404040] rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                                    {formatCurrency((parseFloat(userBalances.base.passConditional || '0') / 1e6) * zcPrice, 2)}
+                                  </span>
+                                )}
                               </span>
-                            )}
-                          </span>
-                          <span className="text-gray-600">|</span>
-                          <div className="flex items-center gap-1 group relative cursor-default" title={solPrice ? formatCurrency((parseFloat(userBalances.quote.failConditional || '0') / 1e9) * solPrice, 2) : 'Price unavailable'}>
-                            <span>{formatNumber(parseFloat(userBalances.quote.failConditional || '0') / 1e9, 6)}</span>
-                            <svg className="h-3 w-3" viewBox="0 0 101 88" fill="none" xmlns="http://www.w3.org/2000/svg">
-                              <path d="M100.48 69.3817L83.8068 86.8015C83.4444 87.1799 83.0058 87.4816 82.5185 87.6878C82.0312 87.894 81.5055 88.0003 80.9743 88H1.93563C1.55849 88 1.18957 87.8926 0.874202 87.6912C0.558829 87.4897 0.31074 87.2029 0.160416 86.8659C0.0100923 86.529 -0.0359181 86.1566 0.0280382 85.7945C0.0919944 85.4324 0.263131 85.0964 0.520422 84.8278L17.2061 67.408C17.5676 67.0306 18.0047 66.7295 18.4904 66.5234C18.9762 66.3172 19.5002 66.2104 20.0301 66.2095H99.0644C99.4415 66.2095 99.8104 66.3169 100.126 66.5183C100.441 66.7198 100.689 67.0065 100.84 67.3435C100.99 67.6804 101.036 68.0529 100.972 68.415C100.908 68.7771 100.737 69.1131 100.48 69.3817ZM83.8068 36.3032C83.4444 35.9248 83.0058 35.6231 82.5185 35.4169C82.0312 35.2108 81.5055 35.1045 80.9743 35.1048H1.93563C1.55849 35.1048 1.18957 35.2121 0.874202 35.4136C0.558829 35.6151 0.31074 35.9019 0.160416 36.2388C0.0100923 36.5758 -0.0359181 36.9482 0.0280382 37.3103C0.0919944 37.6723 0.263131 38.0083 0.520422 38.277L17.2061 55.6968C17.5676 56.0742 18.0047 56.3752 18.4904 56.5814C18.9762 56.7875 19.5002 56.8944 20.0301 56.8952H99.0644C99.4415 56.8952 99.8104 56.7879 100.126 56.5864C100.441 56.3849 100.689 56.0981 100.84 55.7612C100.99 55.4242 101.036 55.0518 100.972 54.6897C100.908 54.3277 100.737 53.9917 100.48 53.723L83.8068 36.3032ZM1.93563 21.7905H80.9743C81.5055 21.7898 82.0312 21.6835 82.5185 21.4773C83.0058 21.2712 83.4444 20.9695 83.8068 20.5911L100.48 3.17133C100.737 2.90265 100.908 2.56667 100.972 2.2046C101.036 1.84253 100.99 1.47008 100.84 1.13314C100.689 0.796193 100.441 0.509443 100.126 0.307961C99.8104 0.106479 99.4415 -0.000854492 99.0644 -0.000854492H20.0301C19.5002 -0.00013126 18.9762 0.106791 18.4904 0.312929C18.0047 0.519068 17.5676 0.820087 17.2061 1.19754L0.524723 18.6173C0.267481 18.8859 0.0963642 19.2219 0.0323936 19.584C-0.0315771 19.946 0.0144792 20.3184 0.164862 20.6554C0.315245 20.9923 0.563347 21.2791 0.878727 21.4806C1.19411 21.682 1.56303 21.7894 1.94013 21.7896L1.93563 21.7905Z" fill="#AFAFAF"/>
-                            </svg>
-                            {solPrice && (
-                              <span className="absolute right-0 top-full mt-1 px-2 py-1 bg-[#2a2a2a] border border-[#404040] rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                                {formatCurrency((parseFloat(userBalances.quote.failConditional || '0') / 1e9) * solPrice, 2)}
+                              <span className="text-gray-600">|</span>
+                              <div className="flex items-center gap-1 group relative cursor-default" title={solPrice ? formatCurrency((parseFloat(userBalances.quote.passConditional || '0') / 1e9) * solPrice, 2) : 'Price unavailable'}>
+                                <span>{formatNumber(parseFloat(userBalances.quote.passConditional || '0') / 1e9, 6)}</span>
+                                <svg className="h-3 w-3" viewBox="0 0 101 88" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <path d="M100.48 69.3817L83.8068 86.8015C83.4444 87.1799 83.0058 87.4816 82.5185 87.6878C82.0312 87.894 81.5055 88.0003 80.9743 88H1.93563C1.55849 88 1.18957 87.8926 0.874202 87.6912C0.558829 87.4897 0.31074 87.2029 0.160416 86.8659C0.0100923 86.529 -0.0359181 86.1566 0.0280382 85.7945C0.0919944 85.4324 0.263131 85.0964 0.520422 84.8278L17.2061 67.408C17.5676 67.0306 18.0047 66.7295 18.4904 66.5234C18.9762 66.3172 19.5002 66.2104 20.0301 66.2095H99.0644C99.4415 66.2095 99.8104 66.3169 100.126 66.5183C100.441 66.7198 100.689 67.0065 100.84 67.3435C100.99 67.6804 101.036 68.0529 100.972 68.415C100.908 68.7771 100.737 69.1131 100.48 69.3817ZM83.8068 36.3032C83.4444 35.9248 83.0058 35.6231 82.5185 35.4169C82.0312 35.2108 81.5055 35.1045 80.9743 35.1048H1.93563C1.55849 35.1048 1.18957 35.2121 0.874202 35.4136C0.558829 35.6151 0.31074 35.9019 0.160416 36.2388C0.0100923 36.5758 -0.0359181 36.9482 0.0280382 37.3103C0.0919944 37.6723 0.263131 38.0083 0.520422 38.277L17.2061 55.6968C17.5676 56.0742 18.0047 56.3752 18.4904 56.5814C18.9762 56.7875 19.5002 56.8944 20.0301 56.8952H99.0644C99.4415 56.8952 99.8104 56.7879 100.126 56.5864C100.441 56.3849 100.689 56.0981 100.84 55.7612C100.99 55.4242 101.036 55.0518 100.972 54.6897C100.908 54.3277 100.737 53.9917 100.48 53.723L83.8068 36.3032ZM1.93563 21.7905H80.9743C81.5055 21.7898 82.0312 21.6835 82.5185 21.4773C83.0058 21.2712 83.4444 20.9695 83.8068 20.5911L100.48 3.17133C100.737 2.90265 100.908 2.56667 100.972 2.2046C101.036 1.84253 100.99 1.47008 100.84 1.13314C100.689 0.796193 100.441 0.509443 100.126 0.307961C99.8104 0.106479 99.4415 -0.000854492 99.0644 -0.000854492H20.0301C19.5002 -0.00013126 18.9762 0.106791 18.4904 0.312929C18.0047 0.519068 17.5676 0.820087 17.2061 1.19754L0.524723 18.6173C0.267481 18.8859 0.0963642 19.2219 0.0323936 19.584C-0.0315771 19.946 0.0144792 20.3184 0.164862 20.6554C0.315245 20.9923 0.563347 21.2791 0.878727 21.4806C1.19411 21.682 1.56303 21.7894 1.94013 21.7896L1.93563 21.7905Z" fill="#AFAFAF"/>
+                                </svg>
+                                {solPrice && (
+                                  <span className="absolute right-0 top-full mt-1 px-2 py-1 bg-[#2a2a2a] border border-[#404040] rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                                    {formatCurrency((parseFloat(userBalances.quote.passConditional || '0') / 1e9) * solPrice, 2)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Fail Balances */}
+                        <div
+                          className="flex-1 bg-[#121212] border rounded-[9px] py-3 px-5 transition-all duration-300"
+                          style={{ borderColor: selectedMarket === 'fail' ? 'rgba(255, 111, 148, 0.1)' : '#191919' }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.borderColor = selectedMarket === 'fail' ? 'rgba(255, 111, 148, 0.3)' : '#2A2A2A';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.borderColor = selectedMarket === 'fail' ? 'rgba(255, 111, 148, 0.1)' : '#191919';
+                          }}
+                        >
+                          <div className="text-white flex flex-col">
+                            <span className="text-sm text-white font-semibold uppercase mb-6">If Fail</span>
+                            <div className="flex items-center gap-2 text-sm text-gray-300">
+                              <span
+                                className="group relative cursor-default"
+                                title={zcPrice ? formatCurrency((parseFloat(userBalances.base.failConditional || '0') / 1e6) * zcPrice, 2) : 'Price unavailable'}
+                              >
+                                {formatNumber(parseFloat(userBalances.base.failConditional || '0') / 1e6, 0)} $ZC
+                                {zcPrice && (
+                                  <span className="absolute left-0 top-full mt-1 px-2 py-1 bg-[#2a2a2a] border border-[#404040] rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                                    {formatCurrency((parseFloat(userBalances.base.failConditional || '0') / 1e6) * zcPrice, 2)}
+                                  </span>
+                                )}
                               </span>
-                            )}
+                              <span className="text-gray-600">|</span>
+                              <div className="flex items-center gap-1 group relative cursor-default" title={solPrice ? formatCurrency((parseFloat(userBalances.quote.failConditional || '0') / 1e9) * solPrice, 2) : 'Price unavailable'}>
+                                <span>{formatNumber(parseFloat(userBalances.quote.failConditional || '0') / 1e9, 6)}</span>
+                                <svg className="h-3 w-3" viewBox="0 0 101 88" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <path d="M100.48 69.3817L83.8068 86.8015C83.4444 87.1799 83.0058 87.4816 82.5185 87.6878C82.0312 87.894 81.5055 88.0003 80.9743 88H1.93563C1.55849 88 1.18957 87.8926 0.874202 87.6912C0.558829 87.4897 0.31074 87.2029 0.160416 86.8659C0.0100923 86.529 -0.0359181 86.1566 0.0280382 85.7945C0.0919944 85.4324 0.263131 85.0964 0.520422 84.8278L17.2061 67.408C17.5676 67.0306 18.0047 66.7295 18.4904 66.5234C18.9762 66.3172 19.5002 66.2104 20.0301 66.2095H99.0644C99.4415 66.2095 99.8104 66.3169 100.126 66.5183C100.441 66.7198 100.689 67.0065 100.84 67.3435C100.99 67.6804 101.036 68.0529 100.972 68.415C100.908 68.7771 100.737 69.1131 100.48 69.3817ZM83.8068 36.3032C83.4444 35.9248 83.0058 35.6231 82.5185 35.4169C82.0312 35.2108 81.5055 35.1045 80.9743 35.1048H1.93563C1.55849 35.1048 1.18957 35.2121 0.874202 35.4136C0.558829 35.6151 0.31074 35.9019 0.160416 36.2388C0.0100923 36.5758 -0.0359181 36.9482 0.0280382 37.3103C0.0919944 37.6723 0.263131 38.0083 0.520422 38.277L17.2061 55.6968C17.5676 56.0742 18.0047 56.3752 18.4904 56.5814C18.9762 56.7875 19.5002 56.8944 20.0301 56.8952H99.0644C99.4415 56.8952 99.8104 56.7879 100.126 56.5864C100.441 56.3849 100.689 56.0981 100.84 55.7612C100.99 55.4242 101.036 55.0518 100.972 54.6897C100.908 54.3277 100.737 53.9917 100.48 53.723L83.8068 36.3032ZM1.93563 21.7905H80.9743C81.5055 21.7898 82.0312 21.6835 82.5185 21.4773C83.0058 21.2712 83.4444 20.9695 83.8068 20.5911L100.48 3.17133C100.737 2.90265 100.908 2.56667 100.972 2.2046C101.036 1.84253 100.99 1.47008 100.84 1.13314C100.689 0.796193 100.441 0.509443 100.126 0.307961C99.8104 0.106479 99.4415 -0.000854492 99.0644 -0.000854492H20.0301C19.5002 -0.00013126 18.9762 0.106791 18.4904 0.312929C18.0047 0.519068 17.5676 0.820087 17.2061 1.19754L0.524723 18.6173C0.267481 18.8859 0.0963642 19.2219 0.0323936 19.584C-0.0315771 19.946 0.0144792 20.3184 0.164862 20.6554C0.315245 20.9923 0.563347 21.2791 0.878727 21.4806C1.19411 21.682 1.56303 21.7894 1.94013 21.7896L1.93563 21.7905Z" fill="#AFAFAF"/>
+                                </svg>
+                                {solPrice && (
+                                  <span className="absolute right-0 top-full mt-1 px-2 py-1 bg-[#2a2a2a] border border-[#404040] rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                                    {formatCurrency((parseFloat(userBalances.quote.failConditional || '0') / 1e9) * solPrice, 2)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         </div>
                       </div>
+                    )}
+
+                    {/* Trading Interface */}
+                    <div
+                      className="bg-[#121212] border rounded-[9px] p-3 transition-all duration-300"
+                      style={{
+                        borderColor: selectedMarket === 'pass'
+                          ? 'rgba(110, 204, 148, 0.1)'
+                          : 'rgba(255, 111, 148, 0.1)'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = selectedMarket === 'pass'
+                          ? 'rgba(110, 204, 148, 0.3)'
+                          : 'rgba(255, 111, 148, 0.3)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = selectedMarket === 'pass'
+                          ? 'rgba(110, 204, 148, 0.1)'
+                          : 'rgba(255, 111, 148, 0.1)';
+                      }}
+                    >
+                      <TradingInterface
+                        proposalId={proposal.id}
+                        selectedMarket={selectedMarket}
+                        onMarketChange={handleMarketChange}
+                        passPrice={livePrices.pass || 0.5}
+                        failPrice={livePrices.fail || 0.5}
+                        proposalStatus="Pending"
+                        userBalances={userBalances}
+                        refetchBalances={refetchBalances}
+                      />
                     </div>
 
-                    {/* Fail Market Chart */}
-                    <div className="bg-[#1A1A1A] overflow-hidden">
-                      <MarketChart proposalId={proposal.id} market="fail" height={512} />
+                    {/* Trade History */}
+                    <div className="bg-[#121212] border border-[#191919] rounded-[9px] py-3 px-5 hover:border-[#2A2A2A] transition-all duration-300">
+                      <TradeHistoryTable
+                        trades={trades}
+                        loading={tradesLoading}
+                        getTimeAgo={getTimeAgo}
+                        formatAddress={formatAddress}
+                        getTokenUsed={getTokenUsed}
+                      />
                     </div>
                   </div>
                 </div>
-              )}
 
-            {/* Hidden component for TWAP updates */}
-            <div className="hidden">
-              <LivePriceDisplay
-                proposalId={proposal.id}
-                onPricesUpdate={handlePricesUpdate}
-                onTwapUpdate={handleTwapUpdate}
-              />
-            </div>
-
-            <div className="mt-6">
-              <TradeHistoryTable
-                trades={trades}
-                loading={tradesLoading}
-                getTimeAgo={getTimeAgo}
-                formatAddress={formatAddress}
-                getTokenUsed={getTokenUsed}
-              />
-            </div>
-              </div>
-            )}
-            </div>
-          </div>
-
-          {/* Trading Panel - Sticky Position */}
-          {/* TEMPORARILY COMMENTED OUT TO TEST ALIGNMENT */}
-          {/*
-          <div className="w-[352px] p-8 overflow-y-auto">
-            <div className="sticky top-0 space-y-6">
-              {authenticated && proposal.status === 'Pending' && (
-                <div className={visualFocus.entryControls.className}>
-                  <MarketEntryControls
-                  marketMode={marketMode}
-                  amount={amount}
-                  selectedToken={selectedToken}
-                  isEntering={isEntering}
-                  isExiting={isExiting}
-                  hasPosition={hasPosition}
-                  solBalance={solBalance}
-                  zcBalance={zcBalance}
-                  userBalances={userBalances}
-                  onMarketModeChange={(mode) => {
-                    setMarketMode(mode);
-                    setAmount('');
-                  }}
-                  onAmountChange={setAmount}
-                  onTokenChange={(token) => {
-                    setSelectedToken(token);
-                    setAmount('');
-                  }}
-                  onMaxClick={handleMaxClick}
-                  onSubmit={() => {
-                    if (marketMode === 'enter') {
-                      handleEnterMarket();
-                    } else {
-                      handleExitMarket();
-                    }
-                  }}
+                {/* Hidden component for TWAP updates */}
+                <div className="hidden">
+                  <LivePriceDisplay
+                    proposalId={proposal.id}
+                    onPricesUpdate={handlePricesUpdate}
+                    onTwapUpdate={handleTwapUpdate}
                   />
                 </div>
-              )}
-
-              <TradingInterface
-              proposalId={proposal.id}
-              selectedMarket={selectedMarket}
-              onMarketChange={handleMarketChange}
-              passPrice={0.5}
-              failPrice={0.5}
-              proposalStatus={
-                proposal.status === 'Executed' ? 'Passed' :
-                proposal.status as 'Pending' | 'Passed' | 'Failed'
-              }
-              userBalances={userBalances}
-              refetchBalances={refetchBalances}
-              visualFocusClassName={visualFocus.tradingInterface.className}
-              />
+              </div>
             </div>
-          </div>
-          */}
-            </>
           )}
 
           {navTab === 'history' && (
@@ -760,17 +815,17 @@ export default function HomePage() {
                             );
                           }
                         }}
-                        className={`bg-[#121212] border rounded-[9px] p-3 transition-all duration-300 ml-4 mb-4 ${
+                        className={`bg-[#121212] border rounded-[9px] py-3 px-5 transition-all duration-300 ml-4 mb-4 ${
                           hasClaimableRewards ? 'cursor-pointer' : 'border-[#191919] hover:border-[#2A2A2A]'
                         } ${isCurrentlyClaiming ? 'opacity-60 pointer-events-none' : ''}`}
                         style={hasClaimableRewards ? {
                           borderColor: isHovered ? 'rgba(239, 99, 0, 0.3)' : 'rgba(239, 99, 0, 0.1)'
                         } : undefined}
                       >
-                        <div className="text-white flex flex-col gap-4">
-                          <div className="flex items-center justify-between gap-2">
+                        <div className="text-white flex flex-col">
+                          <div className="flex items-center justify-between gap-2 mb-6">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <div className="text-sm font-normal">ZC-{proposal.id}</div>
+                              <div className="text-sm text-[#B0AFAB] font-semibold">ZC-{proposal.id}</div>
                               {proposal.status === 'Passed' && (
                                 <span className="flex items-center gap-1 px-2 py-0.5 text-xs font-normal rounded-full" style={{ backgroundColor: '#6ECC9433', color: '#6ECC94' }}>
                                   Pass
@@ -789,7 +844,7 @@ export default function HomePage() {
                                 </span>
                               )}
                             </div>
-                            <div className="text-sm text-[#B0AFAB]">
+                            <div className="text-sm text-[#B0AFAB] font-semibold">
                               {new Date(proposal.finalizedAt).toLocaleDateString('en-US', {
                                 month: 'short',
                                 day: 'numeric',
@@ -798,10 +853,10 @@ export default function HomePage() {
                             </div>
                           </div>
 
-                          <div className="text-lg font-normal">{proposalContent.title}</div>
+                          <div className="text-lg font-normal mb-2">{proposalContent.title}</div>
 
                           {/* Show summary or full content based on hover */}
-                          <div className="text-sm text-gray-300">
+                          <div className={`text-sm text-gray-300 ${proposalRewards.length > 0 ? 'mb-6' : ''}`}>
                             {isHovered ? (
                               proposalContent.content || <p>{proposal.description}</p>
                             ) : (
@@ -817,7 +872,7 @@ export default function HomePage() {
                                   <div className="w-2 h-2 rounded-full absolute" style={{ backgroundColor: '#EF6300', opacity: 0.75, animation: 'ping 3s cubic-bezier(0, 0, 0.2, 1) infinite' }}></div>
                                   <div className="w-2 h-2 rounded-full" style={{ backgroundColor: '#EF6300' }}></div>
                                 </div>
-                                <span className="text-sm font-normal" style={{ color: '#EF6300' }}>Click to claim</span>
+                                <span className="text-sm font-semibold" style={{ color: '#EF6300' }}>Click to claim</span>
                               </div>
 
                               {/* Rewards display */}
@@ -827,7 +882,7 @@ export default function HomePage() {
                                     {idx > 0 && (
                                       <div className="w-px h-4 bg-[#2A2A2A]"></div>
                                     )}
-                                    <span className="font-medium">
+                                    <span className="font-semibold">
                                       {reward.claimableToken === 'zc'
                                         ? formatNumber(reward.claimableAmount, 0)
                                         : reward.claimableAmount.toFixed(4)

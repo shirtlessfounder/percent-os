@@ -139,28 +139,28 @@ export default function MarketChart({ proposalId, market, height = 256 }: Market
             'mainSeriesProperties.priceAxisProperties.indexedTo100': false,
             'mainSeriesProperties.priceAxisProperties.autoScale': true,
             // Standard trading colors: green = up, red = down
-            'mainSeriesProperties.candleStyle.upColor': '#10b981',
-            'mainSeriesProperties.candleStyle.downColor': '#ef4444',
-            'mainSeriesProperties.candleStyle.borderUpColor': '#10b981',
-            'mainSeriesProperties.candleStyle.borderDownColor': '#ef4444',
-            'mainSeriesProperties.candleStyle.wickUpColor': '#10b981',
-            'mainSeriesProperties.candleStyle.wickDownColor': '#ef4444',
+            'mainSeriesProperties.candleStyle.upColor': '#6ECC94',
+            'mainSeriesProperties.candleStyle.downColor': '#FF6F94',
+            'mainSeriesProperties.candleStyle.borderUpColor': '#6ECC94',
+            'mainSeriesProperties.candleStyle.borderDownColor': '#FF6F94',
+            'mainSeriesProperties.candleStyle.wickUpColor': '#6ECC94',
+            'mainSeriesProperties.candleStyle.wickDownColor': '#FF6F94',
             'mainSeriesProperties.candleStyle.drawWick': true,
             'mainSeriesProperties.candleStyle.drawBorder': true,
             // Hollow candles
-            'mainSeriesProperties.hollowCandleStyle.upColor': '#10b981',
-            'mainSeriesProperties.hollowCandleStyle.downColor': '#ef4444',
-            'mainSeriesProperties.hollowCandleStyle.borderUpColor': '#10b981',
-            'mainSeriesProperties.hollowCandleStyle.borderDownColor': '#ef4444',
-            'mainSeriesProperties.hollowCandleStyle.wickUpColor': '#10b981',
-            'mainSeriesProperties.hollowCandleStyle.wickDownColor': '#ef4444',
+            'mainSeriesProperties.hollowCandleStyle.upColor': '#6ECC94',
+            'mainSeriesProperties.hollowCandleStyle.downColor': '#FF6F94',
+            'mainSeriesProperties.hollowCandleStyle.borderUpColor': '#6ECC94',
+            'mainSeriesProperties.hollowCandleStyle.borderDownColor': '#FF6F94',
+            'mainSeriesProperties.hollowCandleStyle.wickUpColor': '#6ECC94',
+            'mainSeriesProperties.hollowCandleStyle.wickDownColor': '#FF6F94',
             // Bars
-            'mainSeriesProperties.barStyle.upColor': '#10b981',
-            'mainSeriesProperties.barStyle.downColor': '#ef4444',
-            'mainSeriesProperties.lineStyle.color': '#10b981',
-            'mainSeriesProperties.areaStyle.color1': 'rgba(16, 185, 129, 0.3)',
-            'mainSeriesProperties.areaStyle.color2': 'rgba(16, 185, 129, 0.05)',
-            'mainSeriesProperties.areaStyle.linecolor': '#10b981',
+            'mainSeriesProperties.barStyle.upColor': '#6ECC94',
+            'mainSeriesProperties.barStyle.downColor': '#FF6F94',
+            'mainSeriesProperties.lineStyle.color': '#6ECC94',
+            'mainSeriesProperties.areaStyle.color1': 'rgba(110, 204, 148, 0.3)',
+            'mainSeriesProperties.areaStyle.color2': 'rgba(110, 204, 148, 0.05)',
+            'mainSeriesProperties.areaStyle.linecolor': '#6ECC94',
           },
         });
 
@@ -269,7 +269,7 @@ export default function MarketChart({ proposalId, market, height = 256 }: Market
       {/* Loading overlay */}
       {isLoading && (
         <div
-          className="flex items-center justify-center text-gray-500 text-sm"
+          className="flex items-center justify-center text-theme-text-disabled text-sm"
           style={{
             position: 'absolute',
             top: 0,
@@ -290,7 +290,7 @@ export default function MarketChart({ proposalId, market, height = 256 }: Market
       {/* Error overlay */}
       {error && (
         <div
-          className="flex items-center justify-center text-gray-500 text-sm"
+          className="flex items-center justify-center text-theme-text-disabled text-sm"
           style={{
             position: 'absolute',
             top: 0,

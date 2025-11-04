@@ -31,7 +31,7 @@ export function TradeHistoryTable({
     <div className="border-b border-l border-r border-[#282828]">
       {/* Table Header */}
       <div
-        className="grid gap-4 px-4 py-3 text-xs text-[#9C9D9E] font-medium border-b border-[#2A2A2A]"
+        className="grid gap-4 px-4 py-3 text-xs text-[#9C9D9E] font-medium border-b border-theme-border-hover"
         style={{ gridTemplateColumns: GRID_COLUMNS }}
       >
         <div>Trader</div>
@@ -66,11 +66,11 @@ export function TradeHistoryTable({
                 className="grid gap-4 px-4 py-3 text-xs hover:bg-[#272A2D]/30 transition-colors"
                 style={{ gridTemplateColumns: GRID_COLUMNS }}
               >
-                <div className="text-white flex items-center gap-1">
+                <div className="text-theme-text flex items-center gap-1">
                   <span>{formatAddress(trade.userAddress)}</span>
                   <button
                     onClick={() => navigator.clipboard.writeText(trade.userAddress)}
-                    className="text-[#9C9D9E] hover:text-white transition-colors"
+                    className="text-[#9C9D9E] hover:text-theme-text transition-colors"
                     title="Copy address"
                   >
                     <svg
@@ -91,7 +91,7 @@ export function TradeHistoryTable({
                     href={`https://solscan.io/account/${trade.userAddress}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-[#9C9D9E] hover:text-white transition-colors"
+                    className="text-[#9C9D9E] hover:text-theme-text transition-colors"
                     title="View on Solscan"
                   >
                     <svg
@@ -110,23 +110,23 @@ export function TradeHistoryTable({
                     </svg>
                   </a>
                 </div>
-                <div className={trade.market === 'pass' ? 'text-emerald-400' : 'text-rose-400'}>
+                <div style={{ color: trade.market === 'pass' ? '#6ECC94' : '#FF6F94' }}>
                   {trade.market === 'pass' ? 'Pass' : 'Fail'}
                 </div>
-                <div className={isBuy ? 'text-emerald-400' : 'text-rose-400'}>
+                <div style={{ color: isBuy ? '#6ECC94' : '#FF6F94' }}>
                   {isBuy ? 'Buy' : 'Sell'}
                 </div>
-                <div className="text-white">
+                <div className="text-theme-text">
                   {formattedAmount} {tokenUsed}
                 </div>
-                <div className="text-white flex items-center gap-1">
+                <div className="text-theme-text flex items-center gap-1">
                   <span>{trade.txSignature ? `${trade.txSignature.slice(0, 4)}...${trade.txSignature.slice(-4)}` : '—'}</span>
                   {trade.txSignature && (
                     <a
                       href={`https://solscan.io/tx/${trade.txSignature}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[#9C9D9E] hover:text-white transition-colors"
+                      className="text-[#9C9D9E] hover:text-theme-text transition-colors"
                     >
                       <svg
                         width="12"

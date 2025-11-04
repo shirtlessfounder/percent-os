@@ -82,7 +82,7 @@ export function MarketEntryControls({
             }
           }}
           placeholder="0.0"
-          className="w-full px-3 py-3 pr-32 bg-[#2a2a2a] rounded-lg text-white placeholder-gray-600 focus:outline-none border border-[#2A2A2A]"
+          className="w-full px-3 py-3 pr-32 bg-theme-input rounded-lg text-theme-text placeholder-gray-600 focus:outline-none border border-theme-border-hover"
           style={{ WebkitAppearance: 'none', MozAppearance: 'textfield' }}
         />
         <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
@@ -109,7 +109,7 @@ export function MarketEntryControls({
 
       {/* Balance Error Message */}
       {balanceError && (
-        <div className="text-xs text-rose-400 px-1 mb-2">
+        <div className="text-xs px-1 mb-2" style={{ color: '#FF6F94' }}>
           {balanceError}
         </div>
       )}
@@ -118,13 +118,13 @@ export function MarketEntryControls({
       <div className="flex items-center gap-3">
         {/* Enter/Exit Toggle with Label */}
         <div className="flex flex-col gap-1.5">
-          <span className="text-[10px] text-gray-400 uppercase tracking-wide">Enter / Exit</span>
+          <span className="text-[10px] text-theme-text-secondary uppercase tracking-wide">Enter / Exit</span>
           <button
             onClick={() => {
               onMarketModeChange(marketMode === 'enter' ? 'exit' : 'enter');
               onAmountChange('');
             }}
-            className="relative w-11 h-6 rounded-full border border-[#2A2A2A] bg-[#1a1a1a] cursor-pointer hover:border-[#404040] transition flex items-center"
+            className="relative w-11 h-6 rounded-full border border-theme-border-hover bg-theme-secondary cursor-pointer hover:border-theme-border-divider transition flex items-center"
           >
             <div className={`absolute w-5 h-5 rounded-full bg-orange-500 transition-all duration-200 ease-in-out ${
               marketMode === 'enter' ? 'left-[2px]' : 'left-[22px]'
@@ -137,8 +137,8 @@ export function MarketEntryControls({
           onClick={onSubmit}
           className={`flex-1 py-3 px-6 rounded-lg font-semibold transition cursor-pointer flex items-center justify-center gap-1 whitespace-nowrap ${
             amount && parseFloat(amount) > 0 && !isEntering && !isExiting && !balanceError
-              ? 'bg-orange-500 hover:bg-orange-600 text-white'
-              : 'bg-[#2a2a2a] text-gray-600 cursor-not-allowed'
+              ? 'bg-orange-500 hover:bg-orange-600 text-theme-text'
+              : 'bg-theme-input text-theme-text-tertiary cursor-not-allowed'
           }`}
           disabled={!amount || parseFloat(amount) <= 0 || isEntering || isExiting || !!balanceError}
         >
