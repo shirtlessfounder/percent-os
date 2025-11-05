@@ -122,15 +122,15 @@ export default function MarketChart({ proposalId, market, height = 256 }: Market
             }),
           },
           overrides: {
-            'paneProperties.background': '#181818',
+            'paneProperties.background': '#121212',
             'paneProperties.backgroundType': 'solid',
-            'paneProperties.vertGridProperties.color': 'rgba(255, 255, 255, 0.04)',
-            'paneProperties.horzGridProperties.color': 'rgba(255, 255, 255, 0.04)',
-            'paneProperties.separatorColor': '#181818',
+            'paneProperties.vertGridProperties.color': '#191919',
+            'paneProperties.horzGridProperties.color': '#191919',
+            'paneProperties.separatorColor': '#121212',
             'symbolWatermarkProperties.transparency': 98,
             'symbolWatermarkProperties.color': 'rgba(255, 255, 255, 0.02)',
             'scalesProperties.textColor': '#9ca3af',
-            'scalesProperties.lineColor': '#2A2A2A',
+            'scalesProperties.lineColor': '#191919',
             // Force price scale to show absolute prices, not percentage/log/indexed
             'scalesProperties.scaleSeriesOnly': false,
             'scalesProperties.percentage': false,
@@ -262,7 +262,7 @@ export default function MarketChart({ proposalId, market, height = 256 }: Market
         style={{
           height: `${height}px`,
           width: '100%',
-          background: '#181818'
+          background: '#121212'
         }}
       />
 
@@ -276,7 +276,7 @@ export default function MarketChart({ proposalId, market, height = 256 }: Market
             left: 0,
             right: 0,
             bottom: 0,
-            background: '#181818',
+            background: '#121212',
             zIndex: 10
           }}
         >
@@ -297,7 +297,7 @@ export default function MarketChart({ proposalId, market, height = 256 }: Market
             left: 0,
             right: 0,
             bottom: 0,
-            background: '#181818',
+            background: '#121212',
             zIndex: 10
           }}
         >

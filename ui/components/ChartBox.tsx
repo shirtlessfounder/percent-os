@@ -7,9 +7,12 @@ interface ChartBoxProps {
 
 export function ChartBox({ proposalId, selectedMarket }: ChartBoxProps) {
   return (
-    <div className="bg-[#121212] border border-[#191919] rounded-[9px] p-3 transition-all duration-300">
-      <div className="bg-[#181818] overflow-hidden rounded-lg">
-        <MarketChart proposalId={proposalId} market={selectedMarket} height={512} />
+    <div className="bg-[#121212] border border-[#191919] rounded-[9px] py-4 px-5 transition-all duration-300">
+      <span className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] uppercase mb-6 block" style={{ color: '#DDDDD7' }}>
+        {selectedMarket === 'pass' ? 'Pass Chart' : 'Fail Chart'}
+      </span>
+      <div className="bg-[#121212] border border-[#191919] overflow-hidden rounded-[6px]">
+        <MarketChart proposalId={proposalId} market={selectedMarket} height={620} />
       </div>
     </div>
   );
