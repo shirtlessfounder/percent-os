@@ -64,7 +64,7 @@ export default function HomePage() {
   const { wallets } = useSolanaWallets();
 
   // Fetch claimable positions for history view
-  const { positions: claimablePositions } = useClaimablePositions(walletAddress);
+  const { positions: claimablePositions, refetch: refetchClaimable } = useClaimablePositions(walletAddress);
 
   // Transaction signer helper for claiming
   const createTransactionSigner = useCallback(() => {
@@ -111,8 +111,8 @@ export default function HomePage() {
         signTransaction: createTransactionSigner()
       });
 
-      // The claimable positions will automatically refresh since they depend on wallet balances
-      // which are refetched by the useClaimablePositions hook
+      // Refresh claimable positions to update UI
+      refetchClaimable();
 
     } catch (error) {
       console.error('Claim failed:', error);
@@ -120,7 +120,7 @@ export default function HomePage() {
     } finally {
       setClaimingProposalId(null);
     }
-  }, [authenticated, login, walletAddress, createTransactionSigner]);
+  }, [authenticated, login, walletAddress, createTransactionSigner, refetchClaimable]);
 
   // Memoize sorted proposals
   const sortedProposals = useMemo(() =>

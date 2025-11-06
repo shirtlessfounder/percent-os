@@ -207,14 +207,18 @@ export function DepositCard({ proposalId, solBalance, zcBalance, onDepositSucces
         <button
           onClick={handleDeposit}
           disabled={!amount || parseFloat(amount) <= 0 || isDepositing || !!balanceError}
-          className={`h-[56px] px-6 rounded-[6px] font-semibold transition cursor-pointer whitespace-nowrap uppercase font-ibm-plex-mono text-md ${
+          className={`h-[56px] w-[140px] px-6 rounded-[6px] font-semibold transition cursor-pointer whitespace-nowrap uppercase font-ibm-plex-mono text-md flex items-center justify-center ${
             amount && parseFloat(amount) > 0 && !balanceError && !isDepositing
               ? 'bg-[#DDDDD7]'
               : 'bg-[#414346] cursor-not-allowed'
           }`}
           style={{ color: '#161616', fontFamily: 'IBM Plex Mono, monospace', letterSpacing: '0em' }}
         >
-          {isDepositing ? 'DEPOSITING' : 'DEPOSIT'}
+          {isDepositing ? (
+            <div className="animate-spin h-4 w-4 rounded-full border-2 border-[#161616] border-t-transparent"></div>
+          ) : (
+            'DEPOSIT'
+          )}
         </button>
         </div>
 

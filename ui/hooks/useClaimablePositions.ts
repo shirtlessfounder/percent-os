@@ -20,6 +20,7 @@ interface ClaimablePositions {
   totalClaimableValue: number;
   loading: boolean;
   error: string | null;
+  refetch: () => void;
 }
 
 export function useClaimablePositions(walletAddress: string | null): ClaimablePositions {
@@ -186,5 +187,11 @@ export function useClaimablePositions(walletAddress: string | null): ClaimablePo
     return { positions: claimableList, totalClaimableValue: total };
   }, [balancesMap, proposals, solPrice, zcPrice]);
 
-  return { positions, totalClaimableValue, loading, error };
+  const refetch = useCallback(() => {
+    if (walletAddress && proposals.length > 0) {
+      fetchAllBalances(walletAddress, proposals);
+    }
+  }, [walletAddress, proposals, fetchAllBalances]);
+
+  return { positions, totalClaimableValue, loading, error, refetch };
 }
