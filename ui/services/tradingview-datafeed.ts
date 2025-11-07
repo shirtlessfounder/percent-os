@@ -35,6 +35,7 @@ export class ProposalMarketDatafeed implements IBasicDataFeed {
   private spotPoolAddress: string | null = null;
   private subscribers: Map<string, { callback: SubscribeBarsCallback; aggregator: BarAggregator; isSpotMarket: boolean }> = new Map();
   private solPrice: number = 0;
+  private totalSupply: number = TOTAL_SUPPLY; // Default to constant, will be updated from proposal
 
   constructor(proposalId: number, market: 'pass' | 'fail', spotPoolAddress?: string) {
     this.proposalId = proposalId;
@@ -219,6 +220,24 @@ export class ProposalMarketDatafeed implements IBasicDataFeed {
 
     console.log(`[${marketType}] subscribeBars called for resolution ${resolution}, listenerGuid: ${listenerGuid}`);
 
+    // Fetch proposal data to get total supply (only once, on first subscription)
+    if (this.subscribers.size === 0) {
+      try {
+        const url = buildApiUrl(API_BASE_URL, `/api/proposals/${this.proposalId}`);
+        const response = await fetch(url);
+        if (response.ok) {
+          const proposal = await response.json();
+          if (proposal.total_supply) {
+            this.totalSupply = proposal.total_supply;
+            console.log(`[${marketType}] Updated totalSupply from proposal: ${this.totalSupply}`);
+          }
+        }
+      } catch (error) {
+        console.warn(`[${marketType}] Failed to fetch proposal total supply, using default:`, error);
+        // Keep using the default TOTAL_SUPPLY constant
+      }
+    }
+
     // Create bar aggregator for this resolution
     const aggregator = new BarAggregator(resolution);
 
@@ -347,8 +366,8 @@ export class ProposalMarketDatafeed implements IBasicDataFeed {
     // Convert conditional token price to market cap in USD
     // price is in quote tokens (SOL) per base token (conditional token)
     // Market cap = price × totalSupply × solPrice
-    const marketCapUSD = trade.price * TOTAL_SUPPLY * this.solPrice;
-    console.log(`[${this.market}] Market cap calculated: $${marketCapUSD.toFixed(2)} (price: ${trade.price}, SOL: $${this.solPrice})`);
+    const marketCapUSD = trade.price * this.totalSupply * this.solPrice;
+    console.log(`[${this.market}] Market cap calculated: $${marketCapUSD.toFixed(2)} (price: ${trade.price}, totalSupply: ${this.totalSupply}, SOL: $${this.solPrice})`);
 
     // Update all active subscribers (skip spot market subscribers)
     for (const [listenerGuid, { callback, aggregator, isSpotMarket }] of this.subscribers) {
@@ -416,7 +435,7 @@ export class ProposalMarketDatafeed implements IBasicDataFeed {
         // For spot: price is already in USD market cap
         const priceUSD = priceUpdate.market === 'spot'
           ? priceUpdate.price
-          : priceUpdate.price * TOTAL_SUPPLY * this.solPrice;
+          : priceUpdate.price * this.totalSupply * this.solPrice;
 
         console.log(`[Datafeed ${this.market}] Processing ${priceUpdate.market} price update for ${listenerGuid}: $${priceUSD.toFixed(2)}`);
 
