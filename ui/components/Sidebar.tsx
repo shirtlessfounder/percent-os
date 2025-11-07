@@ -22,7 +22,7 @@ const Sidebar = memo(({ selectedProposal, onSelectProposal, proposals, loading }
   );
 
   return (
-    <div className={`${isCollapsed ? 'w-16' : 'w-64'} bg-[#121212] h-screen flex flex-col transition-all duration-200`}>
+    <div className={`${isCollapsed ? 'w-16' : 'w-64'} bg-theme-card h-screen flex flex-col transition-all duration-200`}>
       {/* Header - Same height as main page header */}
       <div className={`h-14 flex items-center ${isCollapsed ? 'justify-center' : 'justify-between px-4'}`}>
         {isCollapsed ? (
@@ -62,15 +62,15 @@ const Sidebar = memo(({ selectedProposal, onSelectProposal, proposals, loading }
       {!isCollapsed && (
         <div className="flex-1 overflow-y-auto p-2">
           {/* Header */}
-          <div className="px-2 pb-2 text-sm text-gray-400">
+          <div className="px-2 pb-2 text-sm text-theme-text-secondary">
             $ZC Proposals
           </div>
           {loading ? (
             <ProposalListSkeleton />
           ) : sortedProposals.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 px-4">
-              <div className="text-gray-500 text-sm text-center">No active proposals</div>
-              <div className="text-gray-600 text-xs text-center mt-1">Check back later for new governance proposals</div>
+              <div className="text-theme-text-disabled text-sm text-center">No active proposals</div>
+              <div className="text-theme-text-tertiary text-xs text-center mt-1">Check back later for new governance proposals</div>
             </div>
           ) : (
           <div className="space-y-1">
@@ -142,7 +142,7 @@ const Sidebar = memo(({ selectedProposal, onSelectProposal, proposals, loading }
                       </svg>
                     )}
                   </span>
-                  <span className="text-xs text-gray-500">
+                  <span className="text-xs text-theme-text-disabled">
                     {new Date(proposal.finalizedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                   </span>
                 </div>

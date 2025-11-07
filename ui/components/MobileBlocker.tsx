@@ -31,19 +31,19 @@ export default function MobileBlocker({ children }: { children: React.ReactNode 
 
   if (isMobile) {
     return (
-      <div className="fixed inset-0 bg-[#181818] flex items-center justify-center p-6 z-50">
+      <div className="fixed inset-0 bg-theme-secondary flex items-center justify-center p-6 z-50">
         <div className="max-w-md text-center space-y-6">
           <div className="space-y-2">
-            <h1 className="text-4xl font-bold text-white">📱</h1>
-            <h2 className="text-2xl font-bold text-white">Mobile Coming Soon</h2>
+            <h1 className="text-4xl font-bold text-theme-text">📱</h1>
+            <h2 className="text-2xl font-bold text-theme-text">Mobile Coming Soon</h2>
           </div>
 
-          <p className="text-gray-400 text-lg">
+          <p className="text-theme-text-secondary text-lg">
             The mobile experience is currently under development. Please visit us on desktop for the full trading experience.
           </p>
 
           <div className="pt-4">
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-theme-text-disabled">
               For the best experience, we recommend using a desktop browser with a minimum width of 768px.
             </p>
           </div>

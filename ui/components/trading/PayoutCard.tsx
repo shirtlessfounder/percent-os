@@ -21,13 +21,13 @@ const SolIcon = ({ className }: { className?: string }) => (
 const StatusIcon = ({ status }: { status: 'pass' | 'fail' }) => {
   if (status === 'pass') {
     return (
-      <svg className="w-3 h-3 text-emerald-400" fill="currentColor" viewBox="0 0 20 20">
+      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20" style={{ color: '#6ECC94' }}>
         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
       </svg>
     );
   }
   return (
-    <svg className="w-3 h-3 text-rose-400" fill="currentColor" viewBox="0 0 20 20">
+    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20" style={{ color: '#FF6F94' }}>
       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
     </svg>
   );
@@ -45,19 +45,19 @@ export function PayoutCard({
 }: PayoutCardProps) {
   const decimalAmount = toDecimal(amount, token);
   const usdValue = decimalAmount * tokenPrice;
-  const statusColor = status === 'pass' ? 'text-emerald-400' : 'text-rose-400';
+  const statusColor = status === 'pass' ? '#6ECC94' : '#FF6F94';
 
   return (
     <div
-      className="border border-[#2A2A2A] rounded-lg p-3 flex items-center justify-between cursor-pointer transition-colors hover:bg-[#2a2a2a]/30"
+      className="border border-theme-border-hover rounded-lg p-3 flex items-center justify-between cursor-pointer transition-colors hover:bg-theme-input/30"
       onMouseEnter={() => onHover(hoverId)}
       onMouseLeave={() => onHover(null)}
     >
       <div className="flex items-center gap-1">
-        <span className={`text-xs ${statusColor}`}>{label}</span>
+        <span className="text-xs" style={{ color: statusColor }}>{label}</span>
         <StatusIcon status={status} />
       </div>
-      <div className="text-base font-medium text-white">
+      <div className="text-base font-medium text-theme-text">
         {isHovered ? (
           formatCurrency(usdValue)
         ) : (
@@ -65,12 +65,12 @@ export function PayoutCard({
             {token === 'zc' ? (
               <>
                 {formatNumber(decimalAmount)}
-                <span className="text-gray-400 text-sm font-bold">$ZC</span>
+                <span className="text-theme-text-secondary text-sm font-bold">$ZC</span>
               </>
             ) : (
               <>
                 {decimalAmount.toFixed(4)}
-                <SolIcon className="h-3 w-3 text-gray-400" />
+                <SolIcon className="h-3 w-3 text-theme-text-secondary" />
               </>
             )}
           </div>

@@ -2,25 +2,25 @@
 
 /* Root container styling */
 .tv-lightweight-charts {
-  background: #181818 !important;
+  background: #121212 !important;
 }
 
 /* Chart pane background */
 .chart-container,
 .chart-page,
 .pane {
-  background: #181818 !important;
+  background: #121212 !important;
 }
 
 /* Remove borders and separators */
 .separator {
-  background-color: #181818 !important;
-  border-color: #181818 !important;
+  background-color: #121212 !important;
+  border-color: #121212 !important;
 }
 
 /* Grid lines - subtle */
 .chart-grid-line {
-  stroke: rgba(255, 255, 255, 0.04) !important;
+  stroke: #191919 !important;
 }
 
 /* Scale text color */
@@ -46,19 +46,19 @@
 
 /* Time scale background */
 .time-scale {
-  background: #181818 !important;
-  border-top: 1px solid #2A2A2A !important;
+  background: #121212 !important;
+  border-top: 1px solid #191919 !important;
 }
 
 /* Price scale background */
 .price-scale {
-  background: #181818 !important;
-  border-left: 1px solid #2A2A2A !important;
+  background: #121212 !important;
+  border-left: 1px solid #191919 !important;
 }
 
 /* Loading spinner */
 .chart-loader {
-  background: #181818 !important;
+  background: #121212 !important;
 }
 
 /* Scrollbar styling */
@@ -68,11 +68,11 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #181818;
+  background: #121212;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2A2A2A;
+  background: #191919;
   border-radius: 4px;
 }
 
@@ -87,8 +87,8 @@
 
 /* Tooltip styling */
 .chart-tooltip {
-  background: rgba(24, 24, 24, 0.95) !important;
-  border: 1px solid #2A2A2A !important;
+  background: rgba(18, 18, 18, 0.95) !important;
+  border: 1px solid #191919 !important;
   border-radius: 4px !important;
   color: #ffffff !important;
   font-size: 11px !important;

@@ -202,8 +202,8 @@ export const LivePriceDisplay: React.FC<LivePriceDisplayProps> = ({ proposalId, 
 
   if (error) {
     return (
-      <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-4">
-        <p className="text-red-500">Error: {error}</p>
+      <div className="rounded-lg border p-4" style={{ borderColor: 'rgba(255, 111, 148, 0.2)', backgroundColor: 'rgba(255, 111, 148, 0.05)' }}>
+        <p style={{ color: '#FF6F94' }}>Error: {error}</p>
       </div>
     );
   }

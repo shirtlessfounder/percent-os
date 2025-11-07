@@ -75,31 +75,31 @@ export default function SettingsModal({
   return (
     <>
       {/* Backdrop */}
-      <div 
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
+      <div
+        className="fixed inset-0 bg-theme-bg/60 backdrop-blur-sm z-50"
         onClick={onClose}
       />
       
       {/* Modal */}
-      <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-xl bg-[#181818] border border-[#2A2A2A] rounded-lg z-50">
+      <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-xl bg-theme-secondary border border-theme-border-hover rounded-lg z-50">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-[#2A2A2A]">
+        <div className="flex items-center justify-between p-6 border-b border-theme-border-hover">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-orange-500/20 rounded-full flex items-center justify-center">
               <Shield className="w-4 h-4 text-orange-500" />
             </div>
-            <h2 className="text-lg font-medium text-white">Account & Security</h2>
+            <h2 className="text-lg font-medium text-theme-text">Account & Security</h2>
           </div>
           <button
             onClick={onClose}
-            className="text-[#AFAFAF] hover:text-white transition-colors cursor-pointer"
+            className="text-[#AFAFAF] hover:text-theme-text transition-colors cursor-pointer"
           >
             <X size={20} />
           </button>
         </div>
         
         {/* No tabs - just border */}
-        <div className="border-b border-[#2A2A2A]"></div>
+        <div className="border-b border-theme-border-hover"></div>
         
         {/* Content */}
         <div className="p-6 max-h-[500px] overflow-y-auto">
@@ -115,7 +115,7 @@ export default function SettingsModal({
                           {walletAddress?.slice(0, 2).toUpperCase() || 'NA'}
                         </span>
                       </div>
-                      <p className="text-sm text-white font-medium">{shortAddress}</p>
+                      <p className="text-sm text-theme-text font-medium">{shortAddress}</p>
                       <button
                         onClick={handleCopy}
                         className="p-1 hover:bg-white/5 rounded transition-colors cursor-pointer"
@@ -144,7 +144,7 @@ export default function SettingsModal({
                 <div className="space-y-3">
                   <button
                     onClick={logout}
-                    className="w-full px-4 py-2.5 bg-[#272727] hover:bg-[#303030] text-[#AFAFAF] hover:text-white text-sm font-semibold rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-2 border border-[#3D3D3D]"
+                    className="w-full px-4 py-2.5 bg-[#272727] hover:bg-[#303030] text-[#AFAFAF] hover:text-theme-text text-sm font-semibold rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-2 border border-[#3D3D3D]"
                   >
                     <Shield size={16} />
                     Log Out
@@ -152,15 +152,15 @@ export default function SettingsModal({
                 </div>
               </>
             ) : (
-              <div className="bg-[#121212] border border-[#2A2A2A] rounded-lg p-8 text-center">
+              <div className="bg-theme-card border border-theme-border-hover rounded-lg p-8 text-center">
                 <div className="w-16 h-16 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
                   <Shield className="w-8 h-8 text-orange-500" />
                 </div>
-                <h3 className="text-lg font-medium text-white mb-2">Log in to access your wallet</h3>
+                <h3 className="text-lg font-medium text-theme-text mb-2">Log in to access your wallet</h3>
                 <p className="text-sm text-[#AFAFAF] mb-4">Connect your Solana wallet to start trading prediction markets</p>
                 <button
                   onClick={() => login()}
-                  className="w-full h-10 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded transition-colors cursor-pointer"
+                  className="w-full h-10 bg-orange-500 hover:bg-orange-600 text-theme-text text-sm font-medium rounded transition-colors cursor-pointer"
                 >
                   Log In
                 </button>
