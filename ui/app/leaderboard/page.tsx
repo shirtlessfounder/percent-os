@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { usePrivyWallet } from '@/hooks/usePrivyWallet';
 import { useWalletBalances } from '@/hooks/useWalletBalances';
 import { useLeaderboard } from '@/hooks/useLeaderboard';
+import { usePot } from '@/hooks/usePot';
 import Header from '@/components/Header';
 import { LeaderboardTable } from '@/components/LeaderboardTable';
 
@@ -21,6 +22,9 @@ export default function LeaderboardPage() {
 
   // Fetch leaderboard data
   const { entries: leaderboardEntries, loading: leaderboardLoading, error: leaderboardError } = useLeaderboard();
+
+  // Fetch pot data
+  const { potSol, loading: potLoading } = usePot();
 
   // Handle navigation
   const handleNavTabChange = useCallback((tab: 'live' | 'history' | 'leaderboard') => {
@@ -60,6 +64,45 @@ export default function LeaderboardPage() {
                 <p className="text-xs mt-2" style={{ color: '#6B6E71' }}>
                   Debug: {leaderboardLoading ? 'Loading...' : `${leaderboardEntries.length} entries found`}
                 </p>
+              </div>
+
+              {/* Pot Display */}
+              <div className="inline-flex items-center gap-3 bg-[#121212] border border-[#191919] rounded-[9px] py-4 px-5 mb-4">
+                <span className="text-sm font-medium leading-none" style={{ color: '#6B6E71' }}>
+                  Total Pot
+                </span>
+                <div className="relative group flex items-center">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="cursor-help"
+                    style={{ color: '#6B6E71' }}
+                  >
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="16" x2="12" y2="12"></line>
+                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                  </svg>
+                  <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block w-max max-w-xs z-10">
+                    <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg py-2 px-3 shadow-lg">
+                      <p className="text-xs" style={{ color: '#E9E9E3' }}>
+                        Reward to be distributed to the top 10 traders equally
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <span className="text-xl font-medium leading-none" style={{ color: '#E9E9E3' }}>
+                  {potLoading ? (
+                    <span className="text-sm" style={{ color: '#6B6E71' }}>Loading...</span>
+                  ) : (
+                    `${potSol.toFixed(4)} SOL`
+                  )}
+                </span>
               </div>
 
               {/* Error state */}
