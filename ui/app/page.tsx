@@ -618,6 +618,7 @@ export default function HomePage() {
                       proposalId={proposal.id}
                       solBalance={solBalance}
                       zcBalance={zcBalance}
+                      userBalances={userBalances}
                       onDepositSuccess={refetchBalances}
                     />
 
