@@ -120,17 +120,6 @@ export default function Header({ walletAddress, authenticated, solBalance, zcBal
           <span className="text-sm">$ZC</span>
         </a>
         <a
-          href="https://jup.ag/tokens/zcQPTGhdiTMFM6erwko2DWBTkN8nCnAGM7MUX9RpERC"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="transition-colors"
-          style={{ color: '#6B6E71' }}
-          onMouseEnter={(e) => e.currentTarget.style.color = '#9B9E9F'}
-          onMouseLeave={(e) => e.currentTarget.style.color = '#6B6E71'}
-        >
-          <span className="text-sm">$PERC</span>
-        </a>
-        <a
           href="https://docs.percent.markets/"
           target="_blank"
           rel="noopener noreferrer"
