@@ -999,6 +999,7 @@ export default function HomePage() {
                                     Final PFG: {proposalPfgs[proposal.id].toFixed(1)}%
                                   </span>
                                 )}
+                                <ProposalVolume proposalId={proposal.id} />
                               </div>
                               <div className="text-sm text-[#B0AFAB]">
                                 {new Date(proposal.finalizedAt).toLocaleDateString('en-US', {

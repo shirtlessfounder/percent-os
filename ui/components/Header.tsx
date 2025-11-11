@@ -176,13 +176,8 @@ export default function Header({ walletAddress, authenticated, solBalance, zcBal
       </nav>
       </div>
 
-<<<<<<< HEAD
       {/* Second Row: Live/History/Leaderboard Tab Navigation */}
-      <div className="px-8 border-b border-[#292929]">
-=======
-      {/* Second Row: Live/History Tab Navigation */}
       <div className="px-4 md:px-8 border-b border-[#292929]">
->>>>>>> main
         <div className="flex">
           <button
             onClick={() => onNavTabChange('live')}
