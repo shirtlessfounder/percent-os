@@ -2,21 +2,13 @@
 
 import { useState } from 'react';
 import MarketChart from './MarketChart';
-
-interface Trade {
-  id: number;
-  userAddress: string;
-  market: 'pass' | 'fail';
-  isBaseToQuote: boolean;
-  amountIn: string;
-  txSignature: string | null;
-  timestamp: string;
-}
+import type { Trade } from '@/hooks/useTradeHistory';
 
 interface ChartBoxProps {
   proposalId: number;
   selectedMarket: 'pass' | 'fail';
   trades: Trade[];
+  totalVolume: number;
   tradesLoading: boolean;
   getTimeAgo: (timestamp: string) => string;
   getTokenUsed: (isBaseToQuote: boolean, market: 'pass' | 'fail') => string;
@@ -26,6 +18,7 @@ export function ChartBox({
   proposalId,
   selectedMarket,
   trades,
+  totalVolume,
   tradesLoading,
   getTimeAgo,
   getTokenUsed
@@ -33,16 +26,37 @@ export function ChartBox({
   const [view, setView] = useState<'chart' | 'history'>('chart');
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
 
+  // Format volume with K/M/B suffixes
+  const formatVolume = (volume: number): string => {
+    if (volume >= 1e9) {
+      return (volume / 1e9).toFixed(2) + 'B';
+    } else if (volume >= 1e6) {
+      return (volume / 1e6).toFixed(2) + 'M';
+    } else if (volume >= 1e3) {
+      return (volume / 1e3).toFixed(2) + 'K';
+    } else {
+      return volume.toFixed(2);
+    }
+  };
+
   return (
     <div className="bg-[#121212] border border-[#191919] rounded-[9px] py-4 px-5 transition-all duration-300">
-      {/* Header with inline toggle */}
+      {/* Header with inline toggle and volume */}
       <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] uppercase text-left" style={{ color: '#DDDDD7' }}>
-          {view === 'chart'
-            ? selectedMarket === 'pass' ? 'Chart: Pass Coin' : 'Chart: Fail Coin'
-            : selectedMarket === 'pass' ? 'Trades: Pass Coin' : 'Trades: Fail Coin'
-          }
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] uppercase text-left" style={{ color: '#DDDDD7' }}>
+            {view === 'chart'
+              ? selectedMarket === 'pass' ? 'Chart: Pass Coin' : 'Chart: Fail Coin'
+              : selectedMarket === 'pass' ? 'Trades: Pass Coin' : 'Trades: Fail Coin'
+            }
+          </span>
+          <span className="text-xs font-medium font-ibm-plex-mono" style={{ color: '#6B6E71' }}>
+            •
+          </span>
+          <span className="text-xs font-medium font-ibm-plex-mono" style={{ color: '#6B6E71' }}>
+            VOL ${formatVolume(totalVolume)}
+          </span>
+        </div>
 
         {/* Pill Toggle */}
         <div className="flex items-center gap-[2px] p-[3px] border border-[#191919] rounded-full">
@@ -74,31 +88,39 @@ export function ChartBox({
       {/* Conditional Content */}
       {view === 'chart' ? (
         <div className="bg-[#121212] border border-[#191919] overflow-hidden rounded-[6px]">
-          <MarketChart proposalId={proposalId} market={selectedMarket} height={615} />
+          {/* Mobile: 400px */}
+          <div className="md:hidden">
+            <MarketChart proposalId={proposalId} market={selectedMarket} height={480} />
+          </div>
+          {/* Desktop: 615px */}
+          <div className="hidden md:block">
+            <MarketChart proposalId={proposalId} market={selectedMarket} height={615} />
+          </div>
         </div>
       ) : (
-        <div className="h-[615px] overflow-y-auto scrollbar-hide border border-[#191919] rounded-[6px]">
+        <div className="h-[480px] md:h-[615px] overflow-y-auto scrollbar-hide border border-[#191919] rounded-[6px]">
           <table className="w-full text-sm">
             <thead className="text-[#6B6E71] font-medium uppercase">
               <tr>
                 <th className="py-3 pl-3 text-left font-medium w-[240px]">Trader</th>
-                <th className="py-3 text-left font-medium w-[100px]">Coin</th>
+                <th className="hidden md:table-cell py-3 text-left font-medium w-[100px]">Coin</th>
                 <th className="py-3 text-left font-medium w-[100px]">Trade</th>
+                <th className="py-3 text-left font-medium w-[120px]">MCAP</th>
                 <th className="py-3 text-left font-medium w-[140px]">Amount</th>
-                <th className="py-3 text-left font-medium w-[160px]">Tx</th>
+                <th className="hidden md:table-cell py-3 text-left font-medium w-[160px]">Tx</th>
                 <th className="py-3 pr-3 text-right font-medium">Age</th>
               </tr>
             </thead>
             <tbody>
             {tradesLoading ? (
               <tr>
-                <td colSpan={6} className="py-8 text-center text-[#6B6E71]">
+                <td colSpan={7} className="py-8 text-center text-[#6B6E71]">
                   Loading trades...
                 </td>
               </tr>
             ) : trades.length === 0 ? (
               <tr>
-                <td colSpan={6} className="py-8 text-center text-[#6B6E71]">
+                <td colSpan={7} className="py-8 text-center text-[#6B6E71]">
                   No trades yet
                 </td>
               </tr>
@@ -111,14 +133,17 @@ export function ChartBox({
                 >
                   <td className="py-3 pl-3 w-[200px]">
                     <div className="flex items-center gap-1.5">
-                      <span className="font-medium">{trade.userAddress.slice(0, 6)}...{trade.userAddress.slice(-6)}</span>
+                      {/* Mobile: First 6 only */}
+                      <span className="font-medium md:hidden">{trade.userAddress.slice(0, 6)}</span>
+                      {/* Desktop: First 6 + Last 6 */}
+                      <span className="font-medium hidden md:inline">{trade.userAddress.slice(0, 6)}...{trade.userAddress.slice(-6)}</span>
                       <button
                         onClick={() => {
                           navigator.clipboard.writeText(trade.userAddress);
                           setCopiedAddress(trade.userAddress);
                           setTimeout(() => setCopiedAddress(null), 2000);
                         }}
-                        className="hover:text-white transition-colors cursor-pointer"
+                        className="hidden md:inline-flex hover:text-white transition-colors cursor-pointer"
                         style={{ color: copiedAddress === trade.userAddress ? '#ffffff' : '#6B6E71' }}
                         title="Copy address"
                       >
@@ -136,7 +161,7 @@ export function ChartBox({
                         href={`https://solscan.io/address/${trade.userAddress}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="hover:text-white transition-colors"
+                        className="hidden md:inline-flex hover:text-white transition-colors"
                         style={{ color: '#6B6E71' }}
                         title="View on Solscan"
                       >
@@ -146,49 +171,144 @@ export function ChartBox({
                       </a>
                     </div>
                   </td>
-                  <td className="py-3 font-medium uppercase w-[100px]">{trade.market}</td>
+                  <td className="hidden md:table-cell py-3 font-medium uppercase w-[100px]">{trade.market}</td>
                   <td className="py-3 w-[100px]">
                     <span style={{ color: trade.isBaseToQuote ? '#FF6F94' : '#6ECC94' }}>
                       {trade.isBaseToQuote ? 'Sell' : 'Buy'}
                     </span>
                   </td>
-                  <td className="py-3 w-[140px]">
-                    {(() => {
-                      const tokenUsed = getTokenUsed(trade.isBaseToQuote, trade.market);
-                      const amount = parseFloat(trade.amountIn);
+                  <td className="py-3 w-[120px]">
+                    {/* Mobile: 1 decimal */}
+                    <span className="md:hidden">
+                      {(() => {
+                        if (!trade.marketCapUsd) return <span className="text-[#6B6E71]">-</span>;
 
-                      const removeTrailingZeros = (num: string): string => {
-                        return num.replace(/\.?0+$/, '');
-                      };
+                        const mcap = trade.marketCapUsd;
 
-                      let formattedAmount;
-                      if (tokenUsed === 'SOL') {
-                        formattedAmount = removeTrailingZeros(amount.toFixed(3));
-                      } else {
-                        // ZC formatting with K/M/B notation
-                        if (amount >= 1000000000) {
-                          formattedAmount = removeTrailingZeros((amount / 1000000000).toFixed(3)) + 'B';
-                        } else if (amount >= 1000000) {
-                          formattedAmount = removeTrailingZeros((amount / 1000000).toFixed(3)) + 'M';
-                        } else if (amount >= 1000) {
-                          formattedAmount = removeTrailingZeros((amount / 1000).toFixed(3)) + 'K';
-                        } else {
-                          formattedAmount = removeTrailingZeros(amount.toFixed(3));
+                        if (mcap < 1 || mcap > 100000000000) {
+                          return <span className="text-[#6B6E71]">-</span>;
                         }
-                      }
 
-                      return `${formattedAmount} ${tokenUsed.replace('$', '')}`;
-                    })()}
+                        const removeTrailingZeros = (num: string): string => {
+                          return num.replace(/\.?0+$/, '');
+                        };
+
+                        let formattedMcap;
+                        if (mcap >= 1000000000) {
+                          formattedMcap = '$' + removeTrailingZeros((mcap / 1000000000).toFixed(1)) + 'B';
+                        } else if (mcap >= 1000000) {
+                          formattedMcap = '$' + removeTrailingZeros((mcap / 1000000).toFixed(1)) + 'M';
+                        } else if (mcap >= 1000) {
+                          formattedMcap = '$' + removeTrailingZeros((mcap / 1000).toFixed(1)) + 'K';
+                        } else {
+                          formattedMcap = '$' + removeTrailingZeros(mcap.toFixed(1));
+                        }
+
+                        return formattedMcap;
+                      })()}
+                    </span>
+                    {/* Desktop: 3 decimals */}
+                    <span className="hidden md:inline">
+                      {(() => {
+                        if (!trade.marketCapUsd) return <span className="text-[#6B6E71]">-</span>;
+
+                        const mcap = trade.marketCapUsd;
+
+                        if (mcap < 1 || mcap > 100000000000) {
+                          return <span className="text-[#6B6E71]">-</span>;
+                        }
+
+                        const removeTrailingZeros = (num: string): string => {
+                          return num.replace(/\.?0+$/, '');
+                        };
+
+                        let formattedMcap;
+                        if (mcap >= 1000000000) {
+                          formattedMcap = '$' + removeTrailingZeros((mcap / 1000000000).toFixed(3)) + 'B';
+                        } else if (mcap >= 1000000) {
+                          formattedMcap = '$' + removeTrailingZeros((mcap / 1000000).toFixed(3)) + 'M';
+                        } else if (mcap >= 1000) {
+                          formattedMcap = '$' + removeTrailingZeros((mcap / 1000).toFixed(3)) + 'K';
+                        } else {
+                          formattedMcap = '$' + removeTrailingZeros(mcap.toFixed(2));
+                        }
+
+                        return formattedMcap;
+                      })()}
+                    </span>
                   </td>
-                  <td className="py-3 w-[160px]">
+                  <td className="py-3 w-[140px]">
+                    {/* Mobile: 1 decimal */}
+                    <span className="md:hidden">
+                      {(() => {
+                        const tokenUsed = getTokenUsed(trade.isBaseToQuote, trade.market);
+                        const amount = parseFloat(trade.amountIn);
+
+                        const removeTrailingZeros = (num: string): string => {
+                          return num.replace(/\.?0+$/, '');
+                        };
+
+                        let formattedAmount;
+                        if (tokenUsed === 'SOL') {
+                          formattedAmount = removeTrailingZeros(amount.toFixed(1));
+                        } else {
+                          // ZC formatting with K/M/B notation
+                          if (amount >= 1000000000) {
+                            formattedAmount = removeTrailingZeros((amount / 1000000000).toFixed(1)) + 'B';
+                          } else if (amount >= 1000000) {
+                            formattedAmount = removeTrailingZeros((amount / 1000000).toFixed(1)) + 'M';
+                          } else if (amount >= 1000) {
+                            formattedAmount = removeTrailingZeros((amount / 1000).toFixed(1)) + 'K';
+                          } else {
+                            formattedAmount = removeTrailingZeros(amount.toFixed(1));
+                          }
+                        }
+
+                        return `${formattedAmount} ${tokenUsed.replace('$', '')}`;
+                      })()}
+                    </span>
+                    {/* Desktop: 3 decimals */}
+                    <span className="hidden md:inline">
+                      {(() => {
+                        const tokenUsed = getTokenUsed(trade.isBaseToQuote, trade.market);
+                        const amount = parseFloat(trade.amountIn);
+
+                        const removeTrailingZeros = (num: string): string => {
+                          return num.replace(/\.?0+$/, '');
+                        };
+
+                        let formattedAmount;
+                        if (tokenUsed === 'SOL') {
+                          formattedAmount = removeTrailingZeros(amount.toFixed(3));
+                        } else {
+                          // ZC formatting with K/M/B notation
+                          if (amount >= 1000000000) {
+                            formattedAmount = removeTrailingZeros((amount / 1000000000).toFixed(3)) + 'B';
+                          } else if (amount >= 1000000) {
+                            formattedAmount = removeTrailingZeros((amount / 1000000).toFixed(3)) + 'M';
+                          } else if (amount >= 1000) {
+                            formattedAmount = removeTrailingZeros((amount / 1000).toFixed(3)) + 'K';
+                          } else {
+                            formattedAmount = removeTrailingZeros(amount.toFixed(3));
+                          }
+                        }
+
+                        return `${formattedAmount} ${tokenUsed.replace('$', '')}`;
+                      })()}
+                    </span>
+                  </td>
+                  <td className="hidden md:table-cell py-3 w-[160px]">
                     {trade.txSignature ? (
                       <div className="flex items-center gap-1.5">
-                        <span className="font-medium">{trade.txSignature.slice(0, 12)}...</span>
+                        {/* Mobile: First 6 */}
+                        <span className="font-medium md:hidden">{trade.txSignature.slice(0, 6)}...</span>
+                        {/* Desktop: First 12 */}
+                        <span className="font-medium hidden md:inline">{trade.txSignature.slice(0, 12)}...</span>
                         <a
                           href={`https://solscan.io/tx/${trade.txSignature}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="hover:text-white transition-colors"
+                          className="hidden md:inline-flex hover:text-white transition-colors"
                           style={{ color: '#6B6E71' }}
                           title="View transaction"
                         >
