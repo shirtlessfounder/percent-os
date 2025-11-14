@@ -46,13 +46,6 @@ export default function LeaderboardPage() {
                 <h2 className="text-2xl font-medium" style={{ color: '#E9E9E3' }}>
                   Rankings
                 </h2>
-                <p className="text-sm mt-2" style={{ color: '#6B6E71' }}>
-                  Top traders by total volume across all proposals
-                </p>
-                {/* Debug info */}
-                <p className="text-xs mt-2" style={{ color: '#6B6E71' }}>
-                  Debug: {leaderboardLoading ? 'Loading...' : `${leaderboardEntries.length} entries found`}
-                </p>
               </div>
 
               {/* Pot Display */}

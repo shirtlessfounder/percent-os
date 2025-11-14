@@ -235,7 +235,7 @@ router.post('/', requireApiKey, requireModeratorId, async (req, res, next) => {
       finalizedAt: proposal.finalizedAt
     });
   } catch (error) {
-    logger.error('[POST /] Failed to create proposal', {
+    logger.error('[POST /] Failed to create DM', {
       error: error instanceof Error ? error.message : String(error),
       moderatorId: req.moderatorId,
       body: req.body
