@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { usePrivyWallet } from '@/hooks/usePrivyWallet';
 import { useWalletBalances } from '@/hooks/useWalletBalances';
 import Header from '@/components/Header';
@@ -32,6 +32,10 @@ export default function CreatePage() {
   const [proposalLengthHours, setProposalLengthHours] = useState('24');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDescriptionFocused, setIsDescriptionFocused] = useState(false);
+
+  // Refs for flip card inputs to manage auto-focus
+  const firstDigitRef = useRef<HTMLInputElement>(null);
+  const secondDigitRef = useRef<HTMLInputElement>(null);
 
   // Check if wallet has permission to create proposals
   const hasPermission = walletAddress ? ALLOWED_WALLETS.includes(walletAddress) : false;
@@ -277,15 +281,24 @@ export default function CreatePage() {
                         {/* Massive Flip Cards */}
                         <div className="flex items-center justify-center gap-4">
                           <EditableFlipCard
+                            ref={firstDigitRef}
                             digit={proposalLengthHours.padStart(2, '0')[0]}
                             onChange={(val) => {
                               const ones = proposalLengthHours.padStart(2, '0')[1];
                               const newHours = parseInt(val + ones) || 0;
                               setProposalLengthHours(newHours.toString());
                             }}
+                            onValueEntered={() => {
+                              // Auto-focus and select second digit for immediate editing
+                              if (secondDigitRef.current) {
+                                secondDigitRef.current.focus();
+                                secondDigitRef.current.select();
+                              }
+                            }}
                             disabled={isSubmitting}
                           />
                           <EditableFlipCard
+                            ref={secondDigitRef}
                             digit={proposalLengthHours.padStart(2, '0')[1]}
                             onChange={(val) => {
                               const tens = proposalLengthHours.padStart(2, '0')[0];

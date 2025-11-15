@@ -1,16 +1,29 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, forwardRef } from 'react';
 
 interface EditableFlipCardProps {
   digit: string;
   onChange: (value: string) => void;
   disabled?: boolean;
+  onValueEntered?: () => void; // Callback after user types a value
 }
 
-export default function EditableFlipCard({ digit, onChange, disabled }: EditableFlipCardProps) {
-  const [isFocused, setIsFocused] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+const EditableFlipCard = forwardRef<HTMLInputElement, EditableFlipCardProps>(
+  ({ digit, onChange, disabled, onValueEntered }, ref) => {
+    const [isFocused, setIsFocused] = useState(false);
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    // Expose internal ref to parent via forwarded ref
+    useEffect(() => {
+      if (ref && inputRef.current) {
+        if (typeof ref === 'function') {
+          ref(inputRef.current);
+        } else {
+          ref.current = inputRef.current;
+        }
+      }
+    }, [ref]);
 
   const handleClick = () => {
     if (!disabled && inputRef.current) {
@@ -24,6 +37,10 @@ export default function EditableFlipCard({ digit, onChange, disabled }: Editable
     // Only allow single digit 0-9
     if (value === '' || /^[0-9]$/.test(value)) {
       onChange(value || '0');
+      // Call callback after value is entered (for auto-focus to next input)
+      if (value && /^[0-9]$/.test(value) && onValueEntered) {
+        onValueEntered();
+      }
     }
   };
 
@@ -76,4 +93,8 @@ export default function EditableFlipCard({ digit, onChange, disabled }: Editable
       />
     </div>
   );
-}
+});
+
+EditableFlipCard.displayName = 'EditableFlipCard';
+
+export default EditableFlipCard;
