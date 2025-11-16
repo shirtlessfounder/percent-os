@@ -1,4 +1,5 @@
-import { Keypair } from '@solana/web3.js';
+import { Keypair, Connection, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { getAssociatedTokenAddress, getAccount } from '@solana/spl-token';
 import { IModerator, IModeratorConfig, IModeratorInfo, ProposalStatus, ICreateProposalParams } from './types/moderator.interface';
 import { IExecutionConfig, IExecutionResult, PriorityFeeMode, Commitment, ExecutionStatus } from './types/execution.interface';
 import { IProposal, IProposalConfig } from './types/proposal.interface';
@@ -7,6 +8,7 @@ import { SchedulerService } from './services/scheduler.service';
 import { PersistenceService } from './services/persistence.service';
 import { ExecutionService } from './services/execution.service';
 import { LoggerService } from './services/logger.service';
+import { DammService } from './services/damm.service';
 import { getNetworkFromConnection} from './utils/network';
 //import { BlockEngineUrl, JitoService } from '@slateos/jito';
 
@@ -21,6 +23,7 @@ export class Moderator implements IModerator {
   public scheduler: SchedulerService;                     // Scheduler for automatic tasks
   public persistenceService: PersistenceService;          // Database persistence service
   private executionService: ExecutionService;              // Execution service for transactions
+  private dammService: DammService;                        // DAMM pool interaction service
   private logger: LoggerService;                           // Logger service for this moderator
   //private jitoService?: JitoService;                       // Jito service @deprecated
 
@@ -61,6 +64,7 @@ export class Moderator implements IModerator {
     });
 
     this.executionService = new ExecutionService(executionConfig, this.logger);
+    this.dammService = new DammService(this.logger.createChild('damm'));
 
     /** @deprecated */
     // if (this.config.jitoUuid) {
@@ -203,6 +207,10 @@ export class Moderator implements IModerator {
 
     const status = await proposal.finalize();
     await this.saveProposal(proposal);
+
+    // Handle deposit-back for proposals with DAMM withdrawals
+    await this.handleDepositBack(id);
+
     if (status === ProposalStatus.Passed) {
       this.logger.info('Proposal finalized and passed');
     } else if (status === ProposalStatus.Failed) {
@@ -257,6 +265,143 @@ export class Moderator implements IModerator {
         error: error instanceof Error ? error.message : String(error)
       });
       throw error;
+    }
+  }
+
+  /**
+   * Handle automatic deposit-back to DAMM pool after proposal finalization
+   * Deposits available ZC/SOL from authority wallet back to DAMM pool
+   * The DAMM API handles pool ratio calculation internally
+   * @param proposalId - The ID of the finalized proposal
+   */
+  private async handleDepositBack(proposalId: number): Promise<void> {
+    try {
+      // Check if proposal has withdrawal metadata
+      const metadata = await this.persistenceService.getWithdrawalMetadata(proposalId);
+
+      if (!metadata) {
+        // No withdrawal metadata, skip deposit-back
+        return;
+      }
+
+      if (!metadata.needsDepositBack) {
+        // Already deposited back
+        this.logger.info('Proposal already has deposit-back completed', { proposalId });
+        return;
+      }
+
+      this.logger.info('Starting deposit-back to DAMM pool', {
+        proposalId,
+        originalWithdrawnTokenA: metadata.tokenA,
+        originalWithdrawnTokenB: metadata.tokenB
+      });
+
+      // Token decimals
+      const BASE_DECIMALS = 6;  // ZC
+      const QUOTE_DECIMALS = 9; // SOL
+
+      // Step 1: Get current authority wallet balances
+      const connection = new Connection(this.config.rpcEndpoint, 'confirmed');
+      const authorityPubkey = this.config.authority.publicKey;
+
+      // Get ZC balance (Token A)
+      const zcTokenAccount = await getAssociatedTokenAddress(
+        this.config.baseMint,
+        authorityPubkey
+      );
+      const zcAccountInfo = await getAccount(connection, zcTokenAccount);
+      const availableZC = Number(zcAccountInfo.amount); // Raw units
+
+      // Get SOL balance (Token B) - leave some for gas (0.01 SOL)
+      const solBalance = await connection.getBalance(authorityPubkey);
+      const gasReserve = 0.01 * LAMPORTS_PER_SOL;
+      const availableSOL = Math.max(0, solBalance - gasReserve); // Raw units (lamports)
+
+      // Convert to UI units for API
+      const tokenAAmountUI = availableZC / Math.pow(10, BASE_DECIMALS);
+      const tokenBAmountUI = availableSOL / Math.pow(10, QUOTE_DECIMALS);
+
+      this.logger.info('Authority balances after finalization', {
+        availableZC: tokenAAmountUI,
+        availableSOL: tokenBAmountUI,
+        gasReserve: gasReserve / LAMPORTS_PER_SOL
+      });
+
+      // Step 2: Create transaction signer from authority keypair
+      const signTransaction = async (transaction: any) => {
+        transaction.sign(this.config.authority);
+        return transaction;
+      };
+
+      // Step 3: Execute deposit with retry logic
+      const MAX_RETRIES = 3;
+      const RETRY_DELAY_MS = 2000;
+      let lastError: Error | null = null;
+
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          this.logger.info(`Attempting deposit-back (${attempt}/${MAX_RETRIES})`, {
+            proposalId,
+            tokenAAmount: tokenAAmountUI,
+            tokenBAmount: tokenBAmountUI
+          });
+
+          // Execute deposit - API handles pool ratio internally
+          const depositResult = await this.dammService.depositToDammPool(
+            tokenAAmountUI,
+            tokenBAmountUI,
+            signTransaction
+          );
+
+          // Mark as deposited in database with actual amounts from API response
+          await this.persistenceService.markWithdrawalDeposited(
+            proposalId,
+            depositResult.signature,
+            depositResult.amounts.tokenA,
+            depositResult.amounts.tokenB
+          );
+
+          this.logger.info('Deposit-back completed successfully', {
+            proposalId,
+            attempt,
+            depositSignature: depositResult.signature,
+            requestedTokenA: tokenAAmountUI,
+            requestedTokenB: tokenBAmountUI,
+            actualDepositedTokenA: depositResult.amounts.tokenA,
+            actualDepositedTokenB: depositResult.amounts.tokenB
+          });
+
+          return; // Success, exit the method
+        } catch (depositError) {
+          lastError = depositError instanceof Error ? depositError : new Error(String(depositError));
+          this.logger.warn(`Deposit-back attempt ${attempt}/${MAX_RETRIES} failed`, {
+            proposalId,
+            attempt,
+            error: lastError.message
+          });
+
+          if (attempt < MAX_RETRIES) {
+            // Wait before retrying
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+          }
+        }
+      }
+
+      // All retries failed
+      this.logger.error('All deposit-back attempts failed', {
+        proposalId,
+        totalAttempts: MAX_RETRIES,
+        lastError: lastError?.message,
+        note: 'Tokens remain in authority wallet, needs_deposit_back=true for manual retry'
+      });
+      // Don't throw - tokens are safe in authority wallet, can be retried manually
+    } catch (error) {
+      // Log error but don't fail the finalization
+      this.logger.error('Failed to complete deposit-back', {
+        proposalId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      // Don't throw - we don't want deposit-back failures to prevent finalization
     }
   }
 }

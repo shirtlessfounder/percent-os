@@ -6,17 +6,7 @@ import { useWalletBalances } from '@/hooks/useWalletBalances';
 import Header from '@/components/Header';
 import EditableFlipCard from '@/components/EditableFlipCard';
 import toast from 'react-hot-toast';
-import { getTokenMintInfo } from '@/lib/solana-token';
-import { fetchPoolPrice, calculateAMMAmounts } from '@/lib/pool-price';
 
-// ZC Token Mint Address
-const ZC_TOKEN_MINT = 'GVvPZpC6ymCoiHzYJ7CWZ8LhVn9tL2AUpRjSAsLh6jZC';
-// ZC/SOL Spot Pool Address
-const SPOT_POOL_ADDRESS = 'CCZdbVvDqPN8DmMLVELfnt9G1Q9pQNt3bTGifSpUY9Ad';
-// Minimum SOL required to create proposal
-const MIN_SOL_REQUIRED = 20;
-// Maximum SOL to use per market
-const MAX_SOL_LIQUIDITY = 25;
 // Whitelisted wallets allowed to create proposals
 const ALLOWED_WALLETS = [
   '79TLv4oneDA1tDUSNXBxNCnemzNmLToBHYXnfZWDQNeP'
@@ -61,82 +51,18 @@ export default function CreatePage() {
       return;
     }
 
-    // Check SOL balance
-    if (solBalance < MIN_SOL_REQUIRED) {
-      toast.error(`Need at least ${MIN_SOL_REQUIRED} SOL to create proposal. Current balance: ${solBalance.toFixed(2)} SOL`);
-      return;
-    }
-
     setIsSubmitting(true);
-    const toastId = toast.loading('Creating proposal...');
+    const toastId = toast.loading('Creating Decision Market...');
 
     try {
-      // Fetch current total supply from blockchain
-      let totalSupply: number;
-      try {
-        const mintInfo = await getTokenMintInfo(ZC_TOKEN_MINT);
-        totalSupply = mintInfo.supply;
-      } catch (error) {
-        console.error('Failed to fetch token supply:', error);
-        toast.error(
-          `Failed to fetch token supply: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          { id: toastId }
-        );
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Calculate dynamic SOL amount based on wallet balance
-      const solToUse = Math.min(solBalance, MAX_SOL_LIQUIDITY);
-
-      // Fetch spot price and calculate AMM amounts
-      let initialBaseAmount: string;
-      let initialQuoteAmount: string;
-      let ammPrice: number;
-
-      try {
-        const spotPrice = await fetchPoolPrice(SPOT_POOL_ADDRESS);
-        const ammAmounts = calculateAMMAmounts(spotPrice, solToUse);
-
-        initialBaseAmount = ammAmounts.initialBaseAmount;
-        initialQuoteAmount = ammAmounts.initialQuoteAmount;
-
-        // Calculate AMM price for TWAP initialization
-        const BASE_DECIMALS = 6;
-        const QUOTE_DECIMALS = 9;
-        const baseTokens = parseInt(initialBaseAmount) / Math.pow(10, BASE_DECIMALS);
-        const quoteTokens = parseInt(initialQuoteAmount) / Math.pow(10, QUOTE_DECIMALS);
-        ammPrice = quoteTokens / baseTokens;
-      } catch (error) {
-        console.error('Failed to fetch pool price:', error);
-        toast.error(
-          `Failed to fetch pool price: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          { id: toastId }
-        );
-        setIsSubmitting(false);
-        return;
-      }
-
       // Convert hours to seconds
       const proposalLength = Math.floor(hours * 3600);
 
+      // Simple request - backend handles everything else
       const requestBody = {
         title: title.trim(),
         description: description.trim(),
-        proposalLength,
-        spotPoolAddress: SPOT_POOL_ADDRESS, // ZC/SOL spot pool
-        totalSupply, // Fetched dynamically from blockchain
-        twap: {
-          initialTwapValue: ammPrice,
-          twapMaxObservationChangePerUpdate: null,
-          twapStartDelay: 0,
-          passThresholdBps: 0,
-          minUpdateInterval: 6000 // 6 seconds
-        },
-        amm: {
-          initialBaseAmount,
-          initialQuoteAmount
-        }
+        proposalLength
       };
 
       const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -159,7 +85,7 @@ export default function CreatePage() {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.message || 'Failed to create DM');
+        throw new Error(error.message || error.error || 'Failed to create DM');
       }
 
       const data = await response.json();

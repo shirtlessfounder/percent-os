@@ -1,8 +1,10 @@
 import { Router } from 'express';
 import { requireApiKey } from '../middleware/auth';
 import { attachModerator, requireModeratorId, getModerator } from '../middleware/validation';
-import { Transaction, PublicKey } from '@solana/web3.js';
+import { Transaction, PublicKey, Connection } from '@solana/web3.js';
+import { getMint } from '@solana/spl-token';
 import BN from 'bn.js';
+import bs58 from 'bs58';
 import { ExecutionStatus } from '../../app/types/execution.interface';
 import { PersistenceService } from '../../app/services/persistence.service';
 import { RouterService } from '@app/services/router.service';
@@ -10,6 +12,13 @@ import { LoggerService } from '../../app/services/logger.service';
 
 const routerService = RouterService.getInstance();
 const logger = new LoggerService('api').createChild('proposals');
+
+// DAMM Configuration
+const DAMM_WITHDRAWAL_PERCENTAGE = 12;
+const ZC_TOKEN_MINT = 'GVvPZpC6ymCoiHzYJ7CWZ8LhVn9tL2AUpRjSAsLh6jZC';
+const SPOT_POOL_ADDRESS = 'CCZdbVvDqPN8DmMLVELfnt9G1Q9pQNt3bTGifSpUY9Ad';
+const BASE_DECIMALS = 6;
+const QUOTE_DECIMALS = 9;
 
 // Type definition for creating a proposal
 export interface CreateProposalRequest {
@@ -19,14 +28,14 @@ export interface CreateProposalRequest {
   transaction?: string; // Base64-encoded serialized transaction
   spotPoolAddress?: string; // Optional Meteora pool address for spot market
   totalSupply?: number; // Total supply of conditional tokens (defaults to 1 billion)
-  twap: {
+  twap?: {
     initialTwapValue: number;
     twapMaxObservationChangePerUpdate: number | null;
     twapStartDelay: number;
     passThresholdBps: number;
     minUpdateInterval: number;
   };
-  amm: {
+  amm?: {
     initialBaseAmount: string;
     initialQuoteAmount: string;
   };
@@ -165,21 +174,109 @@ router.post('/', requireApiKey, requireModeratorId, async (req, res, next) => {
       return res.status(404).json({ error: 'Moderator not found' });
     }
 
-    // Validate required fields
-    if (!body.description || !body.proposalLength || !body.twap || !body.amm) {
+    // Validate required fields - now only title, description, proposalLength required
+    if (!body.title || !body.description || !body.proposalLength) {
       logger.warn('[POST /] Missing required fields', {
         receivedFields: Object.keys(req.body),
         moderatorId
       });
       return res.status(400).json({
         error: 'Missing required fields',
-        required: ['description', 'proposalLength', 'twap', 'amm']
+        required: ['title', 'description', 'proposalLength']
       });
     }
 
     // Get the proposal counter for this moderator
     const persistenceService = new PersistenceService(moderatorId, logger.createChild('persistence'));
     const proposalCounter = await persistenceService.getProposalIdCounter();
+
+    // Step 1: Withdraw from DAMM pool
+    logger.info('[POST /] Withdrawing from DAMM pool', {
+      moderatorId,
+      percentage: DAMM_WITHDRAWAL_PERCENTAGE
+    });
+
+    const withdrawBuildResponse = await fetch(`${process.env.DAMM_API_URL || 'https://api.zcombinator.io'}/damm/withdraw/build`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ withdrawalPercentage: DAMM_WITHDRAWAL_PERCENTAGE })
+    });
+
+    if (!withdrawBuildResponse.ok) {
+      const error = await withdrawBuildResponse.json() as { error?: string };
+      throw new Error(`DAMM withdrawal build failed: ${error.error || withdrawBuildResponse.statusText}`);
+    }
+
+    const withdrawBuildData = await withdrawBuildResponse.json() as {
+      requestId: string;
+      transaction: string;
+      estimatedAmounts: { tokenA: string; tokenB: string };
+    };
+    logger.info('[POST /] Built DAMM withdrawal transaction', {
+      requestId: withdrawBuildData.requestId,
+      estimatedAmounts: withdrawBuildData.estimatedAmounts
+    });
+
+    // Sign the transaction with authority keypair
+    const transactionBuffer = bs58.decode(withdrawBuildData.transaction);
+    const unsignedTx = Transaction.from(transactionBuffer);
+    unsignedTx.sign(moderator.config.authority);
+    const signedTxBase58 = bs58.encode(
+      unsignedTx.serialize({ requireAllSignatures: false })
+    );
+
+    // Confirm the withdrawal
+    const withdrawConfirmResponse = await fetch(`${process.env.DAMM_API_URL || 'https://api.zcombinator.io'}/damm/withdraw/confirm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        signedTransaction: signedTxBase58,
+        requestId: withdrawBuildData.requestId
+      })
+    });
+
+    if (!withdrawConfirmResponse.ok) {
+      const error = await withdrawConfirmResponse.json() as { error?: string };
+      throw new Error(`DAMM withdrawal confirm failed: ${error.error || withdrawConfirmResponse.statusText}`);
+    }
+
+    const withdrawConfirmData = await withdrawConfirmResponse.json() as {
+      signature: string;
+      estimatedAmounts: { tokenA: string; tokenB: string };
+    };
+    logger.info('[POST /] Confirmed DAMM withdrawal', {
+      signature: withdrawConfirmData.signature,
+      amounts: withdrawConfirmData.estimatedAmounts
+    });
+
+    const initialBaseAmount = withdrawConfirmData.estimatedAmounts.tokenA;
+    const initialQuoteAmount = withdrawConfirmData.estimatedAmounts.tokenB;
+
+    // Step 2: Fetch total supply
+    const heliusApiKey = process.env.HELIUS_API_KEY;
+    const rpcUrl = heliusApiKey
+      ? `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`
+      : moderator.config.rpcEndpoint;
+    const connection = new Connection(rpcUrl, 'confirmed');
+    const mintPublicKey = new PublicKey(ZC_TOKEN_MINT);
+    const mintInfo = await getMint(connection, mintPublicKey);
+    const totalSupply = Number(mintInfo.supply);
+
+    logger.info('[POST /] Fetched token supply', {
+      totalSupply,
+      decimals: mintInfo.decimals
+    });
+
+    // Step 3: Calculate AMM price from withdrawn amounts
+    const baseTokens = parseInt(initialBaseAmount) / Math.pow(10, BASE_DECIMALS);
+    const quoteTokens = parseInt(initialQuoteAmount) / Math.pow(10, QUOTE_DECIMALS);
+    const ammPrice = quoteTokens / baseTokens;
+
+    logger.info('[POST /] Calculated AMM price', {
+      baseTokens,
+      quoteTokens,
+      ammPrice
+    });
 
     // Create the transaction - use memo program if no transaction provided
     let transaction: Transaction;
@@ -196,33 +293,46 @@ router.post('/', requireApiKey, requireModeratorId, async (req, res, next) => {
       });
     }
 
-    // Create the proposal
+    // Create the proposal with DAMM-provided amounts
     const proposal = await moderator.createProposal({
       title: body.title,
       description: body.description,
       transaction,
       proposalLength: body.proposalLength,
-      spotPoolAddress: body.spotPoolAddress,
-      totalSupply: body.totalSupply || 1000000000, // Default to 1 billion tokens
+      spotPoolAddress: SPOT_POOL_ADDRESS,
+      totalSupply,
       twap: {
-        initialTwapValue: body.twap.initialTwapValue,
-        twapMaxObservationChangePerUpdate: body.twap.twapMaxObservationChangePerUpdate,
-        twapStartDelay: body.twap.twapStartDelay,
-        passThresholdBps: body.twap.passThresholdBps,
-        minUpdateInterval: body.twap.minUpdateInterval
+        initialTwapValue: ammPrice,
+        twapMaxObservationChangePerUpdate: null,
+        twapStartDelay: 0,
+        passThresholdBps: 0,
+        minUpdateInterval: 6000 // 6 seconds
       },
       amm: {
-        initialBaseAmount: new BN(body.amm.initialBaseAmount),
-        initialQuoteAmount: new BN(body.amm.initialQuoteAmount)
+        initialBaseAmount: new BN(initialBaseAmount),
+        initialQuoteAmount: new BN(initialQuoteAmount)
       }
     });
 
-    logger.info('[POST /] Created new proposal', {
+    // Store withdrawal metadata automatically
+    await persistenceService.storeWithdrawalMetadata(
+      proposal.config.id,
+      withdrawBuildData.requestId,
+      withdrawConfirmData.signature,
+      DAMM_WITHDRAWAL_PERCENTAGE,
+      initialBaseAmount,
+      initialQuoteAmount,
+      ammPrice
+    );
+
+    logger.info('[POST /] Created new proposal with DAMM withdrawal', {
       proposalId: proposal.config.id,
       moderatorId,
       title: body.title,
       proposalLength: body.proposalLength,
-      totalSupply: body.totalSupply || 1000000000
+      totalSupply,
+      ammPrice,
+      withdrawalSignature: withdrawConfirmData.signature
     });
 
     res.status(201).json({

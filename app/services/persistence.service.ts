@@ -427,4 +427,172 @@ export class PersistenceService implements IPersistenceService {
       throw new Error(`Failed to deserialize proposal #${row.proposal_id}: ${errorMessage}`);
     }
   }
+
+  /**
+   * Store withdrawal metadata for a proposal
+   * @param proposalId - The proposal ID
+   * @param requestId - DAMM withdrawal request ID
+   * @param signature - Solana transaction signature
+   * @param percentage - Withdrawal percentage (0-15)
+   * @param tokenA - Base token amount withdrawn
+   * @param tokenB - Quote token amount withdrawn
+   * @param spotPrice - Spot price at withdrawal time
+   */
+  async storeWithdrawalMetadata(
+    proposalId: number,
+    requestId: string,
+    signature: string,
+    percentage: number,
+    tokenA: string,
+    tokenB: string,
+    spotPrice: number
+  ): Promise<void> {
+    try {
+      const query = `
+        INSERT INTO i_proposal_withdrawals (
+          moderator_id, proposal_id,
+          withdrawal_request_id, withdrawal_signature,
+          withdrawal_percentage, withdrawn_token_a, withdrawn_token_b,
+          spot_price, needs_deposit_back
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        ON CONFLICT (moderator_id, proposal_id) DO UPDATE SET
+          withdrawal_request_id = EXCLUDED.withdrawal_request_id,
+          withdrawal_signature = EXCLUDED.withdrawal_signature,
+          withdrawal_percentage = EXCLUDED.withdrawal_percentage,
+          withdrawn_token_a = EXCLUDED.withdrawn_token_a,
+          withdrawn_token_b = EXCLUDED.withdrawn_token_b,
+          spot_price = EXCLUDED.spot_price,
+          updated_at = NOW()
+      `;
+
+      await this.pool.query(query, [
+        this.moderatorId,
+        proposalId,
+        requestId,
+        signature,
+        percentage,
+        tokenA,
+        tokenB,
+        spotPrice,
+        true // needs_deposit_back
+      ]);
+
+      // Update proposal to mark it has a withdrawal
+      await this.pool.query(
+        `UPDATE i_proposals
+         SET has_withdrawal = true, updated_at = NOW()
+         WHERE moderator_id = $1 AND proposal_id = $2`,
+        [this.moderatorId, proposalId]
+      );
+
+      this.logger.info('Stored withdrawal metadata', {
+        moderatorId: this.moderatorId,
+        proposalId,
+        percentage
+      });
+    } catch (error) {
+      this.logger.error('Failed to store withdrawal metadata', {
+        moderatorId: this.moderatorId,
+        proposalId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get withdrawal metadata for a proposal
+   * @param proposalId - The proposal ID
+   * @returns Withdrawal metadata or null if not found
+   */
+  async getWithdrawalMetadata(proposalId: number): Promise<{
+    requestId: string;
+    signature: string;
+    percentage: number;
+    tokenA: string;
+    tokenB: string;
+    spotPrice: number;
+    needsDepositBack: boolean;
+    depositSignature: string | null;
+    depositedAt: Date | null;
+  } | null> {
+    try {
+      const result = await this.pool.query(
+        `SELECT
+          withdrawal_request_id, withdrawal_signature,
+          withdrawal_percentage, withdrawn_token_a, withdrawn_token_b,
+          spot_price, needs_deposit_back, deposit_signature, deposited_at
+         FROM i_proposal_withdrawals
+         WHERE moderator_id = $1 AND proposal_id = $2`,
+        [this.moderatorId, proposalId]
+      );
+
+      if (result.rows.length === 0) {
+        return null;
+      }
+
+      const row = result.rows[0];
+      return {
+        requestId: row.withdrawal_request_id,
+        signature: row.withdrawal_signature,
+        percentage: row.withdrawal_percentage,
+        tokenA: row.withdrawn_token_a,
+        tokenB: row.withdrawn_token_b,
+        spotPrice: parseFloat(row.spot_price),
+        needsDepositBack: row.needs_deposit_back,
+        depositSignature: row.deposit_signature,
+        depositedAt: row.deposited_at ? new Date(row.deposited_at) : null
+      };
+    } catch (error) {
+      this.logger.error('Failed to get withdrawal metadata', {
+        moderatorId: this.moderatorId,
+        proposalId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Mark withdrawal as deposited back
+   * @param proposalId - The proposal ID
+   * @param depositSignature - Solana transaction signature for deposit
+   * @param depositedTokenA - Actual token A amount deposited (raw units)
+   * @param depositedTokenB - Actual token B amount deposited (raw units)
+   */
+  async markWithdrawalDeposited(
+    proposalId: number,
+    depositSignature: string,
+    depositedTokenA?: string,
+    depositedTokenB?: string
+  ): Promise<void> {
+    try {
+      await this.pool.query(
+        `UPDATE i_proposal_withdrawals
+         SET needs_deposit_back = false,
+             deposit_signature = $1,
+             deposited_token_a = $2,
+             deposited_token_b = $3,
+             deposited_at = NOW(),
+             updated_at = NOW()
+         WHERE moderator_id = $4 AND proposal_id = $5`,
+        [depositSignature, depositedTokenA, depositedTokenB, this.moderatorId, proposalId]
+      );
+
+      this.logger.info('Marked withdrawal as deposited', {
+        moderatorId: this.moderatorId,
+        proposalId,
+        depositSignature,
+        depositedTokenA,
+        depositedTokenB
+      });
+    } catch (error) {
+      this.logger.error('Failed to mark withdrawal as deposited', {
+        moderatorId: this.moderatorId,
+        proposalId,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      throw error;
+    }
+  }
 }
