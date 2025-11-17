@@ -1,6 +1,5 @@
 import { WebSocketServer } from 'ws';
 import type { WebSocket } from 'ws';
-import { getDevnetPriceService } from './devnet-price-service';
 import { getMainnetPriceService } from './mainnet-price-service';
 import { Client } from 'pg';
 import * as dotenv from 'dotenv';
@@ -11,7 +10,7 @@ interface PriceData {
   tokenAddress: string;
   price: number;
   timestamp: number;
-  source?: 'dexscreener' | 'devnet-amm' | 'mainnet-amm';
+  source?: 'dexscreener' | 'mainnet-amm';
 }
 
 interface ClientSubscription {
@@ -39,11 +38,8 @@ class PriceWebSocketServer {
   private prices: Map<string, PriceData> = new Map();
   private priceUpdateInterval: NodeJS.Timeout | null = null;
   private subscribedTokens: Set<string> = new Set();
-  private devnetService = getDevnetPriceService();
   private mainnetService = getMainnetPriceService();
-  private devnetTokens: Set<string> = new Set(); // Track which tokens are on devnet
   private mainnetPools: Set<string> = new Set(); // Track which pools are on mainnet
-  private poolMonitors: Map<string, number> = new Map(); // poolAddress -> subscriptionId
   private pgClient: Client | null = null;
   private subscribedProposals: Set<number> = new Set();
   private solPrice: number = 180; // Default SOL price in USD
@@ -117,18 +113,12 @@ class PriceWebSocketServer {
                   client.poolAddresses = new Map();
                 }
                 client.poolAddresses.set(token, pool);
-                this.devnetTokens.add(token); // Mark as devnet token
               }
             }
 
             client.tokens.add(token);
             this.subscribedTokens.add(token);
 
-            // If this is a devnet token with a pool, set up real-time monitoring
-            if (pool && !this.poolMonitors.has(pool)) {
-              this.startPoolMonitoring(token, pool);
-            }
-            
             // Fetch price immediately for new subscription
             this.fetchTokenPrice(token, pool);
             
@@ -224,23 +214,8 @@ class PriceWebSocketServer {
         }
       }
 
-      // If we already know it's a devnet token, fetch from devnet directly
-      if (this.devnetTokens.has(tokenAddress) && poolAddress) {
-        const devnetPrice = await this.devnetService.getTokenPrice(tokenAddress, poolAddress);
-        if (devnetPrice && !isNaN(devnetPrice.price) && isFinite(devnetPrice.price)) {
-          this.updatePrice({
-            tokenAddress,
-            price: devnetPrice.price,
-            timestamp: Date.now(),
-            source: 'devnet-amm'
-          });
-          return;
-        }
-      }
-      
-      // If we have a pool address but don't know which network it's on, try to detect
+      // If we have a pool address but don't know if it's cached, try mainnet
       if (poolAddress && !this.mainnetPools.has(poolAddress)) {
-        // First try mainnet (most common)
         const mainnetPrice = await this.mainnetService.getTokenPrice(tokenAddress, poolAddress);
         if (mainnetPrice && !isNaN(mainnetPrice.price) && isFinite(mainnetPrice.price)) {
           this.mainnetPools.add(poolAddress);
@@ -249,19 +224,6 @@ class PriceWebSocketServer {
             price: mainnetPrice.price,
             timestamp: Date.now(),
             source: 'mainnet-amm'
-          });
-          return; // Exit early if found on mainnet
-        }
-
-        // If not on mainnet, try devnet
-        const devnetPrice = await this.devnetService.getTokenPrice(tokenAddress, poolAddress);
-        if (devnetPrice && !isNaN(devnetPrice.price) && isFinite(devnetPrice.price)) {
-          this.devnetTokens.add(tokenAddress);
-          this.updatePrice({
-            tokenAddress,
-            price: devnetPrice.price,
-            timestamp: Date.now(),
-            source: 'devnet-amm'
           });
           return;
         }
@@ -299,9 +261,8 @@ class PriceWebSocketServer {
           }
         }
       } else if (response.status === 404) {
-        // Token not found on DexScreener, try AMM pools
+        // Token not found on DexScreener, try AMM pools on mainnet
         if (poolAddress) {
-          // First try mainnet (most common)
           const mainnetPrice = await this.mainnetService.getTokenPrice(tokenAddress, poolAddress);
           if (mainnetPrice && !isNaN(mainnetPrice.price) && isFinite(mainnetPrice.price)) {
             this.mainnetPools.add(poolAddress);
@@ -310,19 +271,6 @@ class PriceWebSocketServer {
               price: mainnetPrice.price,
               timestamp: Date.now(),
               source: 'mainnet-amm'
-            });
-            return; // Exit early if found on mainnet
-          }
-
-          // If not on mainnet, try devnet
-          const devnetPrice = await this.devnetService.getTokenPrice(tokenAddress, poolAddress);
-          if (devnetPrice && !isNaN(devnetPrice.price) && isFinite(devnetPrice.price)) {
-            this.devnetTokens.add(tokenAddress);
-            this.updatePrice({
-              tokenAddress,
-              price: devnetPrice.price,
-              timestamp: Date.now(),
-              source: 'devnet-amm'
             });
           }
         }
@@ -389,34 +337,6 @@ class PriceWebSocketServer {
       }
     });
   }
-
-  private async startPoolMonitoring(tokenAddress: string, poolAddress: string) {
-    try {
-      // Set up real-time monitoring for this pool
-      const subscriptionId = await this.devnetService.monitorPool(
-        poolAddress,
-        (priceData) => {
-          // When pool state changes, update price
-          if (priceData && priceData.price) {
-            this.updatePrice({
-              tokenAddress,
-              price: priceData.price,
-              timestamp: Date.now(),
-              source: 'devnet-amm'
-            });
-            console.log(`Real-time update: ${tokenAddress.substring(0, 8)}... = ${priceData.price}`);
-          }
-        },
-        tokenAddress // Pass the token mint so we get the right price
-      );
-      
-      this.poolMonitors.set(poolAddress, subscriptionId);
-      console.log(`Started real-time monitoring for pool ${poolAddress.substring(0, 8)}...`);
-    } catch (error) {
-      console.error(`Failed to start pool monitoring for ${poolAddress}:`, error);
-    }
-  }
-
 
   private updateSubscribedProposals() {
     // Update the set of all subscribed proposals across all clients
@@ -596,12 +516,6 @@ class PriceWebSocketServer {
   }
 
   public async shutdown() {
-    // Stop all pool monitors
-    for (const [, subscriptionId] of this.poolMonitors) {
-      await this.devnetService.unmonitor(subscriptionId);
-    }
-    this.poolMonitors.clear();
-
     if (this.priceUpdateInterval) {
       clearInterval(this.priceUpdateInterval);
     }
