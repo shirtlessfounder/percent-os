@@ -50,7 +50,7 @@ export class TWAPOracle implements ITWAPOracle {
 
     // Initialize observations and aggregations with the initial value
     this._observations = Array(markets).fill(config.initialTwapValue);
-    this._aggregations = Array(markets).fill(0);
+    this._aggregations = Array(markets).fill(null).map(() => new Decimal(0));
     this._lastUpdateTime = createdAt;
   }
 
@@ -242,8 +242,8 @@ export class TWAPOracle implements ITWAPOracle {
 
     // Restore the internal state
     // These are private fields that need to be restored for a fully functional oracle
-    oracle._observations = data.observations;
-    oracle._aggregations = data.aggregations;
+    oracle._observations = data.observations.map((obs: any) => new Decimal(obs));
+    oracle._aggregations = data.aggregations.map((agg: any) => new Decimal(agg));
     oracle._lastUpdateTime = data.lastUpdateTime;
 
     // AMMs will be set via setAMMs() method after deserialization

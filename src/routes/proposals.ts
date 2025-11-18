@@ -179,7 +179,7 @@ router.post('/', requireApiKey, requireModeratorId, async (req, res, next) => {
     }
 
     // Validate required fields
-    if (!body.description || !body.markets || !body.proposalLength || !body.twap || !body.amm) {
+    if (body.description == undefined || !body.markets || !body.proposalLength || !body.twap || !body.amm) {
       logger.warn('[POST /] Missing required fields', {
         receivedFields: Object.keys(req.body),
         moderatorId

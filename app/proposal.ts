@@ -439,6 +439,9 @@ export class Proposal implements IProposal {
         AMMs.push(amm);
       }
 
+      // Replace the default AMMs with the deserialized ones
+      proposal.AMMs = AMMs;
+
       // Deserialize TWAP oracle
       const twapOracle = TWAPOracle.deserialize(data.twapOracleData);
 
