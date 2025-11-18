@@ -21,9 +21,9 @@ import { ProposalVolume } from '@/components/ProposalVolume';
 import { useTokenContext } from '@/providers/TokenContext';
 
 export default function HistoryPage() {
-  const { tokenSlug, poolAddress, baseMint, baseDecimals, tokenSymbol } = useTokenContext();
+  const { tokenSlug, poolAddress, baseMint, baseDecimals, tokenSymbol, moderatorId, icon } = useTokenContext();
   const { ready, authenticated, user, walletAddress, login } = usePrivyWallet();
-  const { proposals, loading, refetch } = useProposals(poolAddress || undefined);
+  const { proposals, loading, refetch } = useProposals(poolAddress || undefined, moderatorId || undefined);
   const [hoveredProposalId, setHoveredProposalId] = useState<number | null>(null);
   const [proposalPfgs, setProposalPfgs] = useState<Record<number, number>>({});
   const [claimingProposalId, setClaimingProposalId] = useState<number | null>(null);
@@ -42,7 +42,7 @@ export default function HistoryPage() {
   const { wallets } = useSolanaWallets();
 
   // Fetch claimable positions for history view
-  const { positions: claimablePositions, refetch: refetchClaimable } = useClaimablePositions(walletAddress);
+  const { positions: claimablePositions, refetch: refetchClaimable } = useClaimablePositions(walletAddress, moderatorId || undefined);
 
   // Transaction signer helper for claiming
   const createTransactionSigner = useCallback(() => {
@@ -114,7 +114,7 @@ export default function HistoryPage() {
 
         for (const proposal of sortedProposals) {
           if (proposal.status === 'Passed' || proposal.status === 'Failed') {
-            const twapData = await api.getTWAP(proposal.id);
+            const twapData = await api.getTWAP(proposal.id, moderatorId || undefined);
             if (twapData && twapData.failTwap > 0) {
               const pfg = ((twapData.passTwap - twapData.failTwap) / twapData.failTwap) * 100;
               pfgMap[proposal.id] = pfg;
@@ -145,6 +145,7 @@ export default function HistoryPage() {
           isPassMode={true}
           tokenSlug={tokenSlug}
           tokenSymbol={tokenSymbol}
+          tokenIcon={icon}
         />
 
         <div className="flex-1 flex justify-center overflow-y-auto">
@@ -235,7 +236,7 @@ export default function HistoryPage() {
                               PFG: {proposalPfgs[proposal.id].toFixed(1)}%
                             </span>
                           )}
-                          <ProposalVolume proposalId={proposal.id} />
+                          <ProposalVolume proposalId={proposal.id} moderatorId={moderatorId ?? undefined} baseMint={baseMint} />
                         </div>
                         <div className="text-sm text-[#B0AFAB]">
                           {new Date(proposal.finalizedAt).toLocaleDateString('en-US', {
@@ -382,7 +383,7 @@ export default function HistoryPage() {
                                 PFG: {proposalPfgs[proposal.id].toFixed(1)}%
                               </span>
                             )}
-                            <ProposalVolume proposalId={proposal.id} />
+                            <ProposalVolume proposalId={proposal.id} moderatorId={moderatorId ?? undefined} baseMint={baseMint} />
                           </div>
                           <div className="text-sm text-[#B0AFAB]">
                             {new Date(proposal.finalizedAt).toLocaleDateString('en-US', {

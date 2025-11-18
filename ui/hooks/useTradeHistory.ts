@@ -29,12 +29,12 @@ interface TradeHistoryResponse {
 
 type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 
-export function useTradeHistory(proposalId: number | null) {
+export function useTradeHistory(proposalId: number | null, moderatorId?: number | string, baseMint?: string | null) {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [wsStatus, setWsStatus] = useState<ConnectionStatus>('disconnected');
-  const { sol: solPrice, baseToken: baseTokenPrice } = useTokenPrices();
+  const { sol: solPrice, baseToken: baseTokenPrice } = useTokenPrices(baseMint);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttemptsRef = useRef(0);
@@ -47,7 +47,7 @@ export function useTradeHistory(proposalId: number | null) {
     setError(null);
 
     try {
-      const url = buildApiUrl(API_BASE_URL, `/api/history/${proposalId}/trades`, { limit: 100 });
+      const url = buildApiUrl(API_BASE_URL, `/api/history/${proposalId}/trades`, { limit: 100 }, moderatorId);
       const response = await fetch(url);
       if (!response.ok) {
         throw new Error('Failed to fetch trades');
@@ -65,7 +65,7 @@ export function useTradeHistory(proposalId: number | null) {
     } finally {
       setLoading(false);
     }
-  }, [proposalId]);
+  }, [proposalId, moderatorId]);
 
   // Update proposalId ref
   useEffect(() => {
@@ -212,7 +212,7 @@ export function useTradeHistory(proposalId: number | null) {
     return () => {
       disconnectWebSocket();
     };
-  }, [proposalId, fetchTrades, connectWebSocket, disconnectWebSocket]);
+  }, [proposalId, moderatorId, fetchTrades, connectWebSocket, disconnectWebSocket]);
 
   // Memoized helper function to format time ago
   const getTimeAgo = useCallback((timestamp: string) => {

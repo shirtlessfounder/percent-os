@@ -80,9 +80,9 @@ class GovernanceAPI {
     }
   }
 
-  async getProposal(id: number): Promise<ProposalDetailResponse | null> {
+  async getProposal(id: number, moderatorId?: number | string): Promise<ProposalDetailResponse | null> {
     try {
-      const url = buildApiUrl(API_BASE_URL, `/api/proposals/${id}`);
+      const url = buildApiUrl(API_BASE_URL, `/api/proposals/${id}`, {}, moderatorId);
       const response = await fetch(url);
       if (!response.ok) throw new Error('Failed to fetch proposal');
       return await response.json();
@@ -92,9 +92,9 @@ class GovernanceAPI {
     }
   }
 
-  async getUserBalances(proposalId: number, userAddress: string): Promise<UserBalancesResponse | null> {
+  async getUserBalances(proposalId: number, userAddress: string, moderatorId?: number | string): Promise<UserBalancesResponse | null> {
     try {
-      const url = buildApiUrl(API_BASE_URL, `/api/vaults/${proposalId}/getUserBalances`, { user: userAddress });
+      const url = buildApiUrl(API_BASE_URL, `/api/vaults/${proposalId}/getUserBalances`, { user: userAddress }, moderatorId);
       const response = await fetch(url);
       if (!response.ok) throw new Error('Failed to fetch user balances');
       return await response.json();
@@ -104,9 +104,9 @@ class GovernanceAPI {
     }
   }
 
-  async getTWAP(proposalId: number): Promise<{ passTwap: number; failTwap: number } | null> {
+  async getTWAP(proposalId: number, moderatorId?: number | string): Promise<{ passTwap: number; failTwap: number } | null> {
     try {
-      const url = buildApiUrl(API_BASE_URL, `/api/history/${proposalId}/twap`);
+      const url = buildApiUrl(API_BASE_URL, `/api/history/${proposalId}/twap`, {}, moderatorId);
       const response = await fetch(url);
       if (!response.ok) {
         throw new Error('Failed to fetch TWAP');
@@ -132,7 +132,8 @@ class GovernanceAPI {
     proposalId: number,
     interval: string,
     from?: Date,
-    to?: Date
+    to?: Date,
+    moderatorId?: number | string
   ): Promise<any> {
     try {
       const params: Record<string, any> = { interval };
@@ -143,7 +144,7 @@ class GovernanceAPI {
         params.to = to.toISOString();
       }
 
-      const url = buildApiUrl(API_BASE_URL, `/api/history/${proposalId}/chart`, params);
+      const url = buildApiUrl(API_BASE_URL, `/api/history/${proposalId}/chart`, params, moderatorId);
       const response = await fetch(url);
       if (!response.ok) {
         throw new Error('Failed to fetch chart data');
@@ -160,7 +161,8 @@ class GovernanceAPI {
     market: 'pass' | 'fail',
     isBaseToQuote: boolean,
     amountIn: string,
-    slippageBps: number = 2000
+    slippageBps: number = 2000,
+    moderatorId?: number | string
   ): Promise<{
     swapInAmount: string;
     consumedInAmount: string;
@@ -178,7 +180,7 @@ class GovernanceAPI {
         amountIn,
         slippageBps
       };
-      const url = buildApiUrl(API_BASE_URL, `/api/swap/${proposalId}/${market}/quote`, params);
+      const url = buildApiUrl(API_BASE_URL, `/api/swap/${proposalId}/${market}/quote`, params, moderatorId);
 
       const response = await fetch(url);
       if (!response.ok) {
@@ -225,6 +227,7 @@ class GovernanceAPI {
     description: string;
     proposalLength: number;
     creatorWallet: string;
+    moderatorId?: number | string;
   }): Promise<{
     moderatorId: number;
     id: number;
@@ -240,7 +243,7 @@ class GovernanceAPI {
         throw new Error('API key not configured');
       }
 
-      const url = buildApiUrl(API_BASE_URL, '/api/proposals', { moderatorId: '1' });
+      const url = buildApiUrl(API_BASE_URL, '/api/proposals', {}, params.moderatorId);
       const response = await fetch(url, {
         method: 'POST',
         headers: {

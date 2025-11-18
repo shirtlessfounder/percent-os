@@ -12,6 +12,7 @@ import toast from 'react-hot-toast';
 import { getDecimals, toDecimal, toSmallestUnits } from '@/lib/constants/tokens';
 import { PayoutCard } from './trading/PayoutCard';
 import type { UserBalancesResponse } from '@/types/api';
+import { useTokenContext } from '@/providers/TokenContext';
 
 interface TradingInterfaceProps {
   proposalId: number;
@@ -42,6 +43,7 @@ const TradingInterface = memo(({
   baseMint,
   tokenSymbol = 'ZC'
 }: TradingInterfaceProps) => {
+  const { moderatorId } = useTokenContext();
   const { authenticated, walletAddress, login } = usePrivyWallet();
   const isConnected = authenticated;
   const { sol: solPrice, baseToken: baseTokenPrice } = useTokenPrices(baseMint);
@@ -216,7 +218,8 @@ const TradingInterface = memo(({
           selectedMarket,
           isBaseToQuote,
           amountInSmallestUnits.toString(),
-          2000 // 20% slippage
+          2000, // 20% slippage
+          moderatorId || undefined
         );
 
         if (quoteData) {

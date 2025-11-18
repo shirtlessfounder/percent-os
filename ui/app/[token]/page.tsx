@@ -75,9 +75,9 @@ export default function HomePage() {
   // Get Solana wallets for transaction signing
   const { wallets } = useSolanaWallets();
 
-  // Memoize sorted proposals for live view
+  // Memoize sorted proposals for live view (sort by creation time to match backend ordering)
   const sortedProposals = useMemo(() =>
-    [...proposals].sort((a, b) => b.finalizedAt - a.finalizedAt),
+    [...proposals].sort((a, b) => b.createdAt - a.createdAt),
     [proposals]
   );
 
@@ -86,13 +86,18 @@ export default function HomePage() {
   // Fetch user balances for the selected proposal
   const { data: userBalances, refetch: refetchBalances } = useUserBalances(selectedProposalId, walletAddress);
   const [selectedMarket, setSelectedMarket] = useState<'pass' | 'fail'>('pass');
-  
-  // Set initial selected proposal when proposals load
+
+  // Reset selected proposal when token changes to prevent stale data display
   useEffect(() => {
-    if (sortedProposals.length > 0 && selectedProposalId === null) {
+    setSelectedProposalId(null);
+  }, [tokenSlug]);
+
+  // Set initial selected proposal when proposals load (wait for loading to complete to avoid stale data)
+  useEffect(() => {
+    if (sortedProposals.length > 0 && selectedProposalId === null && !loading) {
       setSelectedProposalId(sortedProposals[0].id);
     }
-  }, [sortedProposals, selectedProposalId]);
+  }, [sortedProposals, selectedProposalId, loading]);
   
   const proposal = useMemo(() =>
     proposals.find(p => p.id === selectedProposalId) || sortedProposals[0] || null,
@@ -384,7 +389,8 @@ export default function HomePage() {
     return null;
   }, [twapData.passTwap, twapData.failTwap]);
 
-  if (loading) {
+  // Show loading state while TokenContext or proposals are loading
+  if (tokenContextLoading || loading) {
     return (
       <div className="flex h-screen bg-[#0a0a0a]">
         {/* Main content skeleton */}

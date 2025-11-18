@@ -4,10 +4,12 @@ import { useTradeHistory } from '@/hooks/useTradeHistory';
 
 interface ProposalVolumeProps {
   proposalId: number;
+  moderatorId?: number | string;
+  baseMint?: string | null;
 }
 
-export function ProposalVolume({ proposalId }: ProposalVolumeProps) {
-  const { totalVolume, loading } = useTradeHistory(proposalId);
+export function ProposalVolume({ proposalId, moderatorId, baseMint }: ProposalVolumeProps) {
+  const { totalVolume, loading } = useTradeHistory(proposalId, moderatorId, baseMint);
 
   // Format volume with K/M/B suffixes
   const formatVolume = (volume: number): string => {

@@ -23,8 +23,8 @@ interface ClaimablePositions {
   refetch: () => void;
 }
 
-export function useClaimablePositions(walletAddress: string | null): ClaimablePositions {
-  const { proposals } = useProposals();
+export function useClaimablePositions(walletAddress: string | null, moderatorId?: number | string): ClaimablePositions {
+  const { proposals } = useProposals(undefined, moderatorId);
   const { sol: solPrice, baseToken: baseTokenPrice } = useTokenPrices();
   const [balancesMap, setBalancesMap] = useState<Map<number, UserBalancesResponse>>(new Map());
   const [loading, setLoading] = useState(false);
@@ -44,7 +44,7 @@ export function useClaimablePositions(walletAddress: string | null): ClaimablePo
     try {
       // Fetch balances for finalized proposals in parallel
       const balancePromises = finalizedProposals.map(proposal =>
-        api.getUserBalances(proposal.id, address)
+        api.getUserBalances(proposal.id, address, moderatorId)
           .then(data => ({ id: proposal.id, data }))
           .catch(() => ({ id: proposal.id, data: null }))
       );
@@ -66,7 +66,7 @@ export function useClaimablePositions(walletAddress: string | null): ClaimablePo
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [moderatorId]);
 
   useEffect(() => {
     if (!walletAddress || proposals.length === 0) {

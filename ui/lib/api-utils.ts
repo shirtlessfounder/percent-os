@@ -25,13 +25,10 @@ export function buildApiUrl(
 ): string {
   let url = `${baseUrl}${path}`;
 
-  // Use provided moderatorId, otherwise fall back to env var
-  const id = moderatorId?.toString() || process.env.NEXT_PUBLIC_MODERATOR_ID;
-  if (!id) {
-    throw new Error('NEXT_PUBLIC_MODERATOR_ID environment variable is not set');
-  }
-
-  const allParams = { moderatorId: id, ...params };
+  // Only add moderatorId if explicitly provided (no fallback to env var)
+  const allParams = moderatorId !== undefined
+    ? { moderatorId: moderatorId.toString(), ...params }
+    : { ...params };
 
   // Build query string
   const queryParams = Object.entries(allParams)

@@ -5,6 +5,7 @@ import { TokenPriceBox } from './TokenPriceBox';
 import { getPriceStreamService, ChartPriceUpdate } from '../services/price-stream.service';
 import { api } from '../lib/api';
 import { buildApiUrl } from '@/lib/api-utils';
+import { useTokenContext } from '@/providers/TokenContext';
 
 interface LivePriceDisplayProps {
   proposalId: number;
@@ -23,6 +24,7 @@ interface TwapData {
 }
 
 export const LivePriceDisplay: React.FC<LivePriceDisplayProps> = ({ proposalId, onPricesUpdate, onTwapUpdate }) => {
+  const { moderatorId } = useTokenContext();
   const [prices, setPrices] = useState<TokenPrices>({
     pass: null,
     fail: null
@@ -52,7 +54,7 @@ export const LivePriceDisplay: React.FC<LivePriceDisplayProps> = ({ proposalId, 
   useEffect(() => {
     const fetchProposalDetails = async () => {
       try {
-        const proposal = await api.getProposal(proposalId);
+        const proposal = await api.getProposal(proposalId, moderatorId || undefined);
         if (!proposal) {
           throw new Error('Failed to fetch proposal details');
         }
@@ -82,7 +84,7 @@ export const LivePriceDisplay: React.FC<LivePriceDisplayProps> = ({ proposalId, 
         console.log('[LivePriceDisplay] Fetching initial prices for proposal', proposalId);
 
         // Get moderatorId from proposal first
-        const proposal = await api.getProposal(proposalId);
+        const proposal = await api.getProposal(proposalId, moderatorId || undefined);
         if (!proposal) {
           console.warn('[LivePriceDisplay] Cannot fetch initial prices - proposal not found');
           return;
@@ -96,9 +98,8 @@ export const LivePriceDisplay: React.FC<LivePriceDisplayProps> = ({ proposalId, 
 
         const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
         const url = buildApiUrl(API_BASE_URL, `/api/history/${proposalId}/chart`, {
-          interval: '5m',
-          moderatorId: proposal.moderatorId?.toString() || '2' // Default to 2 for backwards compatibility
-        });
+          interval: '5m'
+        }, moderatorId ?? undefined);
 
         console.log('[LivePriceDisplay] Fetching from URL:', url);
         const response = await fetch(url);
@@ -181,12 +182,12 @@ export const LivePriceDisplay: React.FC<LivePriceDisplayProps> = ({ proposalId, 
     };
     
     fetchTwap();
-    
+
     // Poll for TWAP updates every 30 seconds
     const interval = setInterval(fetchTwap, 10000);
-    
+
     return () => clearInterval(interval);
-  }, [proposalId]);
+  }, [proposalId, moderatorId]);
 
   // Handle chart price updates for pass/fail markets
   const handleChartPriceUpdate = useCallback((update: ChartPriceUpdate) => {

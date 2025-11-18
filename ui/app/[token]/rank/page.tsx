@@ -11,7 +11,7 @@ import { useTokenContext } from '@/providers/TokenContext';
 
 export default function LeaderboardPage() {
   const router = useRouter();
-  const { tokenSlug, baseMint, baseDecimals, tokenSymbol } = useTokenContext();
+  const { tokenSlug, baseMint, baseDecimals, tokenSymbol, moderatorId, icon } = useTokenContext();
   const { ready, authenticated, user, walletAddress, login } = usePrivyWallet();
 
   // Fetch wallet balances for current token
@@ -25,10 +25,10 @@ export default function LeaderboardPage() {
   const hasWalletBalance = solBalance > 0 || baseTokenBalance > 0;
 
   // Fetch leaderboard data
-  const { entries: leaderboardEntries, totalVolume, loading: leaderboardLoading, error: leaderboardError } = useLeaderboard();
+  const { entries: leaderboardEntries, totalVolume, loading: leaderboardLoading, error: leaderboardError } = useLeaderboard(moderatorId || undefined, baseMint || undefined);
 
   // Fetch pot data
-  const { potSol, loading: potLoading } = usePot();
+  const { potSol, loading: potLoading } = usePot(moderatorId ?? undefined);
 
   return (
     <div className="flex h-screen" style={{ backgroundColor: '#0a0a0a' }}>
@@ -44,6 +44,7 @@ export default function LeaderboardPage() {
           isPassMode={true}
           tokenSlug={tokenSlug}
           tokenSymbol={tokenSymbol}
+          tokenIcon={icon}
         />
 
         {/* Content Area */}
