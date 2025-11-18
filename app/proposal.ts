@@ -32,25 +32,24 @@ export class Proposal implements IProposal {
    * @returns Status info with winning market details (null if not finalized)
    */
   getStatus(): IProposalStatusInfo {
-    let winningIndex: number | null = null;
-
-    // Only fetch winning index if finalized
-    if (this._status === ProposalStatus.Finalized) {
-      winningIndex = this.twapOracle.fetchHighestTWAPIndex();
+    // Fetch current winning index (null if uninitialized, otherwise tracks current leader)
+    if (this._status === ProposalStatus.Uninitialized) {
+      return {
+        status: this._status,
+        winningMarketIndex: null,
+        winningMarketLabel: null,
+        winningBaseConditionalMint: null,
+        winningQuoteConditionalMint: null
+      };
     }
 
+    const winningIndex = this.twapOracle.fetchHighestTWAPIndex();
     return {
       status: this._status,
       winningMarketIndex: winningIndex,
-      winningMarketLabel: winningIndex !== null
-        ? this.config.market_labels![winningIndex]
-        : null,
-      winningBaseConditionalMint: winningIndex !== null
-        ? this.baseVault.conditionalMints[winningIndex]
-        : null,
-      winningQuoteConditionalMint: winningIndex !== null
-        ? this.quoteVault.conditionalMints[winningIndex]
-        : null
+      winningMarketLabel: this.config.market_labels![winningIndex],
+      winningBaseConditionalMint: this.baseVault.conditionalMints[winningIndex],
+      winningQuoteConditionalMint: this.quoteVault.conditionalMints[winningIndex]
     };
   }
 
@@ -246,12 +245,11 @@ export class Proposal implements IProposal {
 
       // Determine the winning conditional mint
       winningIndex = this.twapOracle.fetchHighestTWAPIndex();
-      const winningConditionalMint = this.baseVault.conditionalMints[winningIndex];
 
       // Finalize both vaults with the proposal status
       this.logger.info('Finalizing vaults');
-      await this.baseVault.finalize(winningConditionalMint);
-      await this.quoteVault.finalize(winningConditionalMint);
+      await this.baseVault.finalize(this.baseVault.conditionalMints[winningIndex]);
+      await this.quoteVault.finalize(this.quoteVault.conditionalMints[winningIndex]);
       
       // Redeem authority's winning tokens after finalization
       // This converts winning conditional tokens back to regular tokens
