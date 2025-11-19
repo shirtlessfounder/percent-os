@@ -242,9 +242,8 @@ export default function HistoryPage() {
                         </div>
                         <div className="text-sm text-[#B0AFAB]">
                           {new Date(proposal.finalizedAt).toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                            year: 'numeric'
+                            month: 'numeric',
+                            day: 'numeric'
                           })}
                         </div>
                       </div>
@@ -389,9 +388,8 @@ export default function HistoryPage() {
                           </div>
                           <div className="text-sm text-[#B0AFAB]">
                             {new Date(proposal.finalizedAt).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric'
+                              month: 'numeric',
+                              day: 'numeric'
                             })}
                           </div>
                         </div>
