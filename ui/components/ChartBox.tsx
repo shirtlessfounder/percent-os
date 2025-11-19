@@ -50,10 +50,10 @@ export function ChartBox({
               : selectedMarket === 'pass' ? 'Trades: Pass Coin' : 'Trades: Fail Coin'
             }
           </span>
-          <span className="text-xs font-medium font-ibm-plex-mono" style={{ color: '#6B6E71' }}>
+          <span className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] uppercase" style={{ color: '#DDDDD7' }}>
             •
           </span>
-          <span className="text-xs font-medium font-ibm-plex-mono" style={{ color: '#6B6E71' }}>
+          <span className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] uppercase" style={{ color: '#DDDDD7' }}>
             VOL ${formatVolume(totalVolume)}
           </span>
         </div>
