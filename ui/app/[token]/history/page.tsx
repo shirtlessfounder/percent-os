@@ -147,6 +147,7 @@ export default function HistoryPage() {
           tokenSlug={tokenSlug}
           tokenSymbol={tokenSymbol}
           tokenIcon={icon}
+          poolAddress={poolAddress}
         />
 
         <div className="flex-1 flex justify-center overflow-y-auto">

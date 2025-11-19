@@ -11,7 +11,7 @@ import { useTokenContext } from '@/providers/TokenContext';
 
 export default function LeaderboardPage() {
   const router = useRouter();
-  const { tokenSlug, baseMint, baseDecimals, tokenSymbol, moderatorId, icon } = useTokenContext();
+  const { tokenSlug, poolAddress, baseMint, baseDecimals, tokenSymbol, moderatorId, icon } = useTokenContext();
   const { ready, authenticated, user, walletAddress, login } = usePrivyWallet();
 
   // Fetch wallet balances for current token
@@ -45,6 +45,7 @@ export default function LeaderboardPage() {
           tokenSlug={tokenSlug}
           tokenSymbol={tokenSymbol}
           tokenIcon={icon}
+          poolAddress={poolAddress}
         />
 
         {/* Content Area */}

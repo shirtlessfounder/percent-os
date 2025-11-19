@@ -167,6 +167,7 @@ export default function CreatePage() {
           tokenSlug={tokenSlug}
           tokenSymbol={tokenSymbol}
           tokenIcon={icon}
+          poolAddress={poolAddress}
         />
 
         {/* Content Area */}
