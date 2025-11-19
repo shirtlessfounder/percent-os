@@ -361,7 +361,8 @@ const TradingInterface = memo(({
         inputToken: sellingToken, // Which conditional token we're selling
         inputAmount: amount,
         userAddress: walletAddress,
-        signTransaction: createTransactionSigner()
+        signTransaction: createTransactionSigner(),
+        moderatorId: moderatorId || undefined
       });
 
       // Clear the amount after successful trade
@@ -411,7 +412,8 @@ const TradingInterface = memo(({
         proposalStatus: proposalStatus as 'Passed' | 'Failed',
         userPosition,
         userAddress: walletAddress,
-        signTransaction: createTransactionSigner()
+        signTransaction: createTransactionSigner(),
+        moderatorId: moderatorId || undefined
       });
 
       // Refresh user balances after claiming

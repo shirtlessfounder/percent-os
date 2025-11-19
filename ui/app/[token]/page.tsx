@@ -84,7 +84,7 @@ export default function HomePage() {
   const [selectedProposalId, setSelectedProposalId] = useState<number | null>(null);
 
   // Fetch user balances for the selected proposal
-  const { data: userBalances, refetch: refetchBalances } = useUserBalances(selectedProposalId, walletAddress);
+  const { data: userBalances, refetch: refetchBalances } = useUserBalances(selectedProposalId, walletAddress, moderatorId ?? undefined);
   const [selectedMarket, setSelectedMarket] = useState<'pass' | 'fail'>('pass');
 
   // Reset selected proposal when token changes to prevent stale data display
@@ -112,7 +112,7 @@ export default function HomePage() {
     refetch: refetchTrades,
     getTimeAgo,
     getTokenUsed
-  } = useTradeHistory(proposal?.id || null);
+  } = useTradeHistory(proposal?.id || null, moderatorId ?? undefined, baseMint);
 
   // Market caps are pre-calculated on the backend (price in SOL × total supply × SOL/USD)
   // WebSocket delivers market cap USD directly - no frontend calculation needed

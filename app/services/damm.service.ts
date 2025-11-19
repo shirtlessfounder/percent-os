@@ -58,6 +58,12 @@ export class DammService {
     poolAddress?: string
   ): Promise<DammDepositBuildResponse> {
     try {
+      this.logger.info('Building DAMM deposit transaction', {
+        tokenAAmount,
+        tokenBAmount,
+        poolAddress: poolAddress || 'default'
+      });
+
       const requestBody: Record<string, unknown> = {
         tokenAAmount,
         tokenBAmount,

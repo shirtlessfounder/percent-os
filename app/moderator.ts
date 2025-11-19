@@ -30,6 +30,7 @@ import { ExecutionService } from './services/execution.service';
 import { LoggerService } from './services/logger.service';
 import { DammService } from './services/damm.service';
 import { getNetworkFromConnection} from './utils/network';
+import { POOL_METADATA } from '../src/config/whitelist';
 //import { BlockEngineUrl, JitoService } from '@slateos/jito';
 
 /**
@@ -228,6 +229,10 @@ export class Moderator implements IModerator {
     const status = await proposal.finalize();
     await this.saveProposal(proposal);
 
+    // Wait for RPC to sync after finalization
+    this.logger.info('Waiting for RPC to sync after finalization', { proposalId: id });
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
     // Handle deposit-back for proposals with DAMM withdrawals
     await this.handleDepositBack(id);
 
@@ -317,105 +322,56 @@ export class Moderator implements IModerator {
         poolAddress: metadata.poolAddress
       });
 
-      // Token decimals
-      const BASE_DECIMALS = 6;  // ZC
-      const QUOTE_DECIMALS = 9; // SOL
-
-      // Step 1: Get current authority wallet balances
-      const connection = new Connection(this.config.rpcEndpoint, 'confirmed');
-      const authorityPubkey = this.config.authority.publicKey;
-
-      // Get ZC balance (Token A)
-      const zcTokenAccount = await getAssociatedTokenAddress(
-        this.config.baseMint,
-        authorityPubkey
-      );
-      const zcAccountInfo = await getAccount(connection, zcTokenAccount);
-      const availableZC = Number(zcAccountInfo.amount); // Raw units
-
-      // Get SOL balance (Token B) - leave some for gas (0.01 SOL)
-      const solBalance = await connection.getBalance(authorityPubkey);
-      const gasReserve = 0.01 * LAMPORTS_PER_SOL;
-      const availableSOL = Math.max(0, solBalance - gasReserve); // Raw units (lamports)
-
-      // Convert to UI units for API
-      const tokenAAmountUI = availableZC / Math.pow(10, BASE_DECIMALS);
-      const tokenBAmountUI = availableSOL / Math.pow(10, QUOTE_DECIMALS);
-
-      this.logger.info('Authority balances after finalization', {
-        availableZC: tokenAAmountUI,
-        availableSOL: tokenBAmountUI,
-        gasReserve: gasReserve / LAMPORTS_PER_SOL
-      });
-
-      // Step 2: Fetch pool state and adjust amounts to match pool ratio
-      let adjustedTokenA = tokenAAmountUI;
-      let adjustedTokenB = tokenBAmountUI;
-
-      try {
-        const cpAmm = new CpAmm(connection);
-        const poolPubkey = new PublicKey(metadata.poolAddress);
-        const poolState = await cpAmm.fetchPoolState(poolPubkey);
-
-        // Get pool reserves by fetching vault token account balances
-        const tokenAVaultInfo = await getAccount(connection, poolState.tokenAVault);
-        const tokenBVaultInfo = await getAccount(connection, poolState.tokenBVault);
-        const poolTokenA = Number(tokenAVaultInfo.amount);
-        const poolTokenB = Number(tokenBVaultInfo.amount);
-
-        if (poolTokenA > 0 && poolTokenB > 0) {
-          // Calculate pool ratio (tokenB per tokenA) - convert to UI units first
-          const poolRatio = (poolTokenB / Math.pow(10, QUOTE_DECIMALS)) / (poolTokenA / Math.pow(10, BASE_DECIMALS));
-
-          this.logger.info('Pool state fetched for deposit adjustment', {
-            poolTokenA,
-            poolTokenB,
-            poolRatio,
-            originalTokenA: tokenAAmountUI,
-            originalTokenB: tokenBAmountUI
-          });
-
-          // Calculate maximum deposit that matches pool ratio
-          // Start with all available tokenA, calculate needed tokenB
-          let neededTokenB = availableZC * poolRatio / Math.pow(10, BASE_DECIMALS);
-
-          if (neededTokenB <= tokenBAmountUI) {
-            // We have enough tokenB for all tokenA
-            adjustedTokenA = tokenAAmountUI;
-            adjustedTokenB = neededTokenB;
-          } else {
-            // Constrained by tokenB, reduce tokenA proportionally
-            adjustedTokenB = tokenBAmountUI;
-            adjustedTokenA = (availableSOL / poolRatio) / Math.pow(10, QUOTE_DECIMALS);
-          }
-
-          this.logger.info('Adjusted deposit amounts to match pool ratio', {
-            originalTokenA: tokenAAmountUI,
-            originalTokenB: tokenBAmountUI,
-            adjustedTokenA,
-            adjustedTokenB,
-            ratio: adjustedTokenB / adjustedTokenA
-          });
-        } else {
-          this.logger.warn('Pool has no liquidity, using available balances as-is', {
-            poolTokenA,
-            poolTokenB
-          });
-        }
-      } catch (poolError) {
-        this.logger.warn('Failed to fetch pool state for ratio adjustment, using available balances', {
-          error: poolError instanceof Error ? poolError.message : String(poolError)
-        });
-        // Continue with original amounts
+      // Get pool metadata for dynamic decimal lookup
+      const poolMetadata = POOL_METADATA[metadata.poolAddress];
+      if (!poolMetadata) {
+        throw new Error(`Pool metadata not found for ${metadata.poolAddress}`);
       }
 
-      // Step 3: Create transaction signer from authority keypair
+      const BASE_DECIMALS = poolMetadata.baseDecimals;
+      const QUOTE_DECIMALS = poolMetadata.quoteDecimals;
+
+      this.logger.info('Using pool-specific decimals for deposit', {
+        proposalId,
+        poolAddress: metadata.poolAddress,
+        baseDecimals: BASE_DECIMALS,
+        quoteDecimals: QUOTE_DECIMALS
+      });
+
+      // Step 1: Convert raw withdrawal amounts to UI units for DAMM API
+      // The withdrawal API returns raw amounts, but deposit API expects UI amounts
+      const tokenAAmountUI = metadata.tokenA / Math.pow(10, BASE_DECIMALS);
+      const tokenBAmountUI = metadata.tokenB / Math.pow(10, QUOTE_DECIMALS);
+
+      this.logger.info('Depositing withdrawal amounts (full precision)', {
+        proposalId,
+        tokenA: tokenAAmountUI,
+        tokenB: tokenBAmountUI,
+        rawTokenA: metadata.tokenA,
+        rawTokenB: metadata.tokenB,
+        poolAddress: metadata.poolAddress
+      });
+
+      // Step 2: Create transaction signer from authority keypair with validation
       const signTransaction = async (transaction: any) => {
-        transaction.sign(this.config.authority);
+        // Validate fee payer matches authority wallet
+        if (!transaction.feePayer?.equals(this.config.authority.publicKey)) {
+          const error = `Fee payer mismatch: expected ${this.config.authority.publicKey.toBase58()}, got ${transaction.feePayer?.toBase58()}`;
+          this.logger.error('Transaction validation failed', { proposalId, error });
+          throw new Error(error);
+        }
+
+        this.logger.info('Transaction validated, signing with authority', {
+          proposalId,
+          feePayer: transaction.feePayer.toBase58(),
+          authority: this.config.authority.publicKey.toBase58()
+        });
+
+        transaction.partialSign(this.config.authority);
         return transaction;
       };
 
-      // Step 3: Execute deposit with retry logic
+      // Step 4: Execute deposit with retry logic
       const MAX_RETRIES = 3;
       const RETRY_DELAY_MS = 2000;
       let lastError: Error | null = null;
@@ -424,14 +380,15 @@ export class Moderator implements IModerator {
         try {
           this.logger.info(`Attempting deposit-back (${attempt}/${MAX_RETRIES})`, {
             proposalId,
-            tokenAAmount: adjustedTokenA,
-            tokenBAmount: adjustedTokenB
+            tokenAAmount: tokenAAmountUI,
+            tokenBAmount: tokenBAmountUI,
+            poolAddress: metadata.poolAddress
           });
 
-          // Execute deposit with ratio-adjusted amounts
+          // Execute deposit with original withdrawal amounts
           const depositResult = await this.dammService.depositToDammPool(
-            adjustedTokenA,
-            adjustedTokenB,
+            tokenAAmountUI,
+            tokenBAmountUI,
             signTransaction,
             metadata.poolAddress
           );
@@ -448,12 +405,14 @@ export class Moderator implements IModerator {
             proposalId,
             attempt,
             depositSignature: depositResult.signature,
-            originalAvailableTokenA: tokenAAmountUI,
-            originalAvailableTokenB: tokenBAmountUI,
-            ratioAdjustedTokenA: adjustedTokenA,
-            ratioAdjustedTokenB: adjustedTokenB,
-            actualDepositedTokenA: depositResult.amounts.tokenA,
-            actualDepositedTokenB: depositResult.amounts.tokenB
+            requestedAmounts: {
+              tokenA: tokenAAmountUI,
+              tokenB: tokenBAmountUI
+            },
+            confirmedDeposit: {
+              tokenA: depositResult.amounts.tokenA,
+              tokenB: depositResult.amounts.tokenB
+            }
           });
 
           return; // Success, exit the method

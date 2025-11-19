@@ -532,8 +532,8 @@ export class PersistenceService implements IPersistenceService {
     requestId: string;
     signature: string;
     percentage: number;
-    tokenA: string;
-    tokenB: string;
+    tokenA: number;
+    tokenB: number;
     spotPrice: number;
     needsDepositBack: boolean;
     depositSignature: string | null;
@@ -561,8 +561,8 @@ export class PersistenceService implements IPersistenceService {
         requestId: row.withdrawal_request_id,
         signature: row.withdrawal_signature,
         percentage: row.withdrawal_percentage,
-        tokenA: row.withdrawn_token_a,
-        tokenB: row.withdrawn_token_b,
+        tokenA: parseFloat(row.withdrawn_token_a),
+        tokenB: parseFloat(row.withdrawn_token_b),
         spotPrice: parseFloat(row.spot_price),
         needsDepositBack: row.needs_deposit_back,
         depositSignature: row.deposit_signature,

@@ -177,7 +177,7 @@ export const LivePriceDisplay: React.FC<LivePriceDisplayProps> = ({ proposalId, 
     const fetchTwap = async () => {
       try {
         const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-        const url = buildApiUrl(API_BASE_URL, `/api/history/${proposalId}/twap`);
+        const url = buildApiUrl(API_BASE_URL, `/api/history/${proposalId}/twap`, undefined, moderatorId ?? undefined);
         const response = await fetch(url);
         console.log(response);
         if (response.ok) {

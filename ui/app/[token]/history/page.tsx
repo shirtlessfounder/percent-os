@@ -86,7 +86,8 @@ export default function HistoryPage() {
         proposalStatus,
         userPosition,
         userAddress: walletAddress,
-        signTransaction: createTransactionSigner()
+        signTransaction: createTransactionSigner(),
+        moderatorId: moderatorId || undefined
       });
 
       // Refresh claimable positions to update UI
