@@ -194,7 +194,7 @@ router.get('/:id/trades', async (req, res, next) => {
         price: trade.price.toString(),
         txSignature: trade.txSignature,
         marketCapUsd: trade.totalSupply && trade.baseDecimals !== undefined
-          ? trade.price.toNumber() * (trade.totalSupply / Math.pow(10, trade.baseDecimals)) * solPrice
+          ? trade.price.toNumber() * trade.totalSupply * solPrice
           : undefined,
       }))
     });
@@ -298,7 +298,8 @@ router.get('/:id/chart', async (req, res, next) => {
     const proposal = await persistenceService.getProposalForFrontend(proposalId);
     const totalSupply = proposal?.total_supply || 1000000000;
     const baseDecimals = proposal?.base_decimals || 6;
-    const actualSupply = totalSupply / Math.pow(10, baseDecimals);
+    // totalSupply is already decimal-adjusted when stored in database
+    const actualSupply = totalSupply;
 
     // Get current SOL/USD price
     const { SolPriceService } = await import('../../app/services/sol-price.service');

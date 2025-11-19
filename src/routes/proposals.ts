@@ -346,7 +346,7 @@ router.post('/', requireApiKey, requireModeratorId, async (req, res, next) => {
     const connection = new Connection(rpcUrl, 'confirmed');
     const mintPublicKey = new PublicKey(poolMetadata.baseMint);
     const mintInfo = await getMint(connection, mintPublicKey);
-    const totalSupply = Number(mintInfo.supply);
+    const totalSupply = Number(mintInfo.supply) / Math.pow(10, mintInfo.decimals);
 
     logger.info('[POST /] Fetched token supply', {
       totalSupply,
