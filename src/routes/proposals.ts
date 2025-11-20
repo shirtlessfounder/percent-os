@@ -403,16 +403,13 @@ router.post('/', requireApiKey, requireModeratorId, async (req, res, next) => {
       unsignedTx.serialize({ requireAllSignatures: false })
     );
 
-    // Confirm the withdrawal with attestation proof
+    // Confirm the withdrawal (authority signature validates access)
     const withdrawConfirmResponse = await fetch(`${process.env.DAMM_API_URL || 'https://api.zcombinator.io'}/damm/withdraw/confirm`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         signedTransaction: signedTxBase58,
-        requestId: withdrawBuildData.requestId,
-        creatorWallet: creatorWallet,
-        creatorSignature: creatorSignature,
-        attestationMessage: attestationMessage
+        requestId: withdrawBuildData.requestId
       })
     });
 
