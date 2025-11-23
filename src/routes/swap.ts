@@ -284,7 +284,7 @@ router.post('/:id/executeSwapTx', async (req, res, next) => {
         await HistoryService.recordPrice({
           moderatorId,
           proposalId,
-          market: market as 'pass' | 'fail',
+          market: market,
           price: newPrice,
         });
 
