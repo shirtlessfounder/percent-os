@@ -32,7 +32,11 @@ logs/
 coverage/
 .nyc_output/
 wallet.json
+wallet-oogway.json
+wallet-zc.json
 walletprivy.json
+arb-wallet.json
+arb-wallets/
 
 # Temporary files
 tmp/

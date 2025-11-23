@@ -1,3 +1,22 @@
+/*
+ * Copyright (C) 2025 Spice Finance Inc.
+ *
+ * This file is part of Z Combinator.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import { PublicKey, Keypair } from '@solana/web3.js';
 import { BN } from '@coral-xyz/anchor';
 import { Commitment } from './execution.interface';
@@ -58,7 +77,8 @@ export interface IModeratorConfig {
   quoteMint: PublicKey;                        // Public key of the quote token mint
   baseDecimals: number;                        // Number of decimals for base token conditional mints
   quoteDecimals: number;                       // Number of decimals for quote token conditional mints
-  authority: Keypair;                          // Authority keypair (payer and mint authority)
+  defaultAuthority: Keypair;                   // Default authority keypair (payer and mint authority)
+  poolAuthorities?: Map<string, Keypair>;      // Optional per-pool authority overrides (poolAddress -> authority)
   rpcEndpoint: string;                         // Solana RPC endpoint URL
   commitment?: Commitment;                     // Optional commitment level (defaults to 'confirmed')
   jitoUuid?: string;                           // Optional Jito UUID for bundle submissions (mainnet only)

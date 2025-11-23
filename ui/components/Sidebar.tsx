@@ -4,6 +4,7 @@ import { useState, useMemo, memo } from 'react';
 import { ProposalListSkeleton } from '@/components/ProposalSkeleton';
 import { getProposalContent } from '@/lib/proposalContent';
 import type { ProposalListItem } from '@/types/api';
+import { useTokenContext } from '@/providers/TokenContext';
 
 interface SidebarProps {
   selectedProposal: number;
@@ -14,7 +15,7 @@ interface SidebarProps {
 
 const Sidebar = memo(({ selectedProposal, onSelectProposal, proposals, loading }: SidebarProps) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const moderatorId = process.env.NEXT_PUBLIC_MODERATOR_ID;
+  const { moderatorId } = useTokenContext();
 
   const sortedProposals = useMemo(() =>
     [...proposals].sort((a, b) => b.finalizedAt - a.finalizedAt),
@@ -22,7 +23,7 @@ const Sidebar = memo(({ selectedProposal, onSelectProposal, proposals, loading }
   );
 
   return (
-    <div className={`${isCollapsed ? 'w-16' : 'w-64'} bg-[#121212] h-screen flex flex-col transition-all duration-200`}>
+    <div className={`${isCollapsed ? 'w-16' : 'w-64'} bg-theme-card h-screen flex flex-col transition-all duration-200`}>
       {/* Header - Same height as main page header */}
       <div className={`h-14 flex items-center ${isCollapsed ? 'justify-center' : 'justify-between px-4'}`}>
         {isCollapsed ? (
@@ -30,9 +31,9 @@ const Sidebar = memo(({ selectedProposal, onSelectProposal, proposals, loading }
             onClick={() => setIsCollapsed(false)}
             className="group p-1.5 hover:bg-[#424242] rounded-lg transition cursor-pointer"
           >
-            <img 
-              src="/percent-logo.svg" 
-              alt="Expand" 
+            <img
+              src="/percent-logo.svg"
+              alt="Expand"
               className="h-5 w-5 group-hover:hidden"
             />
             <svg className="h-5 w-5 fill-gray-400 hidden group-hover:block" viewBox="0 0 20 20">
@@ -41,9 +42,9 @@ const Sidebar = memo(({ selectedProposal, onSelectProposal, proposals, loading }
           </button>
         ) : (
           <>
-            <img 
-              src="/percent-logo.svg" 
-              alt="Percent" 
+            <img
+              src="/percent-logo.svg"
+              alt="Percent"
               className="h-5 w-5"
             />
             <button
@@ -62,15 +63,15 @@ const Sidebar = memo(({ selectedProposal, onSelectProposal, proposals, loading }
       {!isCollapsed && (
         <div className="flex-1 overflow-y-auto p-2">
           {/* Header */}
-          <div className="px-2 pb-2 text-sm text-gray-400">
+          <div className="px-2 pb-2 text-sm text-theme-text-secondary">
             $ZC Proposals
           </div>
           {loading ? (
             <ProposalListSkeleton />
           ) : sortedProposals.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 px-4">
-              <div className="text-gray-500 text-sm text-center">No active proposals</div>
-              <div className="text-gray-600 text-xs text-center mt-1">Check back later for new governance proposals</div>
+              <div className="text-theme-text-disabled text-sm text-center">No active proposals</div>
+              <div className="text-theme-text-tertiary text-xs text-center mt-1">Check back later for new governance proposals</div>
             </div>
           ) : (
           <div className="space-y-1">
@@ -79,7 +80,7 @@ const Sidebar = memo(({ selectedProposal, onSelectProposal, proposals, loading }
                 proposal.id,
                 proposal.title,
                 proposal.description,
-                moderatorId
+                moderatorId?.toString()
               );
               const truncatedTitle = displayTitle.length > 40
                 ? displayTitle.substring(0, 40) + '...'
@@ -142,7 +143,7 @@ const Sidebar = memo(({ selectedProposal, onSelectProposal, proposals, loading }
                       </svg>
                     )}
                   </span>
-                  <span className="text-xs text-gray-500">
+                  <span className="text-xs text-theme-text-disabled">
                     {new Date(proposal.finalizedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                   </span>
                 </div>

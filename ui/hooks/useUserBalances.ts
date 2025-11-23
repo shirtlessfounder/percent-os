@@ -1,3 +1,22 @@
+/*
+ * Copyright (C) 2025 Spice Finance Inc.
+ *
+ * This file is part of Z Combinator.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 import type { UserBalancesResponse } from '@/types/api';
@@ -9,7 +28,7 @@ interface UserBalances {
   refetch: () => void;
 }
 
-export function useUserBalances(proposalId: number | null, walletAddress: string | null): UserBalances {
+export function useUserBalances(proposalId: number | null, walletAddress: string | null, moderatorId?: number | string): UserBalances {
   const [balances, setBalances] = useState<Omit<UserBalances, 'refetch'>>({
     data: null,
     loading: false,
@@ -18,9 +37,9 @@ export function useUserBalances(proposalId: number | null, walletAddress: string
 
   const fetchBalances = useCallback(async (id: number, address: string) => {
     setBalances(prev => ({ ...prev, loading: true, error: null }));
-    
+
     try {
-      const data = await api.getUserBalances(id, address);
+      const data = await api.getUserBalances(id, address, moderatorId);
       
       if (data) {
         setBalances({
@@ -43,7 +62,7 @@ export function useUserBalances(proposalId: number | null, walletAddress: string
         error: error instanceof Error ? error.message : 'Failed to fetch user balances',
       });
     }
-  }, []);
+  }, [moderatorId]);
 
   useEffect(() => {
     // Only fetch if both proposalId and walletAddress are available
@@ -68,13 +87,13 @@ export function useUserBalances(proposalId: number | null, walletAddress: string
     return () => {
       clearInterval(interval);
     };
-  }, [proposalId, walletAddress, fetchBalances]);
+  }, [proposalId, walletAddress, moderatorId, fetchBalances]);
 
   const refetch = useCallback(() => {
     if (proposalId !== null && walletAddress) {
       fetchBalances(proposalId, walletAddress);
     }
-  }, [proposalId, walletAddress, fetchBalances]);
+  }, [proposalId, walletAddress, moderatorId, fetchBalances]);
 
   return {
     ...balances,

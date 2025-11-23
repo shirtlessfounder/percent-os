@@ -1,3 +1,22 @@
+/*
+ * Copyright (C) 2025 Spice Finance Inc.
+ *
+ * This file is part of Z Combinator.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import { getPool } from '../utils/database';
 import {
   IPriceHistory,
@@ -175,22 +194,28 @@ export class HistoryService {
     const pool = getPool();
 
     let query = `
-      SELECT * FROM qm_trade_history
-      WHERE moderator_id = $1 AND proposal_id = $2
+      SELECT
+        t.*,
+        p.total_supply,
+        p.base_decimals
+      FROM qm_trade_history t
+      LEFT JOIN qm_proposals p ON t.moderator_id = p.moderator_id
+        AND t.proposal_id = p.proposal_id
+      WHERE t.moderator_id = $1 AND t.proposal_id = $2
     `;
     const params: (number | Date)[] = [moderatorId, proposalId];
 
     if (from) {
       params.push(from);
-      query += ` AND timestamp >= $${params.length}`;
+      query += ` AND t.timestamp >= $${params.length}`;
     }
 
     if (to) {
       params.push(to);
-      query += ` AND timestamp <= $${params.length}`;
+      query += ` AND t.timestamp <= $${params.length}`;
     }
 
-    query += ' ORDER BY timestamp DESC';
+    query += ' ORDER BY t.timestamp DESC';
 
     if (limit) {
       query += ` LIMIT ${limit}`;
@@ -210,6 +235,8 @@ export class HistoryService {
       amountOut: new Decimal(row.amount_out),
       price: new Decimal(row.price),
       txSignature: row.tx_signature,
+      totalSupply: row.total_supply ? parseInt(row.total_supply) : undefined,
+      baseDecimals: row.base_decimals ? parseInt(row.base_decimals) : 6,
     }));
   }
 

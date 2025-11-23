@@ -1,3 +1,22 @@
+/*
+ * Copyright (C) 2025 Spice Finance Inc.
+ *
+ * This file is part of Z Combinator.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import { Router } from 'express';
 import { HistoryService } from '../../app/services/history.service';
 import { requireModeratorId, getProposalId } from '@src/middleware/validation';
@@ -144,6 +163,11 @@ router.get('/:id/trades', async (req, res, next) => {
       limitNum || 100
     );
 
+    // Get current SOL/USD price for market cap calculation
+    const { SolPriceService } = await import('../../app/services/sol-price.service');
+    const solPriceService = SolPriceService.getInstance();
+    const solPrice = await solPriceService.getSolPrice();
+
     logger.info('[GET /:id/trades] Trade history retrieved', {
       proposalId,
       moderatorId,
@@ -167,6 +191,9 @@ router.get('/:id/trades', async (req, res, next) => {
         amountOut: trade.amountOut.toString(),
         price: trade.price.toString(),
         txSignature: trade.txSignature,
+        marketCapUsd: trade.totalSupply && trade.baseDecimals !== undefined
+          ? trade.price.toNumber() * trade.totalSupply * solPrice
+          : undefined,
       }))
     });
   } catch (error) {
@@ -242,29 +269,46 @@ router.get('/:id/chart', async (req, res, next) => {
       }
     }
 
+    // For sparse data (like predictions markets with few trades),
+    // expand the lookback window to at least 24 hours to ensure we catch data points
+    const minLookbackMs = 24 * 60 * 60 * 1000; // 24 hours
+    let effectiveFromDate = fromDate;
+
+    if (fromDate) {
+      const requestedLookback = Date.now() - fromDate.getTime();
+      if (requestedLookback < minLookbackMs) {
+        effectiveFromDate = new Date(Date.now() - minLookbackMs);
+      }
+    } else {
+      effectiveFromDate = new Date(Date.now() - minLookbackMs);
+    }
+
     const chartData = await HistoryService.getChartData(
       moderatorId,
       proposalId,
       interval as '1m' | '5m' | '15m' | '1h' | '4h' | '1d',
-      fromDate,
+      effectiveFromDate,
       toDate
     );
 
-    // Get proposal to access totalSupply
+    // Get proposal to access totalSupply and baseDecimals
     const persistenceService = new PersistenceService(moderatorId, logger.createChild('persistence'));
     const proposal = await persistenceService.loadProposal(proposalId);
     const totalSupply = proposal?.config.totalSupply || 1000000000;
+    const baseDecimals = proposal?.config.baseDecimals || 6;
+    // totalSupply is already decimal-adjusted when stored in database
+    const actualSupply = totalSupply;
 
     // Get current SOL/USD price
     const { SolPriceService } = await import('../../app/services/sol-price.service');
     const solPriceService = SolPriceService.getInstance();
     const solPrice = await solPriceService.getSolPrice();
 
-    // Transform data to USD market cap (price × total supply × SOL price) and ISO strings for JSON serialization
-    // Note: Spot prices (market -1) are already in USD market cap, so don't convert them
+    // Transform data to USD market cap (price × actual supply × SOL price) and ISO strings for JSON serialization
+    // Note: Spot prices are already in USD market cap, so don't convert them
     const formattedData = chartData.map(point => {
       // Spot prices are already market cap USD, other markets need conversion
-      const multiplier = point.market === -1 ? 1 : (totalSupply * solPrice);
+      const multiplier = point.market === -1 ? 1 : (actualSupply * solPrice);
 
       return {
         timestamp: new Date(point.timestamp).toISOString(),

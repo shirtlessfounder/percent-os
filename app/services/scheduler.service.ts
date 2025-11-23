@@ -1,3 +1,22 @@
+/*
+ * Copyright (C) 2025 Spice Finance Inc.
+ *
+ * This file is part of Z Combinator.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import { ISchedulerService, IScheduledTask, ScheduledTaskType } from '../types/scheduler.interface';
 import { IRouterService } from '../types/router.interface';
 import { HistoryService } from './history.service';
@@ -267,6 +286,7 @@ export class SchedulerService implements ISchedulerService {
   
   /**
    * Records prices for a specific proposal
+   * Stores prices in SOL - WebSocket enriches with market cap USD for clients
    * @param moderatorId - The moderator ID that owns the proposal
    * @param proposalId - The proposal ID
    */
@@ -395,9 +415,12 @@ export class SchedulerService implements ISchedulerService {
       const solPriceService = SolPriceService.getInstance();
       const solPrice = await solPriceService.getSolPrice();
 
-      // Convert to market cap USD: price × total supply × SOL/USD
+      // Convert to market cap USD: price × actual supply × SOL/USD
+      // Note: totalSupply is raw (includes decimals), so we divide to get actual token count
       const totalSupply = proposal.config.totalSupply;
-      const marketCapUSD = spotPriceInSol * totalSupply * solPrice;
+      const baseDecimals = proposal.config.baseDecimals || 6;
+      const actualSupply = totalSupply / Math.pow(10, baseDecimals);
+      const marketCapUSD = spotPriceInSol * actualSupply * solPrice;
 
       // Record to database (market: -1 for spot)
       await HistoryService.recordPrice({

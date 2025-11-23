@@ -1,3 +1,22 @@
+/*
+ * Copyright (C) 2025 Spice Finance Inc.
+ *
+ * This file is part of Z Combinator.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import { Router } from 'express';
 import { requireModeratorId, getProposalId, getModerator } from '../middleware/validation';
 import { PublicKey, Transaction } from '@solana/web3.js';
@@ -212,33 +231,34 @@ router.post('/:id/executeSwapTx', async (req, res, next) => {
     
     // Log trade to history (required parameters are now validated above)
     try {
-      // Get current price for the trade
-      let currentPrice: Decimal;
+      // Get current price for the trade (in SOL)
+      // WebSocket will enrich with market cap USD for clients
+      let currentPriceInSol: Decimal;
       try {
-        currentPrice = await amm.fetchPrice();
+        currentPriceInSol = await amm.fetchPrice();
       } catch {
         // If we can't fetch price, estimate from amounts
         if (amountOut) {
           const inAmount = new Decimal(amountIn);
           const outAmount = new Decimal(amountOut);
-          currentPrice = isBaseToQuote ? outAmount.div(inAmount) : inAmount.div(outAmount);
+          currentPriceInSol = isBaseToQuote ? outAmount.div(inAmount) : inAmount.div(outAmount);
         } else {
-          currentPrice = new Decimal(0); // fallback
+          currentPriceInSol = new Decimal(0); // fallback
         }
       }
-      
+
       // Convert raw amounts to human-readable amounts using token decimals
       const baseDecimals = amm.baseDecimals;
       const quoteDecimals = amm.quoteDecimals;
-      
+
       // Determine which decimals to use based on trade direction
       const inputDecimals = isBaseToQuote ? baseDecimals : quoteDecimals;
       const outputDecimals = isBaseToQuote ? quoteDecimals : baseDecimals;
-      
+
       // Convert to human-readable amounts
       const amountInDecimal = new Decimal(amountIn).div(Math.pow(10, inputDecimals));
       const amountOutDecimal = amountOut ? new Decimal(amountOut).div(Math.pow(10, outputDecimals)) : new Decimal(0);
-      
+
       await HistoryService.recordTrade({
         moderatorId,
         proposalId,
@@ -247,7 +267,7 @@ router.post('/:id/executeSwapTx', async (req, res, next) => {
         isBaseToQuote: isBaseToQuote,
         amountIn: amountInDecimal,
         amountOut: amountOutDecimal,
-        price: currentPrice,
+        price: currentPriceInSol,
         txSignature: signature,
       });
 
@@ -256,6 +276,31 @@ router.post('/:id/executeSwapTx', async (req, res, next) => {
         market,
         user
       });
+
+      // Record new price immediately after trade to trigger real-time updates
+      try {
+        const newPrice = await amm.fetchPrice();
+
+        await HistoryService.recordPrice({
+          moderatorId,
+          proposalId,
+          market: market as 'pass' | 'fail',
+          price: newPrice,
+        });
+
+        logger.info('[POST /:id/executeSwapTx] Price recorded after trade', {
+          proposalId,
+          market,
+          priceInSol: newPrice.toString()
+        });
+      } catch (priceError) {
+        logger.error('[POST /:id/executeSwapTx] Failed to record price after trade', {
+          error: priceError instanceof Error ? priceError.message : String(priceError),
+          proposalId,
+          market
+        });
+        // Continue even if price recording fails
+      }
     } catch (logError) {
       logger.error('[POST /:id/executeSwapTx] Failed to log trade to history', {
         error: logError instanceof Error ? logError.message : String(logError),

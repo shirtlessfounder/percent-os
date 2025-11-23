@@ -1,4 +1,22 @@
 #!/usr/bin/env ts-node
+/*
+ * Copyright (C) 2025 Spice Finance Inc.
+ *
+ * This file is part of Z Combinator.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
 
 import { CreateProposalRequest } from '@src/routes/proposals';
 import * as dotenv from 'dotenv';
@@ -11,49 +29,35 @@ const MODERATOR_ID = 1; // Change this to target different moderators
 async function createProposal() {
   const API_URL = process.env.API_URL || 'http://localhost:3001';
   const API_KEY = process.env.API_KEY;
+  const CREATOR_WALLET = process.env.CREATOR_WALLET;
 
   if (!API_KEY) {
     console.error('API_KEY environment variable is required');
     process.exit(1);
   }
-  
-  // Token decimals
-  const BASE_DECIMALS = 6;
-  const QUOTE_DECIMALS = 9;
-  
-  // Raw token amounts (smallest units)
-  // Current_spot = ~0.010 SOL per ZC
-  const initialBaseAmount = '3820766000000';  // ZC (6 decimals)
-  const initialQuoteAmount = '42827000000'; // (9 decimals)
-  
-  // Calculate decimal-adjusted price (same as AMM will return)
-  // Convert to actual token amounts: raw / 10^decimals
-  const baseTokens = parseInt(initialBaseAmount) / Math.pow(10, BASE_DECIMALS); // 10,000 tokens
-  const quoteTokens = parseInt(initialQuoteAmount) / Math.pow(10, QUOTE_DECIMALS); // 1,000 tokens
-  const ammPrice = quoteTokens / baseTokens; // 1,000 / 10,000 = 0.1
-  console.log(ammPrice);
-  
+
+  if (!CREATOR_WALLET) {
+    console.error('CREATOR_WALLET environment variable is required');
+    console.error('This wallet must be whitelisted in src/config/whitelist.ts');
+    process.exit(1);
+  }
+
+  // New simplified request - DAMM withdrawal handles AMM initialization automatically
   const request: CreateProposalRequest = {
-    title: 'SolPay Retroactive Holder Redistribution (ZC-2)',
-    description: 'ENTER FULL DESCRIPTION HERE',
+    title: 'Test Proposal',
+    description: 'Should ZC execute on PR #42? https://github.com/zcombinatorio/zcombinator/pull/42',
     markets: 2,
     market_labels: ['pass', 'fail'],
-    proposalLength: 10800, // 3 hours
-    spotPoolAddress: 'CCZdbVvDqPN8DmMLVELfnt9G1Q9pQNt3bTGifSpUY9Ad', // ZC/SOL spot pool
-    totalSupply: 1037781155, // 1 billion tokens for market cap calculation
-    twap: {
-      initialTwapValue: ammPrice, // Decimal-adjusted price (0.1)
-      twapMaxObservationChangePerUpdate: null,
-      twapStartDelay: 0, // Changed from 5000
-      passThresholdBps: 10,
-      minUpdateInterval: 6000 // 1 minute in milliseconds
-    },
-    amm: {
-      initialBaseAmount,
-      initialQuoteAmount
-    }
+    proposalLength: 86400, // 24 hours in seconds
+    creatorWallet: CREATOR_WALLET, // Must be whitelisted
   };
-  
+
+  console.log('Creating proposal with:', {
+    title: request.title,
+    proposalLength: request.proposalLength,
+    creatorWallet: request.creatorWallet
+  });
+
   try {
     const response = await fetch(`${API_URL}/api/proposals?moderatorId=${MODERATOR_ID}`, {
       method: 'POST',
@@ -63,18 +67,18 @@ async function createProposal() {
       },
       body: JSON.stringify(request)
     });
-    
+
     if (!response.ok) {
       const error = await response.json();
-      console.error(JSON.stringify(error, null, 2));
+      console.error('Failed to create proposal:', JSON.stringify(error, null, 2));
       process.exit(1);
     }
-    
+
     const data = await response.json();
-    console.log(JSON.stringify(data, null, 2));
-    
+    console.log('Proposal created successfully:', JSON.stringify(data, null, 2));
+
   } catch (error: any) {
-    console.error(error.message);
+    console.error('Error:', error.message);
     process.exit(1);
   }
 }

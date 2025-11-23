@@ -1,3 +1,22 @@
+/*
+ * Copyright (C) 2025 Spice Finance Inc.
+ *
+ * This file is part of Z Combinator.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 /**
  * Format a number with comma separators
  * @param value - The number to format
@@ -101,4 +120,30 @@ export function formatVolume(value: number | string): string {
 
   // For values between $1 and $999, show 2 decimal places
   return `$${num.toFixed(2)}`;
+}
+
+/**
+ * Format market cap with K/M/B abbreviations and 2 decimal places
+ * @param value - The market cap value to format
+ * @returns Formatted string like "$1.50M" (always shows 2 decimal places)
+ */
+export function formatMarketCap(value: number | null | undefined): string {
+  if (value === null || value === undefined || isNaN(value)) return '$0.00';
+
+  const absValue = Math.abs(value);
+  const sign = value < 0 ? '-' : '';
+
+  if (absValue >= 1_000_000_000) {
+    // Billions
+    return `${sign}$${(absValue / 1_000_000_000).toFixed(2)}B`;
+  } else if (absValue >= 1_000_000) {
+    // Millions
+    return `${sign}$${(absValue / 1_000_000).toFixed(2)}M`;
+  } else if (absValue >= 1_000) {
+    // Thousands
+    return `${sign}$${(absValue / 1_000).toFixed(2)}K`;
+  } else {
+    // Less than 1000
+    return `${sign}$${absValue.toFixed(2)}`;
+  }
 }

@@ -2,11 +2,18 @@
 
 import { FeedbackFish } from '@feedback-fish/react';
 import { usePrivyWallet } from '@/hooks/usePrivyWallet';
+import { usePathname } from 'next/navigation';
 
 export default function FeedbackWidget() {
   const { walletAddress } = usePrivyWallet();
+  const pathname = usePathname();
 
   const FEEDBACK_FISH_PROJECT_ID = process.env.NEXT_PUBLIC_FEEDBACK_FISH_PROJECT_ID || '5391a511d6a890';
+
+  // Hide on landing page
+  if (pathname === '/') {
+    return null;
+  }
 
   return (
     <FeedbackFish
@@ -19,10 +26,10 @@ export default function FeedbackWidget() {
       }}
     >
       <button
-        className="fixed bottom-6 right-6 w-14 h-14 text-white rounded-full shadow-lg transition-all hover:scale-110 flex items-center justify-center z-40 cursor-pointer"
-        style={{ backgroundColor: '#ef6400' }}
-        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#d75700'}
-        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#ef6400'}
+        className="fixed bottom-6 right-6 w-14 h-14 rounded-full shadow-lg transition-all hover:scale-110 flex items-center justify-center z-40 cursor-pointer"
+        style={{ backgroundColor: '#BEE8FC', color: '#0a0a0a' }}
+        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#A0D8F0'}
+        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#BEE8FC'}
         title="Send feedback"
       >
         <svg

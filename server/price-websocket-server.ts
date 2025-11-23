@@ -1,3 +1,22 @@
+/*
+ * Copyright (C) 2025 Spice Finance Inc.
+ *
+ * This file is part of Z Combinator.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import { WebSocketServer } from 'ws';
 import type { WebSocket } from 'ws';
 import { getMainnetPriceService } from './mainnet-price-service';
@@ -32,6 +51,11 @@ interface TradeEvent {
   timestamp: string;
 }
 
+interface ProposalCacheEntry {
+  actualSupply: number; // Total supply adjusted for decimals
+  fetched: number;
+}
+
 class PriceWebSocketServer {
   private wss: WebSocketServer;
   private clients: Map<WebSocket, ClientSubscription> = new Map();
@@ -42,8 +66,12 @@ class PriceWebSocketServer {
   private mainnetPools: Set<string> = new Set(); // Track which pools are on mainnet
   private pgClient: Client | null = null;
   private subscribedProposals: Set<number> = new Set();
-  private solPrice: number = 180; // Default SOL price in USD
+  private solPrice: number = 150; // Default SOL price in USD
   private SOL_ADDRESS = 'So11111111111111111111111111111111111111112';
+
+  // Proposal cache for market cap calculations
+  private proposalCache: Map<number, ProposalCacheEntry> = new Map();
+  private readonly PROPOSAL_CACHE_TTL = 60000; // 1 minute
 
   constructor(port: number = 9091) {
     this.wss = new WebSocketServer({ port });
@@ -361,12 +389,12 @@ class PriceWebSocketServer {
       console.log('Connected to PostgreSQL for trade and price notifications');
 
       // Listen for both trade and price notifications
-      await this.pgClient.query('LISTEN new_trade');
-      await this.pgClient.query('LISTEN new_price');
+      await this.pgClient.query('LISTEN i_new_trade');
+      await this.pgClient.query('LISTEN i_new_price');
 
       this.pgClient.on('notification', (msg) => {
         console.log('PostgreSQL notification received:', msg.channel, msg.payload);
-        if (msg.channel === 'new_trade' && msg.payload) {
+        if (msg.channel === 'i_new_trade' && msg.payload) {
           try {
             const tradeData = JSON.parse(msg.payload);
             console.log('Parsed trade data:', tradeData);
@@ -374,7 +402,7 @@ class PriceWebSocketServer {
           } catch (error) {
             console.error('Error parsing trade notification:', error);
           }
-        } else if (msg.channel === 'new_price' && msg.payload) {
+        } else if (msg.channel === 'i_new_price' && msg.payload) {
           try {
             const priceData = JSON.parse(msg.payload);
             console.log('Parsed price data:', priceData);
@@ -429,39 +457,67 @@ class PriceWebSocketServer {
     }
   }
 
-  private handleNewTrade(tradeData: any) {
-    // Broadcast to all clients subscribed to this proposal
-    const trade: TradeEvent = {
+  private async handleNewTrade(tradeData: any) {
+    const proposalId = tradeData.proposalId || tradeData.proposal_id;
+    const priceInSol = parseFloat(tradeData.price);
+
+    // Calculate market cap USD: price (SOL) × actual supply × SOL/USD
+    const actualSupply = await this.getProposalTotalSupply(proposalId);
+    const marketCapUsd = priceInSol * actualSupply * this.solPrice;
+
+    // Broadcast to all clients subscribed to this proposal with BOTH formats
+    const trade: TradeEvent & { marketCapUsd: number } = {
       type: 'TRADE',
-      proposalId: tradeData.proposalId || tradeData.proposal_id,
+      proposalId: proposalId,
       market: tradeData.market,
       userAddress: tradeData.userAddress || tradeData.user_address,
       isBaseToQuote: tradeData.isBaseToQuote || tradeData.is_base_to_quote,
       amountIn: tradeData.amountIn || tradeData.amount_in,
       amountOut: tradeData.amountOut || tradeData.amount_out,
-      price: tradeData.price,
+      price: priceInSol.toString(),   // OLD: for legacy clients (SOL)
+      marketCapUsd: marketCapUsd,     // NEW: for updated clients (USD)
       txSignature: tradeData.txSignature || tradeData.tx_signature,
       timestamp: tradeData.timestamp || new Date().toISOString()
     };
 
     console.log('Trade timestamp from DB:', tradeData.timestamp, '→ sending:', trade.timestamp);
+    console.log(`Trade price: ${priceInSol} SOL → marketCap $${marketCapUsd.toFixed(2)}`);
     this.broadcastTrade(trade);
   }
 
-  private handleNewPrice(priceData: any) {
+  private async handleNewPrice(priceData: any) {
     // Log raw payload from database for debugging
     console.log('[WebSocket Server] Raw price notification from database:', JSON.stringify(priceData));
 
-    // Broadcast price update to all clients subscribed to this proposal
+    const proposalId = priceData.proposalId || priceData.proposal_id;
+    const market = priceData.market;
+    const priceValue = parseFloat(priceData.price);
+
+    let marketCapUsd: number;
+
+    // Check if this is a spot market price (already in USD) or pass/fail (in SOL)
+    if (market === 'spot') {
+      // Spot prices are already stored as market cap USD - no conversion needed
+      marketCapUsd = priceValue;
+      console.log(`[WebSocket Server] Spot market - price already in USD: $${marketCapUsd.toFixed(2)}`);
+    } else {
+      // Pass/Fail prices are in SOL - calculate market cap USD: price (SOL) × actual supply × SOL/USD
+      const actualSupply = await this.getProposalTotalSupply(proposalId);
+      marketCapUsd = priceValue * actualSupply * this.solPrice;
+      console.log(`[WebSocket Server] ${market} market - converting: ${priceValue} SOL × ${actualSupply} supply × $${this.solPrice} = $${marketCapUsd.toFixed(2)}`);
+    }
+
+    // Broadcast price update with BOTH formats for backwards compatibility
     const priceUpdate = {
       type: 'PRICE_UPDATE',
-      proposalId: priceData.proposalId || priceData.proposal_id,
-      market: priceData.market,
-      price: parseFloat(priceData.price),
+      proposalId: proposalId,
+      market: market,
+      price: priceValue,              // OLD: for legacy clients (SOL for pass/fail, USD for spot)
+      marketCapUsd: marketCapUsd,     // NEW: for updated clients (always USD)
       timestamp: priceData.timestamp || new Date().toISOString()
     };
 
-    console.log(`[WebSocket Server] Broadcasting price update: proposal ${priceUpdate.proposalId}, market ${priceUpdate.market}, price ${priceUpdate.price}`);
+    console.log(`[WebSocket Server] Broadcasting price update: proposal ${priceUpdate.proposalId}, market ${priceUpdate.market}, marketCap $${marketCapUsd.toFixed(2)}`);
     console.log(`[WebSocket Server] Subscribed proposals:`, Array.from(this.subscribedProposals));
     this.broadcastPrice(priceUpdate);
   }
@@ -476,10 +532,14 @@ class PriceWebSocketServer {
   }
 
   private broadcastPrice(priceUpdate: any) {
+    console.log('[WebSocket Server] Broadcasting priceUpdate object:', JSON.stringify(priceUpdate, null, 2));
+
     let clientCount = 0;
     this.clients.forEach((subscription, ws) => {
       if (subscription.proposals.has(priceUpdate.proposalId) && ws.readyState === 1) {
-        ws.send(JSON.stringify(priceUpdate));
+        const message = JSON.stringify(priceUpdate);
+        console.log('[WebSocket Server] Sending message to client:', message);
+        ws.send(message);
         clientCount++;
       }
     });
@@ -503,15 +563,61 @@ class PriceWebSocketServer {
         const sortedSolPairs = solPairs.sort((a: any, b: any) =>
           (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0)
         );
-        this.solPrice = parseFloat(sortedSolPairs[0]?.priceUsd || '0') || 180;
+        this.solPrice = parseFloat(sortedSolPairs[0]?.priceUsd || '0') || 150;
       } else {
-        this.solPrice = 180; // Fallback price
+        this.solPrice = 150; // Fallback price
       }
 
       console.log(`SOL price updated: $${this.solPrice}`);
     } catch (error) {
       console.error('Error fetching SOL price:', error);
-      this.solPrice = 180; // Fallback price
+      this.solPrice = 150; // Fallback price
+    }
+  }
+
+  private async getProposalTotalSupply(proposalId: number): Promise<number> {
+    const cached = this.proposalCache.get(proposalId);
+    const now = Date.now();
+
+    // Return cached value if fresh
+    if (cached && (now - cached.fetched) < this.PROPOSAL_CACHE_TTL) {
+      return cached.actualSupply;
+    }
+
+    // Fetch from database
+    try {
+      if (!this.pgClient) {
+        console.warn('No database connection, using default actual supply');
+        return 1_000_000_000; // Default fallback (1 billion tokens)
+      }
+
+      const result = await this.pgClient.query(
+        'SELECT total_supply, base_decimals FROM i_proposals WHERE proposal_id = $1 LIMIT 1',
+        [proposalId]
+      );
+
+      if (result.rows.length === 0) {
+        console.warn(`Proposal ${proposalId} not found, using default actual supply`);
+        return 1_000_000_000; // Default fallback (1 billion tokens)
+      }
+
+      const totalSupply = parseInt(result.rows[0].total_supply);
+      const baseDecimals = parseInt(result.rows[0].base_decimals) || 6;
+
+      // Total supply is already the actual token count, no decimal adjustment needed
+      const actualSupply = totalSupply;
+
+      // Cache the result
+      this.proposalCache.set(proposalId, {
+        actualSupply,
+        fetched: now
+      });
+
+      console.log(`Cached actual supply for proposal ${proposalId}: ${actualSupply} tokens (raw: ${totalSupply}, decimals: ${baseDecimals})`);
+      return actualSupply;
+    } catch (error) {
+      console.error(`Error fetching proposal ${proposalId} total supply:`, error);
+      return 1_000_000_000; // Default fallback (1 billion tokens)
     }
   }
 
