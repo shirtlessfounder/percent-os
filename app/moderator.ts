@@ -17,9 +17,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { Keypair, Connection, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
-import { getAssociatedTokenAddress, getAccount } from '@solana/spl-token';
-import { CpAmm } from '@meteora-ag/cp-amm-sdk';
+import { Keypair } from '@solana/web3.js';
 import { IModerator, IModeratorConfig, IModeratorInfo, ProposalStatus, ICreateProposalParams } from './types/moderator.interface';
 import { IExecutionConfig, PriorityFeeMode, Commitment } from './types/execution.interface';
 import { IProposal, IProposalConfig } from './types/proposal.interface';
@@ -29,7 +27,6 @@ import { PersistenceService } from './services/persistence.service';
 import { ExecutionService } from './services/execution.service';
 import { LoggerService } from './services/logger.service';
 import { DammService } from './services/damm.service';
-import { getNetworkFromConnection} from './utils/network';
 import { POOL_METADATA } from '../src/config/whitelist';
 //import { BlockEngineUrl, JitoService } from '@slateos/jito';
 

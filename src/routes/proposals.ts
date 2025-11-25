@@ -28,7 +28,7 @@ import nacl from 'tweetnacl';
 import { PersistenceService } from '../../app/services/persistence.service';
 import { RouterService } from '@app/services/router.service';
 import { LoggerService } from '../../app/services/logger.service';
-import { getPoolsForWallet, isWalletWhitelisted, POOL_METADATA } from '../config/whitelist';
+import { getPoolsForWallet, POOL_METADATA } from '../config/whitelist';
 
 const routerService = RouterService.getInstance();
 const logger = new LoggerService('api').createChild('proposals');
