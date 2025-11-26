@@ -194,7 +194,8 @@ CREATE TABLE IF NOT EXISTS qm_proposal_withdrawals (
   CONSTRAINT fk_qm_proposal_withdrawals_moderator FOREIGN KEY (moderator_id)
     REFERENCES qm_moderators(id) ON DELETE CASCADE,
   CONSTRAINT fk_qm_proposal_withdrawals_proposal FOREIGN KEY (moderator_id, proposal_id)
-    REFERENCES qm_proposals(moderator_id, proposal_id) ON DELETE CASCADE
+    REFERENCES qm_proposals(moderator_id, proposal_id) ON DELETE CASCADE,
+  CONSTRAINT unique_qm_withdrawal_request UNIQUE (withdrawal_request_id)
 );
 
 -- Index for proposal withdrawals
