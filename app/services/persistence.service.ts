@@ -409,7 +409,7 @@ export class PersistenceService implements IPersistenceService {
   ): Promise<void> {
     try {
       const query = `
-        INSERT INTO i_proposal_withdrawals (
+        INSERT INTO qm_proposal_withdrawals (
           moderator_id, proposal_id,
           withdrawal_request_id, withdrawal_signature,
           withdrawal_percentage, withdrawn_token_a, withdrawn_token_b,
@@ -441,7 +441,7 @@ export class PersistenceService implements IPersistenceService {
 
       // Update proposal to mark it has a withdrawal
       await this.pool.query(
-        `UPDATE i_proposals
+        `UPDATE qm_proposals
          SET has_withdrawal = true, updated_at = NOW()
          WHERE moderator_id = $1 AND proposal_id = $2`,
         [this.moderatorId, proposalId]
@@ -486,7 +486,7 @@ export class PersistenceService implements IPersistenceService {
           withdrawal_percentage, withdrawn_token_a, withdrawn_token_b,
           spot_price, needs_deposit_back, deposit_signature, deposited_at,
           pool_address
-         FROM i_proposal_withdrawals
+         FROM qm_proposal_withdrawals
          WHERE moderator_id = $1 AND proposal_id = $2`,
         [this.moderatorId, proposalId]
       );
@@ -533,7 +533,7 @@ export class PersistenceService implements IPersistenceService {
   ): Promise<void> {
     try {
       await this.pool.query(
-        `UPDATE i_proposal_withdrawals
+        `UPDATE qm_proposal_withdrawals
          SET needs_deposit_back = false,
              deposit_signature = $1,
              deposited_token_a = $2,

@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS qm_proposals (
 
   spot_pool_address VARCHAR(64),
   total_supply BIGINT NOT NULL DEFAULT 1000000000,
+  has_withdrawal BOOLEAN DEFAULT FALSE,
   updated_at TIMESTAMPTZ DEFAULT NOW(),
 
   CONSTRAINT unique_qm_moderator_proposal UNIQUE (moderator_id, proposal_id),
@@ -53,6 +54,8 @@ CREATE TABLE IF NOT EXISTS qm_proposals (
 CREATE INDEX IF NOT EXISTS idx_qm_proposals_moderator_status ON qm_proposals(moderator_id, status);
 CREATE INDEX IF NOT EXISTS idx_qm_proposals_moderator_created ON qm_proposals(moderator_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_qm_proposals_moderator_proposal ON qm_proposals(moderator_id, proposal_id);
+CREATE INDEX IF NOT EXISTS idx_qm_proposals_has_withdrawal ON qm_proposals(moderator_id, has_withdrawal)
+  WHERE has_withdrawal = true;
 
 -- Price history table
 CREATE TABLE IF NOT EXISTS qm_price_history (
@@ -167,3 +170,40 @@ CREATE TRIGGER qm_trade_notification_trigger
   AFTER INSERT ON qm_trade_history
   FOR EACH ROW
   EXECUTE FUNCTION notify_qm_new_trade();
+
+-- Proposal withdrawals table
+CREATE TABLE IF NOT EXISTS qm_proposal_withdrawals (
+  id SERIAL PRIMARY KEY,
+  moderator_id INTEGER NOT NULL,
+  proposal_id INTEGER NOT NULL,
+  withdrawal_request_id VARCHAR(128) NOT NULL,
+  withdrawal_signature VARCHAR(128) NOT NULL,
+  withdrawal_percentage INTEGER NOT NULL,
+  withdrawn_token_a VARCHAR(64) NOT NULL,
+  withdrawn_token_b VARCHAR(64) NOT NULL,
+  spot_price DECIMAL(20, 10) NOT NULL,
+  needs_deposit_back BOOLEAN NOT NULL DEFAULT TRUE,
+  deposit_signature VARCHAR(128),
+  deposited_token_a VARCHAR(64),
+  deposited_token_b VARCHAR(64),
+  deposited_at TIMESTAMPTZ,
+  withdrawn_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  pool_address VARCHAR(64) NOT NULL,
+
+  CONSTRAINT fk_qm_proposal_withdrawals_moderator FOREIGN KEY (moderator_id)
+    REFERENCES qm_moderators(id) ON DELETE CASCADE,
+  CONSTRAINT fk_qm_proposal_withdrawals_proposal FOREIGN KEY (moderator_id, proposal_id)
+    REFERENCES qm_proposals(moderator_id, proposal_id) ON DELETE CASCADE
+);
+
+-- Index for proposal withdrawals
+CREATE INDEX IF NOT EXISTS idx_qm_proposal_withdrawals_needs_deposit
+  ON qm_proposal_withdrawals(moderator_id, needs_deposit_back)
+  WHERE needs_deposit_back = true;
+
+-- Update trigger for proposal withdrawals
+CREATE TRIGGER update_qm_proposal_withdrawals_updated_at
+  BEFORE UPDATE ON qm_proposal_withdrawals
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
