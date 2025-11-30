@@ -44,7 +44,7 @@ export default function Header() {
               <span className="hidden sm:inline text-sm">Discord</span>
             </a>
             <a
-              href="https://github.com/zcombinatorio/zcombinator"
+              href="https://github.com/zcombinatorio"
               target="_blank"
               rel="noopener noreferrer"
               className="text-gray-400 hover:text-white transition-colors"
@@ -74,9 +74,7 @@ export default function Header() {
           </nav>
         </div>
         <a
-          href="https://zc.percent.markets/zc"
-          target="_blank"
-          rel="noopener noreferrer"
+          href="/zc"
           className="bg-white text-black px-4 py-1.5 font-medium hover:opacity-90 transition-opacity rounded-full"
         >
           Enter here
