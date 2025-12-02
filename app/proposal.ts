@@ -17,33 +17,42 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { PublicKey } from '@solana/web3.js';
-import { IProposal, IProposalConfig, IProposalSerializedData, IProposalDeserializeConfig, IProposalStatusInfo } from './types/proposal.interface';
-import { IAMM } from './types/amm.interface';
-import { IVault, VaultType } from './types/vault.interface';
-import { ITWAPOracle } from './types/twap-oracle.interface';
-import { ProposalStatus } from './types/moderator.interface';
-import { TWAPOracle } from './twap-oracle';
-import { Vault } from './vault';
-import { AMM } from './amm';
-import { BN } from '@coral-xyz/anchor';
-import { LoggerService } from './services/logger.service';
+import { PublicKey } from "@solana/web3.js";
+import {
+  IProposal,
+  IProposalConfig,
+  IProposalSerializedData,
+  IProposalDeserializeConfig,
+  IProposalStatusInfo,
+} from "./types/proposal.interface";
+import { IAMM } from "./types/amm.interface";
+import { ITWAPOracle } from "./types/twap-oracle.interface";
+import { ProposalStatus } from "./types/moderator.interface";
+import { TWAPOracle } from "./twap-oracle";
+import { AMM } from "./amm";
+import { AnchorProvider, BN, Wallet } from "@coral-xyz/anchor";
+import { LoggerService } from "./services/logger.service";
+import {
+  MAX_OPTIONS,
+  VaultClient,
+  VaultType,
+} from "@zcomb/vault-sdk";
 
 /**
  * Proposal class representing a governance proposal in the protocol
  * Handles initialization, finalization, and execution of proposals
  * Manages prediction markets through AMMs and vaults
  */
-export class Proposal implements IProposal {
+export class Proposal {
   public readonly config: IProposalConfig;
   public AMMs: IAMM[];
-  public baseVault: IVault;
-  public quoteVault: IVault;
   public readonly twapOracle: ITWAPOracle;
   public readonly finalizedAt: number;
 
   private _status: ProposalStatus = ProposalStatus.Uninitialized;
   private logger: LoggerService;
+  private provider: AnchorProvider;
+  private vaultClient: VaultClient;
 
   /**
    * Gets comprehensive status information including winner details
@@ -58,17 +67,24 @@ export class Proposal implements IProposal {
         winningMarketIndex: null,
         winningMarketLabel: null,
         winningBaseConditionalMint: null,
-        winningQuoteConditionalMint: null
+        winningQuoteConditionalMint: null,
       };
     }
 
     const winningIndex = this.twapOracle.fetchHighestTWAPIndex();
+
     return {
       status: this._status,
       winningMarketIndex: winningIndex,
       winningMarketLabel: this.config.market_labels![winningIndex],
-      winningBaseConditionalMint: this.baseVault.conditionalMints[winningIndex],
-      winningQuoteConditionalMint: this.quoteVault.conditionalMints[winningIndex]
+      winningBaseConditionalMint: this.vaultClient.deriveConditionalMint(
+        this.deriveVaultPDA(VaultType.Base),
+        winningIndex
+      )[0],
+      winningQuoteConditionalMint: this.vaultClient.deriveConditionalMint(
+        this.deriveVaultPDA(VaultType.Quote),
+        winningIndex
+      )[0],
     };
   }
 
@@ -78,19 +94,36 @@ export class Proposal implements IProposal {
    */
   constructor(config: IProposalConfig) {
     this.config = config;
-    this.finalizedAt = config.createdAt + (config.proposalLength * 1000);
+    this.finalizedAt = config.createdAt + config.proposalLength * 1000;
     this.logger = config.logger;
-    
-    if (config.markets < 2 || config.markets > 4) {
-      throw new Error('Number of markets must be between 2 and 4 (inclusive)');
+    this.AMMs = [];
+
+    // Create Anchor provider using authority keypair as wallet
+    const wallet = new Wallet(config.authority);
+    this.provider = new AnchorProvider(
+      config.executionService.connection,
+      wallet,
+      { commitment: "confirmed" }
+    );
+
+    // Initialize VaultClient with provider
+    this.vaultClient = new VaultClient(this.provider);
+
+    if (config.markets < 2 || config.markets > MAX_OPTIONS) {
+      throw new Error(`Number of markets must be between 2 & ${MAX_OPTIONS}`);
     }
 
-    if (config.market_labels && config.market_labels.length !== config.markets) {
-      throw new Error('Number of market labels must match number of markets');
+    if (
+      config.market_labels &&
+      config.market_labels.length !== config.markets
+    ) {
+      throw new Error("Number of market labels must match number of markets");
     }
 
     if (!config.market_labels) {
-      config.market_labels = Array(config.markets).map((_, index) => `Market ${index + 1}`);
+      config.market_labels = Array(config.markets).map(
+        (_, index) => `Market ${index + 1}`
+      );
     }
 
     // Create TWAP oracle
@@ -101,45 +134,7 @@ export class Proposal implements IProposal {
       config.createdAt,
       this.finalizedAt
     );
-
-    // Create vaults
-    this.baseVault = new Vault({
-      proposalId: config.id,
-      vaultType: VaultType.Base,
-      markets: config.markets,
-      regularMint: config.baseMint,
-      decimals: config.baseDecimals,
-      authority: config.authority,
-      executionService: config.executionService,
-      logger: config.logger.createChild('baseVault')
-    });
-
-    this.quoteVault = new Vault({
-      proposalId: config.id,
-      vaultType: VaultType.Quote,
-      markets: config.markets,
-      regularMint: config.quoteMint,
-      decimals: config.quoteDecimals,
-      authority: config.authority,
-      executionService: config.executionService,
-      logger: config.logger.createChild('quoteVault')
-    });
-
-    // Initialize AMMs (trades conditional tokens for each market)
-    this.AMMs = [];
-    for (let i = 0; i < config.markets; i++) {
-      this.AMMs.push(new AMM(
-        this.baseVault.conditionalMints[i],
-        this.quoteVault.conditionalMints[i],
-        config.baseDecimals,
-        config.quoteDecimals,
-        config.authority,
-        config.executionService,
-        config.logger.createChild(`amm-${i}`)
-      ));
-    }
   }
-
 
   /**
    * Initializes the proposal's blockchain components
@@ -147,51 +142,118 @@ export class Proposal implements IProposal {
    * Uses connection, authority, and decimals from constructor config
    */
   async initialize(): Promise<void> {
-    this.logger.info('Initializing proposal');
+    this.logger.info("Initializing proposal");
     // Initialize vaults
-    this.logger.info('Initializing vaults');
-    await this.baseVault.initialize();
-    await this.quoteVault.initialize();
-    
+    this.logger.info("Initializing vaults");
+
+    // Base Vault
+    const {
+      builder: baseInitBuilder,
+      vaultPda: baseVaultPda,
+      condMint0: baseCondMint0,
+      condMint1: baseCondMint1,
+    } = this.vaultClient.initialize(
+      this.config.authority.publicKey,
+      this.config.baseMint,
+      VaultType.Base,
+      this.config.moderatorId,
+      this.config.id
+    );
+    const baseCondMints: PublicKey[] = [baseCondMint0, baseCondMint1];
+    await baseInitBuilder.rpc();
+
+    // Add additional options to base vault if markets > 2
+    for (let i = 2; i < this.config.markets; i++) {
+      const { builder: addOptionBuilder, condMint } =
+        await this.vaultClient.addOption(
+          this.config.authority.publicKey,
+          baseVaultPda
+        );
+      baseCondMints.push(condMint);
+      await addOptionBuilder.rpc();
+    }
+
+    await this.vaultClient
+      .activate(this.config.authority.publicKey, baseVaultPda)
+      .rpc();
+
+    // Quote Vault
+    const {
+      builder: quoteInitBuilder,
+      vaultPda: quoteVaultPda,
+      condMint0: quoteCondMint0,
+      condMint1: quoteCondMint1,
+    } = this.vaultClient.initialize(
+      this.config.authority.publicKey,
+      this.config.quoteMint,
+      VaultType.Quote,
+      this.config.moderatorId,
+      this.config.id
+    );
+    const quoteCondMints: PublicKey[] = [quoteCondMint0, quoteCondMint1];
+    await quoteInitBuilder.rpc();
+
+    // Add additional options to quote vault if markets > 2
+    for (let i = 2; i < this.config.markets; i++) {
+      const { builder: addOptionBuilder, condMint } =
+        await this.vaultClient.addOption(
+          this.config.authority.publicKey,
+          quoteVaultPda
+        );
+      quoteCondMints.push(condMint);
+      await addOptionBuilder.rpc();
+    }
+
+    await this.vaultClient
+      .activate(this.config.authority.publicKey, quoteVaultPda)
+      .rpc();
+
     // Split regular tokens through vaults to get conditional tokens for AMM seeding
     // The authority needs to have regular tokens to split
     // Splitting gives equal amounts of pass and fail tokens
-    const baseTokensToSplit = BigInt(this.config.ammConfig.initialBaseAmount.toString());
-    const quoteTokensToSplit = BigInt(this.config.ammConfig.initialQuoteAmount.toString());
-    
-    // Build and execute split transactions for both vaults
-    this.logger.info('Building split transactions');
-    const baseSplitTx = await this.baseVault.buildSplitTx(
-      this.config.authority.publicKey,
-      baseTokensToSplit
-    );
+    await (
+      await this.vaultClient.deposit(
+        this.config.authority.publicKey,
+        baseVaultPda,
+        this.config.ammConfig.initialBaseAmount
+      )
+    ).rpc();
+    await (
+      await this.vaultClient.deposit(
+        this.config.authority.publicKey,
+        quoteVaultPda,
+        this.config.ammConfig.initialQuoteAmount
+      )
+    ).rpc();
 
-    const quoteSplitTx = await this.quoteVault.buildSplitTx(
-      this.config.authority.publicKey,
-      quoteTokensToSplit
-    );
-    
-    // Execute splits using vault's executeSplitTx method
-    this.logger.info('Executing split transactions');
-    await this.baseVault.executeSplitTx(baseSplitTx);
-    await this.quoteVault.executeSplitTx(quoteSplitTx);
-    
     // Initialize AMMs with initial liquidity
     // All AMMs get the same amounts since splitting gives equal conditional tokens
-    this.logger.info('Initializing AMMs');
+    this.logger.info("Initializing AMMs");
+    this.AMMs = [];
     for (let i = 0; i < this.config.markets; i++) {
+      this.AMMs.push(
+        new AMM(
+          baseCondMints[i],
+          quoteCondMints[i],
+          this.config.baseDecimals,
+          this.config.quoteDecimals,
+          this.config.authority,
+          this.config.executionService,
+          this.config.logger.createChild(`amm-${i}`)
+        )
+      );
       await this.AMMs[i].initialize(
         this.config.ammConfig.initialBaseAmount,
         this.config.ammConfig.initialQuoteAmount
       );
     }
-    
+
     // Set AMMs in TWAP oracle so it can track prices
     this.twapOracle.setAMMs(this.AMMs);
-    
+
     // Update status to Pending now that everything is initialized
     this._status = ProposalStatus.Pending;
-    this.logger.info('Proposal initialized and set to pending');
+    this.logger.info("Proposal initialized and set to pending");
   }
 
   /**
@@ -201,22 +263,12 @@ export class Proposal implements IProposal {
    */
   getAMMs(): IAMM[] {
     if (this._status === ProposalStatus.Uninitialized) {
-      throw new Error(`Proposal #${this.config.id}: Not initialized - call initialize() first`);
+      throw new Error(
+        `Proposal #${this.config.id}: Not initialized - call initialize() first`
+      );
     }
 
     return this.AMMs;
-  }
-
-  /**
-   * Returns both vaults for the proposal
-   * @returns Tuple of [baseVault, quoteVault]  
-   * @throws Error if vaults are not initialized
-   */
-  getVaults(): [IVault, IVault] {
-    if (this._status === ProposalStatus.Uninitialized) {
-      throw new Error(`Proposal #${this.config.id}: Not initialized - call initialize() first`);
-    }
-    return [this.baseVault, this.quoteVault];
   }
 
   /**
@@ -226,9 +278,11 @@ export class Proposal implements IProposal {
    * @returns Tuple of [status, winningMarketIndex | null]
    */
   async finalize(): Promise<[ProposalStatus, number | null]> {
-    this.logger.info('Finalizing proposal');
+    this.logger.info("Finalizing proposal");
     if (this._status === ProposalStatus.Uninitialized) {
-      throw new Error(`Proposal #${this.config.id}: Not initialized - call initialize() first`);
+      throw new Error(
+        `Proposal #${this.config.id}: Not initialized - call initialize() first`
+      );
     }
 
     // Still pending if before finalization time
@@ -242,7 +296,7 @@ export class Proposal implements IProposal {
     // Update status if still pending after finalization time
     if (this._status === ProposalStatus.Pending) {
       // Perform final TWAP crank to ensure we have the most up-to-date data
-      this.logger.info('Cranking TWAP');
+      this.logger.info("Cranking TWAP");
       await this.twapOracle.crankTWAP();
 
       this._status = ProposalStatus.Finalized;
@@ -255,9 +309,9 @@ export class Proposal implements IProposal {
             await this.AMMs[i].removeLiquidity();
           }
         } catch (error) {
-          this.logger.error('Error removing liquidity from AMM', {
+          this.logger.error("Error removing liquidity from AMM", {
             ammIndex: i,
-            error
+            error,
           });
         }
       }
@@ -265,45 +319,66 @@ export class Proposal implements IProposal {
       // Determine the winning conditional mint
       winningIndex = this.twapOracle.fetchHighestTWAPIndex();
 
-      // Finalize both vaults with the proposal status
-      this.logger.info('Finalizing vaults');
-      await this.baseVault.finalize(this.baseVault.conditionalMints[winningIndex]);
-      await this.quoteVault.finalize(this.quoteVault.conditionalMints[winningIndex]);
-      
+      const [baseVaultPDA] = this.vaultClient.deriveVaultPDA(
+        this.config.authority.publicKey,
+        this.config.moderatorId,
+        this.config.id,
+        VaultType.Base
+      );
+
+      const [quoteVaultPDA] = this.vaultClient.deriveVaultPDA(
+        this.config.authority.publicKey,
+        this.config.moderatorId,
+        this.config.id,
+        VaultType.Quote
+      );
+
+      // Finalize both vaults
+      this.logger.info("Finalizing vaults");
+      await this.vaultClient
+        .finalize(this.config.authority.publicKey, baseVaultPDA, winningIndex)
+        .rpc();
+      await this.vaultClient
+        .finalize(this.config.authority.publicKey, quoteVaultPDA, winningIndex)
+        .rpc();
+
       // Redeem authority's winning tokens after finalization
       // This converts winning conditional tokens back to regular tokens
       try {
-        this.logger.info('Building redeem winning tokens transaction for base vault');
-        const baseRedeemTx = await this.baseVault.buildRedeemWinningTokensTx(
-          this.config.authority.publicKey
-        );
-        this.logger.info('Executing redeem winning tokens transaction for base vault');
-        baseRedeemTx.sign(this.config.authority);
-        await this.baseVault.executeRedeemWinningTokensTx(baseRedeemTx);
+        this.logger.info("Redeem winning tokens transaction for base vault");
+        await (
+          await this.vaultClient.redeemWinnings(
+            this.config.authority.publicKey,
+            baseVaultPDA
+          )
+        ).rpc();
       } catch (error) {
-        this.logger.warn('Error redeeming base vault winning tokens', {
-          vaultType: 'base',
-          error
+        this.logger.warn("Error redeeming base vault winning tokens", {
+          vaultType: "base",
+          error,
         });
       }
 
       try {
-        this.logger.info('Building redeem winning tokens transaction for quote vault');
-        const quoteRedeemTx = await this.quoteVault.buildRedeemWinningTokensTx(
-          this.config.authority.publicKey
-        );
-        this.logger.info('Executing redeem winning tokens transaction for quote vault');
-        quoteRedeemTx.sign(this.config.authority);
-        await this.quoteVault.executeRedeemWinningTokensTx(quoteRedeemTx);
+        this.logger.info("Redeem winning tokens transaction for quote vault");
+        await (
+          await this.vaultClient.redeemWinnings(
+            this.config.authority.publicKey,
+            quoteVaultPDA
+          )
+        ).rpc();
       } catch (error) {
-        this.logger.warn('Error redeeming quote vault winning tokens', {
-          vaultType: 'quote',
-          error
+        this.logger.warn("Error redeeming quote vault winning tokens", {
+          vaultType: "quote",
+          error,
         });
       }
     }
 
-    this.logger.info('Proposal finalization returned', { status: this._status, winningIndex });
+    this.logger.info("Proposal finalization returned", {
+      status: this._status,
+      winningIndex,
+    });
     return [this._status, winningIndex];
   }
 
@@ -345,9 +420,7 @@ export class Proposal implements IProposal {
       twapConfig: this.config.twap,
 
       // Serialize components using their individual serialize methods
-      AMMData: this.AMMs.map(amm => amm.serialize()),
-      baseVaultData: this.baseVault.serialize(),
-      quoteVaultData: this.quoteVault.serialize(),
+      AMMData: this.AMMs.map((amm) => amm.serialize()),
       twapOracleData: this.twapOracle.serialize(),
     };
   }
@@ -358,8 +431,10 @@ export class Proposal implements IProposal {
    * @param config - Configuration for reconstructing the proposal
    * @returns Restored proposal instance
    */
-  static async deserialize(data: IProposalSerializedData, config: IProposalDeserializeConfig): Promise<Proposal> {
-
+  static async deserialize(
+    data: IProposalSerializedData,
+    config: IProposalDeserializeConfig
+  ): Promise<Proposal> {
     // Reconstruct proposal config
     const proposalConfig: IProposalConfig = {
       id: data.id,
@@ -383,7 +458,7 @@ export class Proposal implements IProposal {
         initialBaseAmount: new BN(data.ammConfig.initialBaseAmount),
         initialQuoteAmount: new BN(data.ammConfig.initialQuoteAmount),
       },
-      logger: config.logger
+      logger: config.logger,
     };
 
     // Create proposal instance
@@ -394,42 +469,6 @@ export class Proposal implements IProposal {
 
     // Only deserialize components if the proposal isn't in Uninitialized state
     if (data.status !== ProposalStatus.Uninitialized) {
-      // Deserialize vaults
-      // Patch vault data with proposal-level info if missing (for backward compatibility)
-      const baseVaultData = {
-        ...data.baseVaultData,
-        proposalId: data.baseVaultData.proposalId ?? data.id,
-        vaultType: data.baseVaultData.vaultType ?? VaultType.Base,
-        regularMint: data.baseVaultData.regularMint || data.baseMint,
-        decimals: data.baseVaultData.decimals ?? data.baseDecimals,
-        proposalStatus: data.baseVaultData.proposalStatus ?? data.status
-      };
-
-      const quoteVaultData = {
-        ...data.quoteVaultData,
-        proposalId: data.quoteVaultData.proposalId ?? data.id,
-        vaultType: data.quoteVaultData.vaultType ?? VaultType.Quote,
-        regularMint: data.quoteVaultData.regularMint || data.quoteMint,
-        decimals: data.quoteVaultData.decimals ?? data.quoteDecimals,
-        proposalStatus: data.quoteVaultData.proposalStatus ?? data.status
-      };
-
-      const baseVault = await Vault.deserialize(baseVaultData, {
-        authority: config.authority,
-        executionService: config.executionService,
-        logger: config.logger.createChild('baseVault')
-      });
-
-      const quoteVault = await Vault.deserialize(quoteVaultData, {
-        authority: config.authority,
-        executionService: config.executionService,
-        logger: config.logger.createChild('quoteVault')
-      });
-
-      // Replace the default vaults with the deserialized ones
-      proposal.baseVault = baseVault;
-      proposal.quoteVault = quoteVault;
-
       // Deserialize AMMs
       // Patch AMM data with proposal-level token info if missing (for backward compatibility)
       const AMMData = [];
@@ -440,7 +479,7 @@ export class Proposal implements IProposal {
           baseMint: ammData.baseMint,
           quoteMint: ammData.quoteMint || data.quoteMint,
           baseDecimals: ammData.baseDecimals ?? data.baseDecimals,
-          quoteDecimals: ammData.quoteDecimals ?? data.quoteDecimals
+          quoteDecimals: ammData.quoteDecimals ?? data.quoteDecimals,
         });
       }
 
@@ -451,7 +490,7 @@ export class Proposal implements IProposal {
         const amm = AMM.deserialize(ammData, {
           authority: config.authority,
           executionService: config.executionService,
-          logger: config.logger.createChild(`amm-${i}`)
+          logger: config.logger.createChild(`amm-${i}`),
         });
         AMMs.push(amm);
       }
@@ -470,5 +509,14 @@ export class Proposal implements IProposal {
     }
 
     return proposal;
+  }
+
+  deriveVaultPDA(vaultType: VaultType) {
+    return this.vaultClient.deriveVaultPDA(
+      this.config.authority.publicKey,
+      this.config.moderatorId,
+      this.config.id,
+      vaultType
+    )[0]; // Just return the public key
   }
 }

@@ -20,7 +20,6 @@
 import { PublicKey, Keypair } from '@solana/web3.js';
 import { BN } from '@coral-xyz/anchor';
 import { IAMM, IAMMSerializedData } from './amm.interface';
-import { IVault, IVaultSerializedData } from './vault.interface';
 import { ITWAPOracle, ITWAPConfig, ITWAPOracleSerializedData } from './twap-oracle.interface';
 import { ProposalStatus } from './moderator.interface';
 import { IExecutionService } from './execution.interface';
@@ -73,8 +72,6 @@ export interface IProposalConfig {
 export interface IProposal {
   readonly config: IProposalConfig;    // Configuration object containing all proposal parameters
   AMMs: IAMM[];                        // Array of AMMs (one per market, initialized during proposal setup)
-  baseVault: IVault;                   // Base vault managing N conditional base tokens
-  quoteVault: IVault;                  // Quote vault managing N conditional quote tokens
   readonly twapOracle: ITWAPOracle;    // Time-weighted average price oracle (immutable)
   readonly finalizedAt: number;        // Timestamp when voting ends (ms, immutable)
 
@@ -97,13 +94,6 @@ export interface IProposal {
    * @throws Error if AMMs are uninitialized
    */
   getAMMs(): IAMM[];
-
-  /**
-   * Gets both vaults for the proposal
-   * @returns Tuple of [baseVault, quoteVault]
-   * @throws Error if vaults are uninitialized
-   */
-  getVaults(): [IVault, IVault];
 
   /**
    * Finalizes the proposal based on TWAP results
@@ -156,8 +146,6 @@ export interface IProposalSerializedData {
 
   // Serialized components
   AMMData: IAMMSerializedData[];
-  baseVaultData: IVaultSerializedData;
-  quoteVaultData: IVaultSerializedData;
   twapOracleData: ITWAPOracleSerializedData;
 }
 
