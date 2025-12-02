@@ -169,7 +169,7 @@ export const TokenPriceBox: React.FC<TokenPriceBoxProps> = ({
               </div>
             )}
             {/* TWAP display for N-ary markets */}
-            {tokenType === 'market' && twap !== null && (
+            {tokenType === 'market' && twap !== null && twap !== undefined && (
               <div className="text-sm mt-1" style={{ color: '#9ca3af' }}>
                 TWAP: {(twap * 100).toFixed(2)}%
               </div>
