@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { api } from '@/lib/api';
+import { PublicKey } from '@solana/web3.js';
+import { fetchUserBalances, type UserBalancesResponse } from '@/lib/programs/vault';
 import { useProposals } from './useProposals';
 import { useTokenPrices } from './useTokenPrices';
-import type { UserBalancesResponse, ProposalListItem } from '@/types/api';
+import type { ProposalListItem } from '@/types/api';
 
 export interface ClaimablePosition {
   proposalId: number;
@@ -44,7 +45,12 @@ export function useClaimablePositions(walletAddress: string | null, moderatorId?
     try {
       // Fetch balances for finalized proposals in parallel
       const balancePromises = finalizedProposals.map(proposal =>
-        api.getUserBalances(proposal.id, address, moderatorId)
+        fetchUserBalances(
+          new PublicKey(proposal.baseVaultPDA),
+          new PublicKey(proposal.quoteVaultPDA),
+          new PublicKey(address),
+          proposal.id
+        )
           .then(data => ({ id: proposal.id, data }))
           .catch(() => ({ id: proposal.id, data: null }))
       );
@@ -66,7 +72,7 @@ export function useClaimablePositions(walletAddress: string | null, moderatorId?
     } finally {
       setLoading(false);
     }
-  }, [moderatorId]);
+  }, []);
 
   useEffect(() => {
     if (!walletAddress || proposals.length === 0) {

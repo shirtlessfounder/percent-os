@@ -15,19 +15,8 @@ import { DepositCard } from '@/components/DepositCard';
 import { useProposals } from '@/hooks/useProposals';
 import { useTradeHistory } from '@/hooks/useTradeHistory';
 import { useUserBalances } from '@/hooks/useUserBalances';
-import { useClaimablePositions } from '@/hooks/useClaimablePositions';
 import { formatNumber, formatCurrency } from '@/lib/formatters';
-import { useSolanaWallets } from '@privy-io/react-auth/solana';
-import { Transaction } from '@solana/web3.js';
-import toast from 'react-hot-toast';
 import { getProposalContent } from '@/lib/proposalContent';
-import { renderToStaticMarkup } from 'react-dom/server';
-import { CheckCircle2, XCircle } from 'lucide-react';
-import { api } from '@/lib/api';
-import { claimWinnings } from '@/lib/trading';
-import { buildApiUrl } from '@/lib/api-utils';
-import Masonry from 'react-masonry-css';
-import { ProposalVolume } from '@/components/ProposalVolume';
 import { useTokenContext } from '@/providers/TokenContext';
 
 const LivePriceDisplay = dynamic(() => import('@/components/LivePriceDisplay').then(mod => mod.LivePriceDisplay), {
@@ -71,9 +60,6 @@ export default function HomePage() {
   // Fetch token prices for USD conversion
   const { sol: solPrice, baseToken: baseTokenPrice } = useTokenPrices(baseMint);
 
-  // Get Solana wallets for transaction signing
-  const { wallets } = useSolanaWallets();
-
   // Memoize sorted proposals for live view (sort by creation time to match backend ordering)
   const sortedProposals = useMemo(() =>
     [...proposals].sort((a, b) => b.createdAt - a.createdAt),
@@ -81,9 +67,6 @@ export default function HomePage() {
   );
 
   const [selectedProposalId, setSelectedProposalId] = useState<number | null>(null);
-
-  // Fetch user balances for the selected proposal
-  const { data: userBalances, refetch: refetchBalances } = useUserBalances(selectedProposalId, walletAddress, moderatorId ?? undefined);
   const [selectedMarketIndex, setSelectedMarketIndex] = useState<number>(1); // Default to index 1 (first choice)
 
   // Reset selected proposal when token changes to prevent stale data display
@@ -97,10 +80,18 @@ export default function HomePage() {
       setSelectedProposalId(sortedProposals[0].id);
     }
   }, [sortedProposals, selectedProposalId, loading]);
-  
+
   const proposal = useMemo(() =>
     proposals.find(p => p.id === selectedProposalId) || sortedProposals[0] || null,
     [selectedProposalId, proposals, sortedProposals]
+  );
+
+  // Fetch user balances for the selected proposal (uses client-side SDK)
+  const { data: userBalances, refetch: refetchBalances } = useUserBalances(
+    selectedProposalId,
+    proposal?.baseVaultPDA ?? null,
+    proposal?.quoteVaultPDA ?? null,
+    walletAddress
   );
 
   // Fetch trade history for the selected proposal
@@ -172,211 +163,6 @@ export default function HomePage() {
   const hasWalletBalance = useMemo(() => {
     return solBalance > 0 || baseTokenBalance > 0;
   }, [solBalance, baseTokenBalance]);
-
-  /* TRADING FUNCTIONS - COMMENTED OUT UNTIL TRADING MODAL IS IMPLEMENTED
-  // Handle MAX button click - TODO: Move to trading modal
-  const handleMaxClick = useCallback(() => {
-    if (marketMode === 'enter') {
-      let maxBalance = selectedToken === 'sol' ? solBalance : baseTokenBalance;
-
-      // Reserve 0.02 SOL for transaction fees when entering with SOL
-      if (selectedToken === 'sol' && maxBalance !== null) {
-        const SOL_GAS_RESERVE = 0.02;
-        maxBalance = Math.max(0, maxBalance - SOL_GAS_RESERVE);
-      }
-
-      setAmount(maxBalance?.toString() || '0');
-    } else {
-      // Exit mode: calculate min across ALL conditional balances (N-ary support)
-      if (userBalances) {
-        let maxExitAmount = 0;
-        if (selectedToken === 'sol') {
-          const quoteBalances = userBalances.quote.conditionalBalances.map(
-            (b: string) => parseFloat(b || '0') / 1e9
-          );
-          maxExitAmount = Math.min(...quoteBalances);
-        } else {
-          const baseBalances = userBalances.base.conditionalBalances.map(
-            (b: string) => parseFloat(b || '0') / 1e6
-          );
-          maxExitAmount = Math.min(...baseBalances);
-        }
-        setAmount(maxExitAmount.toString());
-      }
-    }
-  }, [marketMode, selectedToken, solBalance, baseTokenBalance, userBalances]);
-
-  // Handle Enter Market - Split tokens into conditional tokens
-  const handleEnterMarket = useCallback(async () => {
-    if (!authenticated || !walletAddress) {
-      toast.error('Please connect your wallet');
-      return;
-    }
-
-    if (!amount || parseFloat(amount) <= 0) {
-      toast.error('Please enter a valid amount');
-      return;
-    }
-
-    if (!proposal || proposal.id === undefined) {
-      toast.error('No proposal selected');
-      return;
-    }
-
-    setIsEntering(true);
-    const toastId = toast.loading('Entering market...');
-
-    try {
-      // Determine vault type based on selected token
-      const vaultType = selectedToken === 'sol' ? 'quote' : 'base';
-
-      // Convert amount to smallest units
-      const decimals = selectedToken === 'sol' ? 9 : 6; // SOL: 9, ZC: 6
-      const amountInSmallestUnits = Math.floor(parseFloat(amount) * Math.pow(10, decimals));
-
-      // Build split transaction
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-      const buildResponse = await fetch(buildApiUrl(API_BASE_URL, `/api/vaults/${proposal.id}/${vaultType}/buildSplitTx`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user: walletAddress,
-          amount: amountInSmallestUnits.toString()
-        })
-      });
-
-      if (!buildResponse.ok) {
-        const error = await buildResponse.json();
-        throw new Error(error.message || 'Failed to build split transaction');
-      }
-
-      const buildData = await buildResponse.json();
-
-      // Sign the transaction
-      const splitTx = Transaction.from(Buffer.from(buildData.transaction, 'base64'));
-      const wallet = wallets[0];
-      if (!wallet) throw new Error('No Solana wallet found');
-      const signedTx = await wallet.signTransaction(splitTx);
-
-      // Execute split transaction
-      const executeResponse = await fetch(buildApiUrl(API_BASE_URL, `/api/vaults/${proposal.id}/${vaultType}/executeSplitTx`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          transaction: Buffer.from(signedTx.serialize({ requireAllSignatures: false })).toString('base64')
-        })
-      });
-
-      if (!executeResponse.ok) {
-        const error = await executeResponse.json();
-        throw new Error(error.message || 'Failed to execute split transaction');
-      }
-
-      toast.success('Successfully entered market!', { id: toastId, duration: 5000 });
-
-      // Clear amount and refresh balances
-      setAmount('');
-      refetchBalances();
-
-    } catch (error) {
-      console.error('Enter market failed:', error);
-      toast.error(
-        `Failed to enter market: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        { id: toastId }
-      );
-    } finally {
-      setIsEntering(false);
-    }
-  }, [authenticated, walletAddress, amount, proposal, selectedToken, wallets, refetchBalances]);
-
-  // Handle Exit Market - Merge conditional tokens back
-  const handleExitMarket = useCallback(async () => {
-    if (!authenticated || !walletAddress) {
-      toast.error('Please connect your wallet');
-      return;
-    }
-
-    if (!amount || parseFloat(amount) <= 0) {
-      toast.error('Please enter a valid amount');
-      return;
-    }
-
-    if (!proposal || proposal.id === undefined) {
-      toast.error('No proposal selected');
-      return;
-    }
-
-    if (!userBalances) {
-      toast.error('Unable to get user balances');
-      return;
-    }
-
-    setIsExiting(true);
-    const toastId = toast.loading('Exiting market...');
-
-    try {
-      // Determine vault type based on selected token
-      const vaultType = selectedToken === 'sol' ? 'quote' : 'base';
-
-      // Convert amount to smallest units
-      const decimals = selectedToken === 'sol' ? 9 : 6; // SOL: 9, ZC: 6
-      const amountInSmallestUnits = Math.floor(parseFloat(amount) * Math.pow(10, decimals));
-
-      // Build merge transaction
-      const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-      const buildResponse = await fetch(buildApiUrl(API_BASE_URL, `/api/vaults/${proposal.id}/${vaultType}/buildMergeTx`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user: walletAddress,
-          amount: amountInSmallestUnits.toString()
-        })
-      });
-
-      if (!buildResponse.ok) {
-        const error = await buildResponse.json();
-        throw new Error(error.message || 'Failed to build merge transaction');
-      }
-
-      const buildData = await buildResponse.json();
-
-      // Sign the transaction
-      const mergeTx = Transaction.from(Buffer.from(buildData.transaction, 'base64'));
-      const wallet = wallets[0];
-      if (!wallet) throw new Error('No Solana wallet found');
-      const signedTx = await wallet.signTransaction(mergeTx);
-
-      // Execute merge transaction
-      const executeResponse = await fetch(buildApiUrl(API_BASE_URL, `/api/vaults/${proposal.id}/${vaultType}/executeMergeTx`), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          transaction: Buffer.from(signedTx.serialize({ requireAllSignatures: false })).toString('base64')
-        })
-      });
-
-      if (!executeResponse.ok) {
-        const error = await executeResponse.json();
-        throw new Error(error.message || 'Failed to execute merge transaction');
-      }
-
-      toast.success('Successfully exited market!', { id: toastId, duration: 5000 });
-
-      // Clear amount and refresh balances
-      setAmount('');
-      refetchBalances();
-
-    } catch (error) {
-      console.error('Exit market failed:', error);
-      toast.error(
-        `Failed to exit market: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        { id: toastId }
-      );
-    } finally {
-      setIsExiting(false);
-    }
-  }, [authenticated, walletAddress, amount, proposal, selectedToken, userBalances, wallets, refetchBalances]);
-  */
 
   // Calculate PFG percentage to match backend logic
   // Note: PFG (Pass-Fail Gap) is only meaningful for binary markets
@@ -569,11 +355,12 @@ export default function HomePage() {
                     <div className="order-2 md:order-1">
                       <DepositCard
                         proposalId={proposal.id}
+                        baseVaultPDA={proposal.baseVaultPDA}
+                        quoteVaultPDA={proposal.quoteVaultPDA}
                         solBalance={solBalance}
                         baseTokenBalance={baseTokenBalance}
                         userBalances={userBalances}
                         onDepositSuccess={refetchBalances}
-                        moderatorId={moderatorId || undefined}
                         tokenSymbol={tokenSymbol}
                       />
                     </div>

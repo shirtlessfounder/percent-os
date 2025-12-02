@@ -22,10 +22,9 @@
 import { useState, useCallback, useMemo, memo, useEffect, useRef } from 'react';
 import { usePrivyWallet } from '@/hooks/usePrivyWallet';
 import { useTokenPrices } from '@/hooks/useTokenPrices';
+import { useTransactionSigner } from '@/hooks/useTransactionSigner';
 import { formatNumber, formatCurrency } from '@/lib/formatters';
 import { openPosition } from '@/lib/trading';
-import { useSolanaWallets } from '@privy-io/react-auth/solana';
-import { Transaction } from '@solana/web3.js';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import { getDecimals, toDecimal, toSmallestUnits } from '@/lib/constants/tokens';
@@ -172,17 +171,8 @@ const TradingInterface = memo(({
     return !hasAnyBase && !hasAnyQuote;
   }, [userBalances]);
 
-  const { wallets } = useSolanaWallets();
+  const { signTransaction } = useTransactionSigner();
   const [isTrading, setIsTrading] = useState(false);
-
-  // Transaction signer helper
-  const createTransactionSigner = useCallback(() => {
-    return async (transaction: Transaction) => {
-      const wallet = wallets[0];
-      if (!wallet) throw new Error('No Solana wallet found');
-      return await wallet.signTransaction(transaction);
-    };
-  }, [wallets]);
 
   // Quote state for slippage calculation
   const [quote, setQuote] = useState<{
@@ -324,7 +314,7 @@ const TradingInterface = memo(({
         inputToken: sellingToken, // Which conditional token we're selling
         inputAmount: amount,
         userAddress: walletAddress,
-        signTransaction: createTransactionSigner(),
+        signTransaction,
         moderatorId: moderatorId || undefined
       });
 
@@ -344,7 +334,7 @@ const TradingInterface = memo(({
     } finally {
       setIsTrading(false);
     }
-  }, [isConnected, login, walletAddress, amount, proposalId, selectedMarketIndex, sellingToken, wallets, refetchBalances, onTradeSuccess]);
+  }, [isConnected, login, walletAddress, amount, proposalId, selectedMarketIndex, sellingToken, signTransaction, refetchBalances, onTradeSuccess]);
 
   // Quick amount buttons - depends on selling token
   const quickAmounts = useMemo(() => {

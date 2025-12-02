@@ -41,6 +41,8 @@ export interface ProposalListItem {
   totalSupply?: number;
   poolAddress?: string | null;
   poolName?: string;
+  baseVaultPDA: string;
+  quoteVaultPDA: string;
 }
 
 export interface ProposalListResponse {
@@ -74,6 +76,8 @@ export interface ProposalDetailResponse {
   baseVaultState: any | null;
   quoteVaultState: any | null;
   twapOracleState: any | null;
+  baseVaultPDA: string;
+  quoteVaultPDA: string;
 }
 
 // Raw balance response from backend (index-based arrays)

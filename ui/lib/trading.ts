@@ -17,11 +17,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { Transaction } from '@solana/web3.js';
+import { PublicKey, Transaction } from '@solana/web3.js';
 import toast from 'react-hot-toast';
-import { buildApiUrl, withModeratorId } from './api-utils';
-import { transformUserBalances } from './api-adapter';
-import type { RawUserBalancesResponse } from '@/types/api';
+import { buildApiUrl } from './api-utils';
+import { fetchUserBalances, redeemWinnings, type UserBalancesResponse } from './programs/vault';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -88,23 +87,6 @@ export async function openPosition(config: OpenPositionConfig): Promise<void> {
 }
 
 /**
- * Get user balances for a proposal
- */
-async function getUserBalances(proposalId: number, userAddress: string, moderatorId?: number): Promise<any> {
-  const balancesResponse = await fetch(
-    buildApiUrl(API_BASE_URL, `/api/vaults/${proposalId}/getUserBalances`, { user: userAddress }, moderatorId)
-  );
-
-  if (balancesResponse.ok) {
-    const rawBalances: RawUserBalancesResponse = await balancesResponse.json();
-    // Transform to add passConditional/failConditional named fields
-    return transformUserBalances(rawBalances);
-  }
-
-  return null;
-}
-
-/**
  * Claim winnings from a finished proposal
  * Claims from BOTH vaults (base and quote) for the winning market
  * For N-ary quantum markets (2-4 options)
@@ -112,79 +94,44 @@ async function getUserBalances(proposalId: number, userAddress: string, moderato
 export async function claimWinnings(config: {
   proposalId: number;
   winningMarketIndex: number;  // Which market won (from proposal.winningMarketIndex)
+  baseVaultPDA: string;
+  quoteVaultPDA: string;
   userAddress: string;
   signTransaction: (transaction: Transaction) => Promise<Transaction>;
-  moderatorId?: number;
 }): Promise<void> {
-  const { proposalId, winningMarketIndex, userAddress, signTransaction, moderatorId } = config;
+  const { proposalId, winningMarketIndex, baseVaultPDA, quoteVaultPDA, userAddress, signTransaction } = config;
 
   const toastId = toast.loading('Claiming winnings from both vaults...');
 
   try {
     // Get user balances to determine which vaults have claimable tokens
-    const balances = await getUserBalances(proposalId, userAddress, moderatorId);
-    if (!balances) {
-      throw new Error('Failed to get user balances');
-    }
+    const balances = await fetchUserBalances(
+      new PublicKey(baseVaultPDA),
+      new PublicKey(quoteVaultPDA),
+      new PublicKey(userAddress),
+      proposalId
+    );
 
     // Check if user has winning tokens in the winning market index
     // Use conditionalBalances array for N-ary quantum markets
     const hasBaseTokens = parseFloat(balances.base.conditionalBalances[winningMarketIndex] || '0') > 0;
     const hasQuoteTokens = parseFloat(balances.quote.conditionalBalances[winningMarketIndex] || '0') > 0;
 
-    const vaultsToRedeem: ('base' | 'quote')[] = [];
-    if (hasBaseTokens) vaultsToRedeem.push('base');
-    if (hasQuoteTokens) vaultsToRedeem.push('quote');
+    const vaultsToRedeem: { type: 'base' | 'quote'; pda: string }[] = [];
+    if (hasBaseTokens) vaultsToRedeem.push({ type: 'base', pda: baseVaultPDA });
+    if (hasQuoteTokens) vaultsToRedeem.push({ type: 'quote', pda: quoteVaultPDA });
 
     if (vaultsToRedeem.length === 0) {
       throw new Error('No winning tokens to claim');
     }
 
-    // Redeem from each vault that has tokens
-    for (const vaultType of vaultsToRedeem) {
-      // Build redeem transaction
-      const redeemResponse = await fetch(
-        buildApiUrl(API_BASE_URL, `/api/vaults/${proposalId}/${vaultType}/buildRedeemWinningTokensTx`, undefined, moderatorId),
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            user: userAddress
-          })
-        }
+    // Redeem from each vault that has tokens using client-side SDK
+    for (const vault of vaultsToRedeem) {
+      await redeemWinnings(
+        new PublicKey(vault.pda),
+        new PublicKey(userAddress),
+        signTransaction
       );
-
-      if (!redeemResponse.ok) {
-        const error = await redeemResponse.json();
-        throw new Error(`Failed to build ${vaultType} redeem transaction: ${error.message || JSON.stringify(error)}`);
-      }
-
-      const redeemData = await redeemResponse.json();
-
-      // Sign the transaction
-      const redeemTx = Transaction.from(Buffer.from(redeemData.transaction, 'base64'));
-      const signedRedeemTx = await signTransaction(redeemTx);
-
-      // Execute the signed redeem transaction
-      const executeRedeemResponse = await fetch(
-        buildApiUrl(API_BASE_URL, `/api/vaults/${proposalId}/${vaultType}/executeRedeemWinningTokensTx`, undefined, moderatorId),
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            transaction: Buffer.from(signedRedeemTx.serialize({ requireAllSignatures: false })).toString('base64')
-          })
-        }
-      );
-
-      if (!executeRedeemResponse.ok) {
-        const error = await executeRedeemResponse.json();
-        throw new Error(`Failed to execute ${vaultType} redeem transaction: ${error.message || JSON.stringify(error)}`);
-      }
     }
 
     toast.success(
@@ -193,7 +140,7 @@ export async function claimWinnings(config: {
     );
 
     return;
-    
+
   } catch (error) {
     console.error('Error claiming winnings:', error);
     toast.error(

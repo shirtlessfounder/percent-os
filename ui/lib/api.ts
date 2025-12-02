@@ -18,9 +18,9 @@
  */
 
 import { Connection } from '@solana/web3.js';
-import type { ProposalListResponse, ProposalListItem, ProposalDetailResponse, UserBalancesResponse, RawUserBalancesResponse } from '@/types/api';
+import type { ProposalListResponse, ProposalListItem, ProposalDetailResponse } from '@/types/api';
 import { buildApiUrl } from './api-utils';
-import { transformProposalListItem, transformProposalDetail, transformUserBalances, transformTWAPHistory } from './api-adapter';
+import { transformProposalListItem, transformProposalDetail, transformTWAPHistory } from './api-adapter';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.com';
@@ -111,20 +111,6 @@ class GovernanceAPI {
       return transformProposalDetail(data);
     } catch (error) {
       console.error('Error fetching proposal:', error);
-      return null;
-    }
-  }
-
-  async getUserBalances(proposalId: number, userAddress: string, moderatorId?: number | string): Promise<UserBalancesResponse | null> {
-    try {
-      const url = buildApiUrl(API_BASE_URL, `/api/vaults/${proposalId}/getUserBalances`, { user: userAddress }, moderatorId);
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('Failed to fetch user balances');
-      const data: RawUserBalancesResponse = await response.json();
-      // Transform to UI format with pass/fail named fields
-      return transformUserBalances(data);
-    } catch (error) {
-      console.error('Error fetching user balances:', error);
       return null;
     }
   }

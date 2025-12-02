@@ -17,11 +17,11 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
+import { PublicKey, Transaction } from '@solana/web3.js';
 import { BN } from '@coral-xyz/anchor';
 import { createVaultClient, createReadOnlyVaultClient } from './utils';
 
-export type SignTransaction = <T extends Transaction | VersionedTransaction>(tx: T) => Promise<T>;
+export type SignTransaction = (tx: Transaction) => Promise<Transaction>;
 
 /**
  * Deposit regular tokens into the vault to receive conditional tokens

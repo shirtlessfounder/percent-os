@@ -17,9 +17,11 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { Connection, PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
+import { Connection, PublicKey, Transaction } from '@solana/web3.js';
 import { AnchorProvider, Wallet } from '@coral-xyz/anchor';
 import { VaultClient } from '@zcomb/vault-sdk';
+
+export type SignTransaction = (tx: Transaction) => Promise<Transaction>;
 
 const RPC_URL = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://bernie-zo3q7f-fast-mainnet.helius-rpc.com';
 
@@ -36,12 +38,12 @@ export function getConnection(): Connection {
  */
 export function createWalletAdapter(
   publicKey: PublicKey,
-  signTransactionFn: <T extends Transaction | VersionedTransaction>(tx: T) => Promise<T>
+  signTransactionFn: SignTransaction
 ): Wallet {
   return {
     publicKey,
-    signTransaction: signTransactionFn,
-    signAllTransactions: (txs) => Promise.all(txs.map(tx => signTransactionFn(tx))),
+    signTransaction: signTransactionFn as Wallet['signTransaction'],
+    signAllTransactions: ((txs: Transaction[]) => Promise.all(txs.map(tx => signTransactionFn(tx)))) as Wallet['signAllTransactions'],
     payer: undefined as any, // Not available in browser wallets
   };
 }
@@ -51,7 +53,7 @@ export function createWalletAdapter(
  */
 export function createProvider(
   userPublicKey: PublicKey,
-  signTransaction: <T extends Transaction | VersionedTransaction>(tx: T) => Promise<T>
+  signTransaction: SignTransaction
 ): AnchorProvider {
   const connection = getConnection();
   const wallet = createWalletAdapter(userPublicKey, signTransaction);
@@ -67,7 +69,7 @@ export function createProvider(
  */
 export function createVaultClient(
   userPublicKey: PublicKey,
-  signTransaction: <T extends Transaction | VersionedTransaction>(tx: T) => Promise<T>
+  signTransaction: SignTransaction
 ): VaultClient {
   const provider = createProvider(userPublicKey, signTransaction);
   return new VaultClient(provider);

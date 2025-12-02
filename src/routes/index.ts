@@ -19,7 +19,6 @@
 
 import { Router } from 'express';
 import proposalRoutes from './proposals';
-import vaultRoutes from './vaults';
 import swapRoutes from './swap';
 import historyRoutes from './history';
 import poolRoutes from './pools';
@@ -47,7 +46,6 @@ router.get('/sol-price', async (_req, res) => {
 });
 
 router.use('/proposals', proposalRoutes);
-router.use('/vaults', vaultRoutes);
 router.use('/swap', swapRoutes);
 router.use('/history', historyRoutes);
 router.use('/pools', poolRoutes);
