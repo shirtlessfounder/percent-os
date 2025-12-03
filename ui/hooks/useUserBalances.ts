@@ -18,8 +18,9 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { api } from '@/lib/api';
-import type { UserBalancesResponse } from '@/types/api';
+import { PublicKey } from '@solana/web3.js';
+import { fetchUserBalances } from '@/lib/programs/vault';
+import type { UserBalancesResponse } from '@/lib/programs/vault';
 
 interface UserBalances {
   data: UserBalancesResponse | null;
@@ -28,32 +29,36 @@ interface UserBalances {
   refetch: () => void;
 }
 
-export function useUserBalances(proposalId: number | null, walletAddress: string | null, moderatorId?: number | string): UserBalances {
+export function useUserBalances(
+  proposalId: number | null,
+  vaultPDA: string | null,
+  walletAddress: string | null
+): UserBalances {
   const [balances, setBalances] = useState<Omit<UserBalances, 'refetch'>>({
     data: null,
     loading: false,
     error: null,
   });
 
-  const fetchBalances = useCallback(async (id: number, address: string) => {
+  const fetchBalances = useCallback(async (
+    id: number,
+    vaultPDAStr: string,
+    address: string
+  ) => {
     setBalances(prev => ({ ...prev, loading: true, error: null }));
 
     try {
-      const data = await api.getUserBalances(id, address, moderatorId);
-      
-      if (data) {
-        setBalances({
-          data,
-          loading: false,
-          error: null,
-        });
-      } else {
-        setBalances({
-          data: null,
-          loading: false,
-          error: 'Failed to fetch user balances',
-        });
-      }
+      const data = await fetchUserBalances(
+        new PublicKey(vaultPDAStr),
+        new PublicKey(address),
+        id
+      );
+
+      setBalances({
+        data,
+        loading: false,
+        error: null,
+      });
     } catch (error) {
       console.error('Error fetching user balances:', error);
       setBalances({
@@ -62,11 +67,11 @@ export function useUserBalances(proposalId: number | null, walletAddress: string
         error: error instanceof Error ? error.message : 'Failed to fetch user balances',
       });
     }
-  }, [moderatorId]);
+  }, []);
 
   useEffect(() => {
-    // Only fetch if both proposalId and walletAddress are available
-    if (proposalId === null || !walletAddress) {
+    // Only fetch if all required params are available
+    if (proposalId === null || !vaultPDA || !walletAddress) {
       setBalances({
         data: null,
         loading: false,
@@ -76,24 +81,24 @@ export function useUserBalances(proposalId: number | null, walletAddress: string
     }
 
     // Initial fetch
-    fetchBalances(proposalId, walletAddress);
+    fetchBalances(proposalId, vaultPDA, walletAddress);
 
     // Refresh every 30 seconds
     const interval = setInterval(() => {
-      fetchBalances(proposalId, walletAddress);
+      fetchBalances(proposalId, vaultPDA, walletAddress);
     }, 30000);
 
     // Cleanup
     return () => {
       clearInterval(interval);
     };
-  }, [proposalId, walletAddress, moderatorId, fetchBalances]);
+  }, [proposalId, vaultPDA, walletAddress, fetchBalances]);
 
   const refetch = useCallback(() => {
-    if (proposalId !== null && walletAddress) {
-      fetchBalances(proposalId, walletAddress);
+    if (proposalId !== null && vaultPDA && walletAddress) {
+      fetchBalances(proposalId, vaultPDA, walletAddress);
     }
-  }, [proposalId, walletAddress, moderatorId, fetchBalances]);
+  }, [proposalId, vaultPDA, walletAddress, fetchBalances]);
 
   return {
     ...balances,

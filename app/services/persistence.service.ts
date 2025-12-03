@@ -89,15 +89,12 @@ export class PersistenceService implements IPersistenceService {
           markets, market_labels,
           amm_config, twap_config,
           amm_data,
-          base_vault_data, quote_vault_data,
           twap_oracle_data,
           spot_pool_address, total_supply
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
         ON CONFLICT (moderator_id, proposal_id) DO UPDATE SET
           status = EXCLUDED.status,
           amm_data = EXCLUDED.amm_data,
-          base_vault_data = EXCLUDED.base_vault_data,
-          quote_vault_data = EXCLUDED.quote_vault_data,
           twap_oracle_data = EXCLUDED.twap_oracle_data,
           twap_config = EXCLUDED.twap_config,
           updated_at = NOW()
@@ -121,8 +118,6 @@ export class PersistenceService implements IPersistenceService {
         JSON.stringify(serializedData.ammConfig),
         JSON.stringify(serializedData.twapConfig || {}),
         JSON.stringify(serializedData.AMMData),
-        JSON.stringify(serializedData.baseVaultData),
-        JSON.stringify(serializedData.quoteVaultData),
         JSON.stringify(serializedData.twapOracleData),
         serializedData.spotPoolAddress || null,
         serializedData.totalSupply
@@ -355,12 +350,6 @@ export class PersistenceService implements IPersistenceService {
         AMMData: typeof row.amm_data === 'string'
           ? JSON.parse(row.amm_data)
           : row.amm_data,
-        baseVaultData: typeof row.base_vault_data === 'string'
-          ? JSON.parse(row.base_vault_data)
-          : row.base_vault_data,
-        quoteVaultData: typeof row.quote_vault_data === 'string'
-          ? JSON.parse(row.quote_vault_data)
-          : row.quote_vault_data,
         twapOracleData: typeof row.twap_oracle_data === 'string'
           ? JSON.parse(row.twap_oracle_data)
           : row.twap_oracle_data,

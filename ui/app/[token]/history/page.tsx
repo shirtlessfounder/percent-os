@@ -1,15 +1,14 @@
 'use client';
 
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { usePrivyWallet } from '@/hooks/usePrivyWallet';
 import { useWalletBalances } from '@/hooks/useWalletBalances';
 import { useTokenPrices } from '@/hooks/useTokenPrices';
+import { useTransactionSigner } from '@/hooks/useTransactionSigner';
 import Header from '@/components/Header';
 import { useProposals } from '@/hooks/useProposals';
 import { useClaimablePositions } from '@/hooks/useClaimablePositions';
 import { formatNumber } from '@/lib/formatters';
-import { useSolanaWallets } from '@privy-io/react-auth/solana';
-import { Transaction } from '@solana/web3.js';
 import toast from 'react-hot-toast';
 import { getProposalContent } from '@/lib/proposalContent';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -36,25 +35,17 @@ export default function HistoryPage() {
   // Fetch token prices for USD conversion
   const { sol: solPrice, baseToken: baseTokenPrice } = useTokenPrices(baseMint);
 
-  // Get Solana wallets for transaction signing
-  const { wallets } = useSolanaWallets();
+  // Get transaction signer
+  const { signTransaction } = useTransactionSigner();
 
   // Fetch claimable positions for history view
   const { positions: claimablePositions, refetch: refetchClaimable } = useClaimablePositions(walletAddress, moderatorId || undefined);
 
-  // Transaction signer helper for claiming
-  const createTransactionSigner = useCallback(() => {
-    return async (transaction: Transaction) => {
-      const wallet = wallets[0];
-      if (!wallet) throw new Error('No Solana wallet found');
-      return await wallet.signTransaction(transaction);
-    };
-  }, [wallets]);
-
   // Handle claim from history card
   const handleClaimFromHistory = useCallback(async (
     proposalId: number,
-    winningMarketIndex: number
+    winningMarketIndex: number,
+    vaultPDA: string
   ) => {
     if (!authenticated) {
       login();
@@ -72,9 +63,9 @@ export default function HistoryPage() {
       await claimWinnings({
         proposalId,
         winningMarketIndex,
+        vaultPDA,
         userAddress: walletAddress,
-        signTransaction: createTransactionSigner(),
-        moderatorId: moderatorId || undefined
+        signTransaction,
       });
 
       // Refresh claimable positions to update UI
@@ -86,7 +77,7 @@ export default function HistoryPage() {
     } finally {
       setClaimingProposalId(null);
     }
-  }, [authenticated, login, walletAddress, createTransactionSigner, refetchClaimable, moderatorId]);
+  }, [authenticated, login, walletAddress, signTransaction, refetchClaimable]);
 
   // Memoize sorted proposals
   const sortedProposals = useMemo(() =>
@@ -172,7 +163,8 @@ export default function HistoryPage() {
                       if (hasClaimableRewards && !isCurrentlyClaiming && proposal.winningMarketIndex !== null && proposal.winningMarketIndex !== undefined) {
                         handleClaimFromHistory(
                           proposal.id,
-                          proposal.winningMarketIndex
+                          proposal.winningMarketIndex,
+                          proposal.vaultPDA
                         );
                       }
                     }}
@@ -306,7 +298,8 @@ export default function HistoryPage() {
                         if (hasClaimableRewards && !isCurrentlyClaiming && proposal.winningMarketIndex !== null && proposal.winningMarketIndex !== undefined) {
                           handleClaimFromHistory(
                             proposal.id,
-                            proposal.winningMarketIndex
+                            proposal.winningMarketIndex,
+                            proposal.vaultPDA
                           );
                         }
                       }}

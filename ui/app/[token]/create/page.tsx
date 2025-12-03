@@ -24,12 +24,27 @@ export default function CreatePage() {
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [choice2, setChoice2] = useState('');
-  const [choice3, setChoice3] = useState('');
+  const [choices, setChoices] = useState<string[]>(['']); // Custom choices (Choice 1 "No" is hardcoded)
   const [proposalLengthHours, setProposalLengthHours] = useState('24');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
+
+  // Choice management helpers
+  const MAX_CHOICES = 7; // 8 markets total including "No"
+  const addChoice = () => {
+    if (choices.length < MAX_CHOICES) {
+      setChoices([...choices, '']);
+    }
+  };
+  const removeChoice = (index: number) => {
+    if (choices.length > 1) {
+      setChoices(choices.filter((_, i) => i !== index));
+    }
+  };
+  const updateChoice = (index: number, value: string) => {
+    setChoices(choices.map((c, i) => i === index ? value : c));
+  };
 
   // Refs for flip card inputs to manage auto-focus
   const firstDigitRef = useRef<HTMLInputElement>(null);
@@ -61,8 +76,8 @@ export default function CreatePage() {
   const hasPermission = isAuthorized;
   const poolName = poolMetadata?.ticker?.toUpperCase() || tokenSlug.toUpperCase();
 
-  // Check if form is valid (title, description, choice2, and duration filled)
-  const isFormInvalid = !title.trim() || !description.trim() || !choice2.trim() || parseFloat(proposalLengthHours) <= 0;
+  // Check if form is valid (title, description, at least first custom choice, and duration filled)
+  const isFormInvalid = !title.trim() || !description.trim() || !choices[0]?.trim() || parseFloat(proposalLengthHours) <= 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,8 +91,8 @@ export default function CreatePage() {
       toast.error('Description is required');
       return;
     }
-    if (!choice2.trim()) {
-      toast.error('Choice 2 is required');
+    if (!choices[0]?.trim()) {
+      toast.error('At least one custom choice is required (Choice 2)');
       return;
     }
     const hours = parseFloat(proposalLengthHours);
@@ -138,11 +153,10 @@ export default function CreatePage() {
       toast.loading('Creating Quantum Market...', { id: toastId });
 
       // Convert hours to seconds
-      const proposalLength = Math.floor(hours * 3600);
+      const proposalLength = 300; //Math.floor(hours * 3600);
 
-      // Build market_labels array: index 0 = "No", then choices 2-3
-      const market_labels = ['No', choice2.trim()];
-      if (choice3.trim()) market_labels.push(choice3.trim());
+      // Build market_labels array: index 0 = "No", then all non-empty custom choices
+      const market_labels = ['No', ...choices.filter(c => c.trim()).map(c => c.trim())];
       const markets = market_labels.length;
 
       const requestBody = {
@@ -180,8 +194,7 @@ export default function CreatePage() {
       // Reset form
       setTitle('');
       setDescription('');
-      setChoice2('');
-      setChoice3('');
+      setChoices(['']);
       setProposalLengthHours('24');
 
     } catch (error) {
@@ -275,9 +288,9 @@ export default function CreatePage() {
                       />
                     </div>
 
-                    {/* Choice Cards Row */}
-                    <div className="grid grid-cols-3 gap-4">
-                      {/* Choice 1 Card - Always "No" */}
+                    {/* Choice Cards - Vertical List */}
+                    <div className="flex flex-col gap-3">
+                      {/* Choice 1 - Always "No" (hardcoded) */}
                       <div className="bg-[#121212] border border-[#191919] rounded-[9px] py-4 px-5">
                         <span className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] uppercase mb-4 block" style={{ color: '#DDDDD7' }}>
                           Choice 1
@@ -296,47 +309,58 @@ export default function CreatePage() {
                         />
                       </div>
 
-                      {/* Choice 2 Card */}
-                      <div className="bg-[#121212] border border-[#191919] rounded-[9px] py-4 px-5">
-                        <span className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] uppercase mb-4 block" style={{ color: '#DDDDD7' }}>
-                          Choice 2*
-                        </span>
-                        <input
-                          type="text"
-                          value={choice2}
-                          onChange={(e) => setChoice2(e.target.value)}
-                          placeholder="1.5M $ZC"
-                          className="w-full h-[56px] px-3 bg-[#2a2a2a] rounded-[6px] text-white placeholder-gray-600 focus:outline-none border border-[#191919] text-2xl font-ibm-plex-mono"
-                          style={{
-                            WebkitAppearance: 'none',
-                            MozAppearance: 'textfield',
-                            fontFamily: 'IBM Plex Mono, monospace',
-                            letterSpacing: '0em'
-                          }}
-                          disabled={isSubmitting}
-                        />
-                      </div>
+                      {/* Dynamic custom choices (Choice 2+) */}
+                      {choices.map((choice, index) => (
+                        <div key={index} className="bg-[#121212] border border-[#191919] rounded-[9px] py-4 px-5">
+                          <div className="flex items-center justify-between mb-4">
+                            <span className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] uppercase" style={{ color: '#DDDDD7' }}>
+                              Choice {index + 2}{index === 0 ? '*' : ''}
+                            </span>
+                            {choices.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removeChoice(index)}
+                                disabled={isSubmitting}
+                                className="w-6 h-6 flex items-center justify-center rounded-full bg-[#2a2a2a] hover:bg-[#3a3a3a] text-[#6B6E71] hover:text-[#DDDDD7] transition-colors"
+                                title="Remove choice"
+                              >
+                                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <path d="M2 2L10 10M10 2L2 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                                </svg>
+                              </button>
+                            )}
+                          </div>
+                          <input
+                            type="text"
+                            value={choice}
+                            onChange={(e) => updateChoice(index, e.target.value)}
+                            placeholder={index === 0 ? "1.5M $ZC" : index === 1 ? "3M $ZC" : "5M $ZC"}
+                            className="w-full h-[56px] px-3 bg-[#2a2a2a] rounded-[6px] text-white placeholder-gray-600 focus:outline-none border border-[#191919] text-2xl font-ibm-plex-mono"
+                            style={{
+                              WebkitAppearance: 'none',
+                              MozAppearance: 'textfield',
+                              fontFamily: 'IBM Plex Mono, monospace',
+                              letterSpacing: '0em'
+                            }}
+                            disabled={isSubmitting}
+                          />
+                        </div>
+                      ))}
 
-                      {/* Choice 3 Card */}
-                      <div className="bg-[#121212] border border-[#191919] rounded-[9px] py-4 px-5">
-                        <span className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] uppercase mb-4 block" style={{ color: '#DDDDD7' }}>
-                          Choice 3
-                        </span>
-                        <input
-                          type="text"
-                          value={choice3}
-                          onChange={(e) => setChoice3(e.target.value)}
-                          placeholder="3M $ZC"
-                          className="w-full h-[56px] px-3 bg-[#2a2a2a] rounded-[6px] text-white placeholder-gray-600 focus:outline-none border border-[#191919] text-2xl font-ibm-plex-mono"
-                          style={{
-                            WebkitAppearance: 'none',
-                            MozAppearance: 'textfield',
-                            fontFamily: 'IBM Plex Mono, monospace',
-                            letterSpacing: '0em'
-                          }}
+                      {/* Add Choice Button */}
+                      {choices.length < MAX_CHOICES && (
+                        <button
+                          type="button"
+                          onClick={addChoice}
                           disabled={isSubmitting}
-                        />
-                      </div>
+                          className="w-full h-[56px] rounded-[9px] border border-dashed border-[#2a2a2a] hover:border-[#414346] bg-transparent hover:bg-[#121212] text-[#6B6E71] hover:text-[#DDDDD7] transition-colors flex items-center justify-center gap-2 font-ibm-plex-mono text-sm uppercase tracking-[0.2em]"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M7 1V13M1 7H13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                          </svg>
+                          Add Choice
+                        </button>
+                      )}
                     </div>
                   </div>
 

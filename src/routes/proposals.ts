@@ -29,6 +29,7 @@ import { PersistenceService } from '../../app/services/persistence.service';
 import { RouterService } from '@app/services/router.service';
 import { LoggerService } from '../../app/services/logger.service';
 import { getPoolsForWallet, POOL_METADATA } from '../config/whitelist';
+import { VaultType } from '@zcomb/vault-sdk';
 
 const routerService = RouterService.getInstance();
 const logger = new LoggerService('api').createChild('proposals');
@@ -116,6 +117,7 @@ router.get('/', async (req, res, next) => {
         totalSupply: p.config.totalSupply,
         poolAddress: p.config.spotPoolAddress || null,
         poolName: p.config.spotPoolAddress? (POOL_METADATA[p.config.spotPoolAddress]?.ticker || 'unknown') : 'unknown',
+        vaultPDA: p.deriveVaultPDA(VaultType.Base).toBase58(),
       };
     });
 
@@ -185,9 +187,8 @@ router.get('/:id', async (req, res, next) => {
       marketLabels: proposal.config.market_labels,
       ammConfig: serialized.ammConfig,
       ammData: serialized.AMMData,
-      baseVaultState: serialized.baseVaultData,
-      quoteVaultState: serialized.quoteVaultData,
       twapOracleState: serialized.twapOracleData,
+      vaultPDA: proposal.deriveVaultPDA(VaultType.Base).toBase58(),
     };
 
     logger.info('[GET /:id] Fetched proposal details', {
@@ -375,13 +376,13 @@ router.post('/', requireApiKey, requireModeratorId, async (req, res, next) => {
     });
 
     // Validate markets count
-    if (body.markets && (body.markets < 2 || body.markets > 4)) {
+    if (body.markets && (body.markets < 2 || body.markets > 8)) {
       logger.warn('[POST /] Invalid markets count', {
         markets: body.markets,
         moderatorId
       });
       return res.status(400).json({
-        error: 'Invalid markets count: must be between 2 and 4'
+        error: 'Invalid markets count: must be between 2 and 8'
       });
     }    
     // Get the proposal counter for this moderator

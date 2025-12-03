@@ -1,32 +1,30 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { usePrivyWallet } from '@/hooks/usePrivyWallet';
-import { useSolanaWallets } from '@privy-io/react-auth/solana';
-import { Transaction } from '@solana/web3.js';
+import { useTransactionSigner } from '@/hooks/useTransactionSigner';
+import { PublicKey } from '@solana/web3.js';
 import toast from 'react-hot-toast';
 import { formatNumber } from '@/lib/formatters';
-import { buildApiUrl } from '@/lib/api-utils';
-import type { UserBalancesResponse } from '@/types/api';
+import { deposit, withdraw, VaultType, type UserBalancesResponse } from '@/lib/programs/vault';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 const SOL_DECIMALS = 9;
 const ZC_DECIMALS = 6;
 const SOL_GAS_RESERVE = 0.02; // Reserve for transaction fees
 
 interface DepositCardProps {
   proposalId: number;
+  vaultPDA: string;
   solBalance: number | null;
   baseTokenBalance: number | null;
   userBalances: UserBalancesResponse | null;
   onDepositSuccess: () => void;
-  moderatorId?: number;
   tokenSymbol?: string;
 }
 
-export function DepositCard({ proposalId, solBalance, baseTokenBalance, userBalances, onDepositSuccess, moderatorId, tokenSymbol = 'ZC' }: DepositCardProps) {
+export function DepositCard({ proposalId, vaultPDA, solBalance, baseTokenBalance, userBalances, onDepositSuccess, tokenSymbol = 'ZC' }: DepositCardProps) {
   const { authenticated, walletAddress, login } = usePrivyWallet();
-  const { wallets } = useSolanaWallets();
+  const { signTransaction } = useTransactionSigner();
   const [mode, setMode] = useState<'deposit' | 'withdraw'>('deposit');
   const [amount, setAmount] = useState('');
   const [selectedToken, setSelectedToken] = useState<'sol' | 'zc'>('sol');
@@ -98,12 +96,6 @@ export function DepositCard({ proposalId, solBalance, baseTokenBalance, userBala
       return;
     }
 
-    const wallet = wallets[0];
-    if (!wallet) {
-      toast.error('No wallet connected');
-      return;
-    }
-
     setIsDepositing(true);
     const toastId = toast.loading(`Depositing ${amount} ${selectedToken === 'sol' ? 'SOL' : tokenSymbol}...`);
 
@@ -112,49 +104,17 @@ export function DepositCard({ proposalId, solBalance, baseTokenBalance, userBala
       const decimals = selectedToken === 'sol' ? SOL_DECIMALS : ZC_DECIMALS;
       const amountInSmallestUnits = Math.floor(parseFloat(amount) * Math.pow(10, decimals));
 
-      // Determine vault type
-      const vaultType = selectedToken === 'zc' ? 'base' : 'quote';
+      // Determine vault type based on token type
+      const vaultType = selectedToken === 'zc' ? VaultType.Base : VaultType.Quote;
 
-      // Step 1: Build split transaction
-      const buildResponse = await fetch(
-        buildApiUrl(API_BASE_URL, `/api/vaults/${proposalId}/${vaultType}/buildSplitTx`, undefined, moderatorId),
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user: walletAddress,
-            amount: amountInSmallestUnits.toString()
-          })
-        }
+      // Execute deposit (split) using client-side SDK
+      await deposit(
+        new PublicKey(vaultPDA),
+        vaultType,
+        amountInSmallestUnits,
+        new PublicKey(walletAddress),
+        signTransaction
       );
-
-      if (!buildResponse.ok) {
-        const error = await buildResponse.json();
-        throw new Error(error.message || 'Failed to build transaction');
-      }
-
-      const buildData = await buildResponse.json();
-
-      // Step 2: Sign transaction
-      const splitTx = Transaction.from(Buffer.from(buildData.transaction, 'base64'));
-      const signedTx = await wallet.signTransaction(splitTx);
-
-      // Step 3: Execute split transaction
-      const executeResponse = await fetch(
-        buildApiUrl(API_BASE_URL, `/api/vaults/${proposalId}/${vaultType}/executeSplitTx`, undefined, moderatorId),
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            transaction: Buffer.from(signedTx.serialize({ requireAllSignatures: false })).toString('base64')
-          })
-        }
-      );
-
-      if (!executeResponse.ok) {
-        const error = await executeResponse.json();
-        throw new Error(error.message || 'Failed to execute transaction');
-      }
 
       // Success
       toast.success(`Successfully deposited ${amount} ${selectedToken === 'sol' ? 'SOL' : tokenSymbol}!`, { id: toastId, duration: 5000 });
@@ -170,7 +130,7 @@ export function DepositCard({ proposalId, solBalance, baseTokenBalance, userBala
     } finally {
       setIsDepositing(false);
     }
-  }, [authenticated, walletAddress, amount, balanceError, selectedToken, wallets, proposalId, login, onDepositSuccess]);
+  }, [authenticated, walletAddress, amount, balanceError, selectedToken, signTransaction, vaultPDA, login, onDepositSuccess]);
 
   // Handle withdraw
   const handleWithdraw = useCallback(async () => {
@@ -194,12 +154,6 @@ export function DepositCard({ proposalId, solBalance, baseTokenBalance, userBala
       return;
     }
 
-    const wallet = wallets[0];
-    if (!wallet) {
-      toast.error('No wallet connected');
-      return;
-    }
-
     setIsDepositing(true);
     const toastId = toast.loading(`Withdrawing ${amount} ${selectedToken === 'sol' ? 'SOL' : tokenSymbol}...`);
 
@@ -208,49 +162,17 @@ export function DepositCard({ proposalId, solBalance, baseTokenBalance, userBala
       const decimals = selectedToken === 'sol' ? SOL_DECIMALS : ZC_DECIMALS;
       const amountInSmallestUnits = Math.floor(parseFloat(amount) * Math.pow(10, decimals));
 
-      // Determine vault type
-      const vaultType = selectedToken === 'zc' ? 'base' : 'quote';
+      // Determine vault type based on token type
+      const vaultType = selectedToken === 'zc' ? VaultType.Base : VaultType.Quote;
 
-      // Step 1: Build merge transaction
-      const buildResponse = await fetch(
-        buildApiUrl(API_BASE_URL, `/api/vaults/${proposalId}/${vaultType}/buildMergeTx`, undefined, moderatorId),
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            user: walletAddress,
-            amount: amountInSmallestUnits.toString()
-          })
-        }
+      // Execute withdraw (merge) using client-side SDK
+      await withdraw(
+        new PublicKey(vaultPDA),
+        vaultType,
+        amountInSmallestUnits,
+        new PublicKey(walletAddress),
+        signTransaction
       );
-
-      if (!buildResponse.ok) {
-        const error = await buildResponse.json();
-        throw new Error(error.message || 'Failed to build transaction');
-      }
-
-      const buildData = await buildResponse.json();
-
-      // Step 2: Sign transaction
-      const mergeTx = Transaction.from(Buffer.from(buildData.transaction, 'base64'));
-      const signedTx = await wallet.signTransaction(mergeTx);
-
-      // Step 3: Execute merge transaction
-      const executeResponse = await fetch(
-        buildApiUrl(API_BASE_URL, `/api/vaults/${proposalId}/${vaultType}/executeMergeTx`, undefined, moderatorId),
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            transaction: Buffer.from(signedTx.serialize({ requireAllSignatures: false })).toString('base64')
-          })
-        }
-      );
-
-      if (!executeResponse.ok) {
-        const error = await executeResponse.json();
-        throw new Error(error.message || 'Failed to execute transaction');
-      }
 
       // Success
       toast.success(`Successfully withdrew ${amount} ${selectedToken === 'sol' ? 'SOL' : tokenSymbol}!`, { id: toastId, duration: 5000 });
@@ -266,7 +188,7 @@ export function DepositCard({ proposalId, solBalance, baseTokenBalance, userBala
     } finally {
       setIsDepositing(false);
     }
-  }, [authenticated, walletAddress, amount, balanceError, selectedToken, wallets, proposalId, login, onDepositSuccess]);
+  }, [authenticated, walletAddress, amount, balanceError, selectedToken, signTransaction, vaultPDA, login, onDepositSuccess]);
 
   return (
     <div className="bg-[#121212] border border-[#191919] rounded-[9px] pt-2.5 pb-4 px-5 transition-all duration-300">
