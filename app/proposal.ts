@@ -160,8 +160,8 @@ export class Proposal {
       this.config.authority.publicKey,
       this.config.baseMint,
       this.config.quoteMint,
-      this.config.id,
       this.config.moderatorId,
+      this.config.id,
     );
     const baseCondMints: PublicKey[] = [condBaseMint0, condBaseMint1];
     const quoteCondMints: PublicKey[] = [condQuoteMint0, condQuoteMint1];

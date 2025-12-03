@@ -7,6 +7,10 @@ import { createSolanaRpc, createSolanaRpcSubscriptions } from '@solana/kit';
 
 const PRIVY_APP_ID = process.env.NEXT_PUBLIC_PRIVY_APP_ID || 'YOUR-PRIVY-APP-ID';
 
+// RPC URLs from environment
+const MAINNET_RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.mainnet-beta.solana.com';
+const MAINNET_WS_URL = MAINNET_RPC_URL.replace('https://', 'wss://').replace('http://', 'ws://');
+
 // Initialize Solana wallet connectors
 const solanaConnectors = toSolanaWalletConnectors({
   // Disable auto-connect to prevent wallet pop-ups on page load
@@ -51,8 +55,8 @@ export default function PrivyProviderWrapper({ children }: { children: React.Rea
         solana: {
           rpcs: {
             'solana:mainnet': {
-              rpc: createSolanaRpc('https://bernie-zo3q7f-fast-mainnet.helius-rpc.com'),
-              rpcSubscriptions: createSolanaRpcSubscriptions('wss://bernie-zo3q7f-fast-mainnet.helius-rpc.com'),
+              rpc: createSolanaRpc(MAINNET_RPC_URL),
+              rpcSubscriptions: createSolanaRpcSubscriptions(MAINNET_WS_URL),
             },
             'solana:devnet': {
               rpc: createSolanaRpc('https://api.devnet.solana.com'),

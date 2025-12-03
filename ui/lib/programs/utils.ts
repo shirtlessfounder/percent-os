@@ -23,7 +23,7 @@ import { VaultClient } from '@zcomb/vault-sdk';
 
 export type SignTransaction = (tx: Transaction) => Promise<Transaction>;
 
-const RPC_URL = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || 'https://bernie-zo3q7f-fast-mainnet.helius-rpc.com';
+const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.mainnet-beta.solana.com';
 
 /**
  * Create a Solana connection

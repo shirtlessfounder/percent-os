@@ -31,8 +31,7 @@ interface UserBalances {
 
 export function useUserBalances(
   proposalId: number | null,
-  baseVaultPDA: string | null,
-  quoteVaultPDA: string | null,
+  vaultPDA: string | null,
   walletAddress: string | null
 ): UserBalances {
   const [balances, setBalances] = useState<Omit<UserBalances, 'refetch'>>({
@@ -43,16 +42,14 @@ export function useUserBalances(
 
   const fetchBalances = useCallback(async (
     id: number,
-    basePDA: string,
-    quotePDA: string,
+    vaultPDAStr: string,
     address: string
   ) => {
     setBalances(prev => ({ ...prev, loading: true, error: null }));
 
     try {
       const data = await fetchUserBalances(
-        new PublicKey(basePDA),
-        new PublicKey(quotePDA),
+        new PublicKey(vaultPDAStr),
         new PublicKey(address),
         id
       );
@@ -74,7 +71,7 @@ export function useUserBalances(
 
   useEffect(() => {
     // Only fetch if all required params are available
-    if (proposalId === null || !baseVaultPDA || !quoteVaultPDA || !walletAddress) {
+    if (proposalId === null || !vaultPDA || !walletAddress) {
       setBalances({
         data: null,
         loading: false,
@@ -84,24 +81,24 @@ export function useUserBalances(
     }
 
     // Initial fetch
-    fetchBalances(proposalId, baseVaultPDA, quoteVaultPDA, walletAddress);
+    fetchBalances(proposalId, vaultPDA, walletAddress);
 
     // Refresh every 30 seconds
     const interval = setInterval(() => {
-      fetchBalances(proposalId, baseVaultPDA, quoteVaultPDA, walletAddress);
+      fetchBalances(proposalId, vaultPDA, walletAddress);
     }, 30000);
 
     // Cleanup
     return () => {
       clearInterval(interval);
     };
-  }, [proposalId, baseVaultPDA, quoteVaultPDA, walletAddress, fetchBalances]);
+  }, [proposalId, vaultPDA, walletAddress, fetchBalances]);
 
   const refetch = useCallback(() => {
-    if (proposalId !== null && baseVaultPDA && quoteVaultPDA && walletAddress) {
-      fetchBalances(proposalId, baseVaultPDA, quoteVaultPDA, walletAddress);
+    if (proposalId !== null && vaultPDA && walletAddress) {
+      fetchBalances(proposalId, vaultPDA, walletAddress);
     }
-  }, [proposalId, baseVaultPDA, quoteVaultPDA, walletAddress, fetchBalances]);
+  }, [proposalId, vaultPDA, walletAddress, fetchBalances]);
 
   return {
     ...balances,

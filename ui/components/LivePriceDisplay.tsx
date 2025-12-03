@@ -63,7 +63,9 @@ export const LivePriceDisplay: React.FC<LivePriceDisplayProps> = ({ proposalId, 
         }
 
         // Fetch conditional mints from vault state via SDK (on-chain)
-        const vaultState = await fetchVaultState(new PublicKey(proposal.baseVaultPDA));
+        // Use VaultType.Base to get the base vault's conditional mints
+        const { VaultType } = await import('@/lib/programs/vault');
+        const vaultState = await fetchVaultState(new PublicKey(proposal.vaultPDA), VaultType.Base);
         setTokenAddresses(vaultState.conditionalMints.slice(0, marketCount));
 
       } catch (error) {

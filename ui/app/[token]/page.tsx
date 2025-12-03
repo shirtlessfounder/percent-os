@@ -89,8 +89,7 @@ export default function HomePage() {
   // Fetch user balances for the selected proposal (uses client-side SDK)
   const { data: userBalances, refetch: refetchBalances } = useUserBalances(
     selectedProposalId,
-    proposal?.baseVaultPDA ?? null,
-    proposal?.quoteVaultPDA ?? null,
+    proposal?.vaultPDA ?? null,
     walletAddress
   );
 
@@ -355,8 +354,7 @@ export default function HomePage() {
                     <div className="order-2 md:order-1">
                       <DepositCard
                         proposalId={proposal.id}
-                        baseVaultPDA={proposal.baseVaultPDA}
-                        quoteVaultPDA={proposal.quoteVaultPDA}
+                        vaultPDA={proposal.vaultPDA}
                         solBalance={solBalance}
                         baseTokenBalance={baseTokenBalance}
                         userBalances={userBalances}

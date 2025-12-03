@@ -46,8 +46,7 @@ export function useClaimablePositions(walletAddress: string | null, moderatorId?
       // Fetch balances for finalized proposals in parallel
       const balancePromises = finalizedProposals.map(proposal =>
         fetchUserBalances(
-          new PublicKey(proposal.baseVaultPDA),
-          new PublicKey(proposal.quoteVaultPDA),
+          new PublicKey(proposal.vaultPDA),
           new PublicKey(address),
           proposal.id
         )

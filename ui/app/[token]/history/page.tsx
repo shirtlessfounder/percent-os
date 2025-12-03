@@ -45,8 +45,7 @@ export default function HistoryPage() {
   const handleClaimFromHistory = useCallback(async (
     proposalId: number,
     winningMarketIndex: number,
-    baseVaultPDA: string,
-    quoteVaultPDA: string
+    vaultPDA: string
   ) => {
     if (!authenticated) {
       login();
@@ -64,8 +63,7 @@ export default function HistoryPage() {
       await claimWinnings({
         proposalId,
         winningMarketIndex,
-        baseVaultPDA,
-        quoteVaultPDA,
+        vaultPDA,
         userAddress: walletAddress,
         signTransaction,
       });
@@ -166,8 +164,7 @@ export default function HistoryPage() {
                         handleClaimFromHistory(
                           proposal.id,
                           proposal.winningMarketIndex,
-                          proposal.baseVaultPDA,
-                          proposal.quoteVaultPDA
+                          proposal.vaultPDA
                         );
                       }
                     }}
@@ -302,8 +299,7 @@ export default function HistoryPage() {
                           handleClaimFromHistory(
                             proposal.id,
                             proposal.winningMarketIndex,
-                            proposal.baseVaultPDA,
-                            proposal.quoteVaultPDA
+                            proposal.vaultPDA
                           );
                         }
                       }}

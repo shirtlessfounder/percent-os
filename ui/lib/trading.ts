@@ -20,7 +20,7 @@
 import { PublicKey, Transaction } from '@solana/web3.js';
 import toast from 'react-hot-toast';
 import { buildApiUrl } from './api-utils';
-import { fetchUserBalances, redeemWinnings, type UserBalancesResponse } from './programs/vault';
+import { fetchUserBalances, redeemWinnings, VaultType, type UserBalancesResponse } from './programs/vault';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -94,20 +94,18 @@ export async function openPosition(config: OpenPositionConfig): Promise<void> {
 export async function claimWinnings(config: {
   proposalId: number;
   winningMarketIndex: number;  // Which market won (from proposal.winningMarketIndex)
-  baseVaultPDA: string;
-  quoteVaultPDA: string;
+  vaultPDA: string;
   userAddress: string;
   signTransaction: (transaction: Transaction) => Promise<Transaction>;
 }): Promise<void> {
-  const { proposalId, winningMarketIndex, baseVaultPDA, quoteVaultPDA, userAddress, signTransaction } = config;
+  const { proposalId, winningMarketIndex, vaultPDA, userAddress, signTransaction } = config;
 
   const toastId = toast.loading('Claiming winnings from both vaults...');
 
   try {
-    // Get user balances to determine which vaults have claimable tokens
+    // Get user balances to determine which vault types have claimable tokens
     const balances = await fetchUserBalances(
-      new PublicKey(baseVaultPDA),
-      new PublicKey(quoteVaultPDA),
+      new PublicKey(vaultPDA),
       new PublicKey(userAddress),
       proposalId
     );
@@ -117,25 +115,26 @@ export async function claimWinnings(config: {
     const hasBaseTokens = parseFloat(balances.base.conditionalBalances[winningMarketIndex] || '0') > 0;
     const hasQuoteTokens = parseFloat(balances.quote.conditionalBalances[winningMarketIndex] || '0') > 0;
 
-    const vaultsToRedeem: { type: 'base' | 'quote'; pda: string }[] = [];
-    if (hasBaseTokens) vaultsToRedeem.push({ type: 'base', pda: baseVaultPDA });
-    if (hasQuoteTokens) vaultsToRedeem.push({ type: 'quote', pda: quoteVaultPDA });
+    const vaultTypesToRedeem: VaultType[] = [];
+    if (hasBaseTokens) vaultTypesToRedeem.push(VaultType.Base);
+    if (hasQuoteTokens) vaultTypesToRedeem.push(VaultType.Quote);
 
-    if (vaultsToRedeem.length === 0) {
+    if (vaultTypesToRedeem.length === 0) {
       throw new Error('No winning tokens to claim');
     }
 
-    // Redeem from each vault that has tokens using client-side SDK
-    for (const vault of vaultsToRedeem) {
+    // Redeem from each vault type that has tokens using client-side SDK
+    for (const vaultType of vaultTypesToRedeem) {
       await redeemWinnings(
-        new PublicKey(vault.pda),
+        new PublicKey(vaultPDA),
+        vaultType,
         new PublicKey(userAddress),
         signTransaction
       );
     }
 
     toast.success(
-      `Winnings claimed successfully from ${vaultsToRedeem.length} vault${vaultsToRedeem.length > 1 ? 's' : ''}!`,
+      `Winnings claimed successfully from ${vaultTypesToRedeem.length} vault${vaultTypesToRedeem.length > 1 ? 's' : ''}!`,
       { id: toastId, duration: 5000 }
     );
 

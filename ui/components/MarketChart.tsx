@@ -41,7 +41,9 @@ export default function MarketChart({ proposalId, market, height = 256, moderato
 
         // Get token address from vault state via SDK (on-chain)
         // Market is a numeric index (0-3 for quantum markets)
-        const vaultState = await fetchVaultState(new PublicKey(proposal.baseVaultPDA));
+        // Use VaultType.Base to get the base vault's conditional mints
+        const { VaultType } = await import('@/lib/programs/vault');
+        const vaultState = await fetchVaultState(new PublicKey(proposal.vaultPDA), VaultType.Base);
         const tokenAddress = vaultState.conditionalMints[market];
         const poolAddress = proposal.ammData?.[market]?.pool;
 

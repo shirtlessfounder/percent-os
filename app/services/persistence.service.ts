@@ -91,7 +91,7 @@ export class PersistenceService implements IPersistenceService {
           amm_data,
           twap_oracle_data,
           spot_pool_address, total_supply
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
         ON CONFLICT (moderator_id, proposal_id) DO UPDATE SET
           status = EXCLUDED.status,
           amm_data = EXCLUDED.amm_data,

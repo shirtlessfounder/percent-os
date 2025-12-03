@@ -41,8 +41,7 @@ export interface ProposalListItem {
   totalSupply?: number;
   poolAddress?: string | null;
   poolName?: string;
-  baseVaultPDA: string;
-  quoteVaultPDA: string;
+  vaultPDA: string;
 }
 
 export interface ProposalListResponse {
@@ -74,7 +73,6 @@ export interface ProposalDetailResponse {
   } | null;
   ammData: any | null;
   twapOracleState: any | null;
-  baseVaultPDA: string;
-  quoteVaultPDA: string;
+  vaultPDA: string;
 }
 

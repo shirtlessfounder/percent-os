@@ -117,8 +117,7 @@ router.get('/', async (req, res, next) => {
         totalSupply: p.config.totalSupply,
         poolAddress: p.config.spotPoolAddress || null,
         poolName: p.config.spotPoolAddress? (POOL_METADATA[p.config.spotPoolAddress]?.ticker || 'unknown') : 'unknown',
-        baseVaultPDA: p.deriveVaultPDA(VaultType.Base).toBase58(),
-        quoteVaultPDA: p.deriveVaultPDA(VaultType.Quote).toBase58(),
+        vaultPDA: p.deriveVaultPDA(VaultType.Base).toBase58(),
       };
     });
 
@@ -189,8 +188,7 @@ router.get('/:id', async (req, res, next) => {
       ammConfig: serialized.ammConfig,
       ammData: serialized.AMMData,
       twapOracleState: serialized.twapOracleData,
-      baseVaultPDA: proposal.deriveVaultPDA(VaultType.Base).toBase58(),
-      quoteVaultPDA: proposal.deriveVaultPDA(VaultType.Quote).toBase58(),
+      vaultPDA: proposal.deriveVaultPDA(VaultType.Base).toBase58(),
     };
 
     logger.info('[GET /:id] Fetched proposal details', {

@@ -6,7 +6,7 @@ import { useTransactionSigner } from '@/hooks/useTransactionSigner';
 import { PublicKey } from '@solana/web3.js';
 import toast from 'react-hot-toast';
 import { formatNumber } from '@/lib/formatters';
-import { deposit, withdraw, type UserBalancesResponse } from '@/lib/programs/vault';
+import { deposit, withdraw, VaultType, type UserBalancesResponse } from '@/lib/programs/vault';
 
 const SOL_DECIMALS = 9;
 const ZC_DECIMALS = 6;
@@ -14,8 +14,7 @@ const SOL_GAS_RESERVE = 0.02; // Reserve for transaction fees
 
 interface DepositCardProps {
   proposalId: number;
-  baseVaultPDA: string;
-  quoteVaultPDA: string;
+  vaultPDA: string;
   solBalance: number | null;
   baseTokenBalance: number | null;
   userBalances: UserBalancesResponse | null;
@@ -23,7 +22,7 @@ interface DepositCardProps {
   tokenSymbol?: string;
 }
 
-export function DepositCard({ proposalId, baseVaultPDA, quoteVaultPDA, solBalance, baseTokenBalance, userBalances, onDepositSuccess, tokenSymbol = 'ZC' }: DepositCardProps) {
+export function DepositCard({ proposalId, vaultPDA, solBalance, baseTokenBalance, userBalances, onDepositSuccess, tokenSymbol = 'ZC' }: DepositCardProps) {
   const { authenticated, walletAddress, login } = usePrivyWallet();
   const { signTransaction } = useTransactionSigner();
   const [mode, setMode] = useState<'deposit' | 'withdraw'>('deposit');
@@ -105,12 +104,13 @@ export function DepositCard({ proposalId, baseVaultPDA, quoteVaultPDA, solBalanc
       const decimals = selectedToken === 'sol' ? SOL_DECIMALS : ZC_DECIMALS;
       const amountInSmallestUnits = Math.floor(parseFloat(amount) * Math.pow(10, decimals));
 
-      // Determine vault PDA based on token type
-      const vaultPDA = selectedToken === 'zc' ? baseVaultPDA : quoteVaultPDA;
+      // Determine vault type based on token type
+      const vaultType = selectedToken === 'zc' ? VaultType.Base : VaultType.Quote;
 
       // Execute deposit (split) using client-side SDK
       await deposit(
         new PublicKey(vaultPDA),
+        vaultType,
         amountInSmallestUnits,
         new PublicKey(walletAddress),
         signTransaction
@@ -130,7 +130,7 @@ export function DepositCard({ proposalId, baseVaultPDA, quoteVaultPDA, solBalanc
     } finally {
       setIsDepositing(false);
     }
-  }, [authenticated, walletAddress, amount, balanceError, selectedToken, signTransaction, baseVaultPDA, quoteVaultPDA, login, onDepositSuccess]);
+  }, [authenticated, walletAddress, amount, balanceError, selectedToken, signTransaction, vaultPDA, login, onDepositSuccess]);
 
   // Handle withdraw
   const handleWithdraw = useCallback(async () => {
@@ -162,12 +162,13 @@ export function DepositCard({ proposalId, baseVaultPDA, quoteVaultPDA, solBalanc
       const decimals = selectedToken === 'sol' ? SOL_DECIMALS : ZC_DECIMALS;
       const amountInSmallestUnits = Math.floor(parseFloat(amount) * Math.pow(10, decimals));
 
-      // Determine vault PDA based on token type
-      const vaultPDA = selectedToken === 'zc' ? baseVaultPDA : quoteVaultPDA;
+      // Determine vault type based on token type
+      const vaultType = selectedToken === 'zc' ? VaultType.Base : VaultType.Quote;
 
       // Execute withdraw (merge) using client-side SDK
       await withdraw(
         new PublicKey(vaultPDA),
+        vaultType,
         amountInSmallestUnits,
         new PublicKey(walletAddress),
         signTransaction
@@ -187,7 +188,7 @@ export function DepositCard({ proposalId, baseVaultPDA, quoteVaultPDA, solBalanc
     } finally {
       setIsDepositing(false);
     }
-  }, [authenticated, walletAddress, amount, balanceError, selectedToken, signTransaction, baseVaultPDA, quoteVaultPDA, login, onDepositSuccess]);
+  }, [authenticated, walletAddress, amount, balanceError, selectedToken, signTransaction, vaultPDA, login, onDepositSuccess]);
 
   return (
     <div className="bg-[#121212] border border-[#191919] rounded-[9px] pt-2.5 pb-4 px-5 transition-all duration-300">
