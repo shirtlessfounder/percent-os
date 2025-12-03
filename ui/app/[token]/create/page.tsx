@@ -24,7 +24,7 @@ export default function CreatePage() {
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [choices, setChoices] = useState<string[]>(['', '']); // Start with 2 choices
+  const [choices, setChoices] = useState<string[]>(['']); // Custom choices (Choice 1 "No" is hardcoded)
   const [proposalLengthHours, setProposalLengthHours] = useState('24');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState(false);
@@ -76,7 +76,7 @@ export default function CreatePage() {
   const hasPermission = isAuthorized;
   const poolName = poolMetadata?.ticker?.toUpperCase() || tokenSlug.toUpperCase();
 
-  // Check if form is valid (title, description, at least first choice, and duration filled)
+  // Check if form is valid (title, description, at least first custom choice, and duration filled)
   const isFormInvalid = !title.trim() || !description.trim() || !choices[0]?.trim() || parseFloat(proposalLengthHours) <= 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -92,7 +92,7 @@ export default function CreatePage() {
       return;
     }
     if (!choices[0]?.trim()) {
-      toast.error('At least Choice 1 is required');
+      toast.error('At least one custom choice is required (Choice 2)');
       return;
     }
     const hours = parseFloat(proposalLengthHours);
@@ -155,7 +155,7 @@ export default function CreatePage() {
       // Convert hours to seconds
       const proposalLength = 300; //Math.floor(hours * 3600);
 
-      // Build market_labels array: index 0 = "No", then all non-empty choices
+      // Build market_labels array: index 0 = "No", then all non-empty custom choices
       const market_labels = ['No', ...choices.filter(c => c.trim()).map(c => c.trim())];
       const markets = market_labels.length;
 
@@ -194,7 +194,7 @@ export default function CreatePage() {
       // Reset form
       setTitle('');
       setDescription('');
-      setChoices(['', '']);
+      setChoices(['']);
       setProposalLengthHours('24');
 
     } catch (error) {
@@ -290,11 +290,31 @@ export default function CreatePage() {
 
                     {/* Choice Cards - Vertical List */}
                     <div className="flex flex-col gap-3">
+                      {/* Choice 1 - Always "No" (hardcoded) */}
+                      <div className="bg-[#121212] border border-[#191919] rounded-[9px] py-4 px-5">
+                        <span className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] uppercase mb-4 block" style={{ color: '#DDDDD7' }}>
+                          Choice 1
+                        </span>
+                        <input
+                          type="text"
+                          value="No"
+                          readOnly
+                          className="w-full h-[56px] px-3 bg-[#1a1a1a] rounded-[6px] text-gray-400 focus:outline-none border border-[#191919] text-2xl font-ibm-plex-mono cursor-not-allowed"
+                          style={{
+                            WebkitAppearance: 'none',
+                            MozAppearance: 'textfield',
+                            fontFamily: 'IBM Plex Mono, monospace',
+                            letterSpacing: '0em'
+                          }}
+                        />
+                      </div>
+
+                      {/* Dynamic custom choices (Choice 2+) */}
                       {choices.map((choice, index) => (
                         <div key={index} className="bg-[#121212] border border-[#191919] rounded-[9px] py-4 px-5">
                           <div className="flex items-center justify-between mb-4">
                             <span className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] uppercase" style={{ color: '#DDDDD7' }}>
-                              Choice {index + 1}{index === 0 ? '*' : ''}
+                              Choice {index + 2}{index === 0 ? '*' : ''}
                             </span>
                             {choices.length > 1 && (
                               <button

@@ -17,6 +17,7 @@ import { useTradeHistory } from '@/hooks/useTradeHistory';
 import { useUserBalances } from '@/hooks/useUserBalances';
 import { formatNumber, formatCurrency } from '@/lib/formatters';
 import { getProposalContent } from '@/lib/proposalContent';
+import { getEffectiveMarketCount, filterMarketData } from '@/lib/proposal-overrides';
 import { useTokenContext } from '@/providers/TokenContext';
 
 const LivePriceDisplay = dynamic(() => import('@/components/LivePriceDisplay').then(mod => mod.LivePriceDisplay), {
@@ -84,6 +85,17 @@ export default function HomePage() {
   const proposal = useMemo(() =>
     proposals.find(p => p.id === selectedProposalId) || sortedProposals[0] || null,
     [selectedProposalId, proposals, sortedProposals]
+  );
+
+  // Apply market count overrides for proposals with incorrect market counts
+  const effectiveMarketCount = useMemo(() =>
+    proposal ? getEffectiveMarketCount(moderatorId, proposal.id, proposal.markets || 2) : 2,
+    [proposal, moderatorId]
+  );
+
+  const effectiveMarketLabels = useMemo(() =>
+    proposal?.marketLabels ? filterMarketData(proposal.marketLabels, moderatorId, proposal.id) : ['No', 'Yes'],
+    [proposal, moderatorId]
   );
 
   // Fetch user balances for the selected proposal (uses client-side SDK)
@@ -289,7 +301,7 @@ export default function HomePage() {
                             <div className={`text-lg font-normal mb-2 ${!isLiveProposalHovered ? 'line-clamp-1' : ''}`} style={{ color: '#E9E9E3' }}>
                               {content.title}
                             </div>
-                            <div className={`text-sm description-links ${!isLiveProposalHovered ? 'line-clamp-2' : ''}`} style={{ color: '#DDDDD7' }}>
+                            <div className={`text-sm description-links ${!isLiveProposalHovered ? 'line-clamp-1' : ''}`} style={{ color: '#DDDDD7' }}>
                               {rawContent}
                             </div>
                           </div>
@@ -304,13 +316,13 @@ export default function HomePage() {
                             onMouseEnter={() => setIsLiveProposalHovered(true)}
                             onMouseLeave={() => setIsLiveProposalHovered(false)}
                           >
-                            <div className="bg-[#121212] border border-[#191919] rounded-[9px] py-4 px-5 hover:border-[#2A2A2A] transition-all duration-300 cursor-pointer h-full">
+                            <div className="bg-[#121212] border border-[#191919] rounded-[9px] pt-4 pb-5 px-5 hover:border-[#2A2A2A] transition-all duration-300 cursor-pointer h-full">
                               {cardInner}
                             </div>
                           </a>
                         ) : (
                           <div
-                            className="flex-[4] bg-[#121212] border border-[#191919] rounded-[9px] py-4 px-5 transition-all duration-300"
+                            className="flex-[4] bg-[#121212] border border-[#191919] rounded-[9px] pt-4 pb-5 px-5 transition-all duration-300"
                             onMouseEnter={() => setIsLiveProposalHovered(true)}
                             onMouseLeave={() => setIsLiveProposalHovered(false)}
                           >
@@ -366,8 +378,8 @@ export default function HomePage() {
                     {/* Mode Toggle */}
                     <div className="order-3 md:order-2">
                       <ModeToggle
-                        marketLabels={proposal.marketLabels || ['No', 'Yes']}
-                        marketCaps={marketCaps}
+                        marketLabels={effectiveMarketLabels}
+                        marketCaps={filterMarketData(marketCaps, moderatorId, proposal.id)}
                         selectedIndex={selectedMarketIndex}
                         onSelect={handleMarketIndexSelect}
                       />
@@ -466,8 +478,8 @@ export default function HomePage() {
                 <div className="hidden">
                   <LivePriceDisplay
                     proposalId={proposal.id}
-                    marketLabels={proposal.marketLabels || ['No', 'Yes']}
-                    marketCount={proposal.markets || 2}
+                    marketLabels={effectiveMarketLabels}
+                    marketCount={effectiveMarketCount}
                     onPricesUpdate={handlePricesUpdate}
                     onTwapUpdate={handleTwapUpdate}
                   />
