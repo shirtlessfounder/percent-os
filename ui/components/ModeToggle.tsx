@@ -24,7 +24,7 @@ const formatWithSigDigits = (value: number, maxSigDigits: number): string => {
   if (!parsed) return `$${value.toFixed(4)}`;
 
   const { zeroCount, sigDigits } = parsed;
-  const paddedDigits = sigDigits.padEnd(maxSigDigits, '0');
+  const paddedDigits = sigDigits.slice(0, maxSigDigits).padEnd(maxSigDigits, '0');
 
   // Subscript digits: ₀₁₂₃₄₅₆₇₈₉
   const subscripts = '₀₁₂₃₄₅₆₇₈₉';
