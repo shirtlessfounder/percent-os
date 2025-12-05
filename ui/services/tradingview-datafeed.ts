@@ -172,9 +172,9 @@ export class ProposalMarketDatafeed implements IBasicDataFeed {
       }
 
       // Filter data for the specific market and convert to bars
-      // For spot market, use 'spot' string. For others, use numeric index.
+      // Note: REST API sends 'spot' string, but accept -1 too for consistency
       const bars: Bar[] = data.data
-        .filter((item: any) => isSpotMarket ? item.market === 'spot' : item.market === this.market)
+        .filter((item: any) => isSpotMarket ? (item.market === 'spot' || item.market === -1) : item.market === this.market)
         .map((item: ChartDataPoint) => ({
           time: new Date(item.timestamp).getTime(),
           open: parseFloat(item.open),
@@ -291,9 +291,9 @@ export class ProposalMarketDatafeed implements IBasicDataFeed {
       }
 
       // Find the last bar for this market using direct comparison
-      // Backend returns market as numeric index (0-3) or 'spot' string
+      // Note: REST API sends 'spot' string, but accept -1 too for consistency
       const lastBar = data.data
-        .filter((item: any) => item.market === marketFilter)
+        .filter((item: any) => isSpotMarket ? (item.market === 'spot' || item.market === -1) : item.market === marketFilter)
         .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
 
       if (lastBar) {
@@ -386,8 +386,9 @@ export class ProposalMarketDatafeed implements IBasicDataFeed {
     let updatedCount = 0;
     for (const [listenerGuid, { callback, aggregator, isSpotMarket }] of this.subscribers) {
       // Match spot market subscribers to spot prices, pass/fail subscribers to their respective prices
+      // Note: REST API sends 'spot' string, WebSocket sends -1 number - accept both
       const marketMatches = isSpotMarket
-        ? priceUpdate.market === 'spot'
+        ? (priceUpdate.market === 'spot' || priceUpdate.market === -1)
         : priceUpdate.market === this.market;
 
       if (!marketMatches) {
