@@ -106,11 +106,11 @@ export function ChartBox({
         <div className="bg-[#121212] border border-[#191919] overflow-hidden rounded-[6px] flex-1 flex flex-col">
           {/* Mobile: 400px */}
           <div className="md:hidden">
-            <MarketChart proposalId={proposalId} market={selectedMarketIndex} height={480} moderatorId={moderatorId} />
+            <MarketChart proposalId={proposalId} market={selectedMarketIndex} marketLabel={selectedLabel} height={480} moderatorId={moderatorId} />
           </div>
           {/* Desktop: fills available height */}
           <div className="hidden md:flex md:flex-1">
-            <MarketChart proposalId={proposalId} market={selectedMarketIndex} height="100%" moderatorId={moderatorId} />
+            <MarketChart proposalId={proposalId} market={selectedMarketIndex} marketLabel={selectedLabel} height="100%" moderatorId={moderatorId} />
           </div>
         </div>
       ) : (
@@ -119,7 +119,6 @@ export function ChartBox({
             <thead className="text-[#6B6E71] font-medium uppercase">
               <tr>
                 <th className="py-3 pl-3 text-left font-medium w-[240px]">Trader</th>
-                <th className="hidden md:table-cell py-3 text-left font-medium w-[100px]">Coin</th>
                 <th className="py-3 text-left font-medium w-[100px]">Trade</th>
                 <th className="py-3 text-left font-medium w-[120px]">MCAP</th>
                 <th className="py-3 text-left font-medium w-[140px]">Amount</th>
@@ -130,13 +129,13 @@ export function ChartBox({
             <tbody>
             {tradesLoading ? (
               <tr>
-                <td colSpan={7} className="py-8 text-center text-[#6B6E71]">
+                <td colSpan={6} className="py-8 text-center text-[#6B6E71]">
                   Loading trades...
                 </td>
               </tr>
             ) : trades.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-8 text-center text-[#6B6E71]">
+                <td colSpan={6} className="py-8 text-center text-[#6B6E71]">
                   No trades yet
                 </td>
               </tr>
@@ -187,7 +186,6 @@ export function ChartBox({
                       </a>
                     </div>
                   </td>
-                  <td className="hidden md:table-cell py-3 font-medium uppercase w-[100px]">{trade.market + 1}</td>
                   <td className="py-3 w-[100px]">
                     <span style={{ color: trade.isBaseToQuote ? '#FF6F94' : '#6ECC94' }}>
                       {trade.isBaseToQuote ? 'Sell' : 'Buy'}

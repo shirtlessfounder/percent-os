@@ -16,11 +16,12 @@ declare global {
 interface MarketChartProps {
   proposalId: number;
   market: number;  // Numeric market index (0-3 for quantum markets)
+  marketLabel?: string;  // Display label for the market (e.g., "Yes", "No", option name)
   height?: number | string;
   moderatorId?: number;
 }
 
-export default function MarketChart({ proposalId, market, height = 256, moderatorId }: MarketChartProps) {
+export default function MarketChart({ proposalId, market, marketLabel, height = 256, moderatorId }: MarketChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetRef = useRef<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -78,7 +79,7 @@ export default function MarketChart({ proposalId, market, height = 256, moderato
         }
 
         // Create datafeed with spot pool address for overlay support
-        const datafeed = new ProposalMarketDatafeed(proposalId, market, proposal.spotPoolAddress, moderatorId);
+        const datafeed = new ProposalMarketDatafeed(proposalId, market, proposal.spotPoolAddress, moderatorId, marketLabel);
         datafeed.setAddresses(tokenAddress, poolAddress);
 
         // Clear any existing widget

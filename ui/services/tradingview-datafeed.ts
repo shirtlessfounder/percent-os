@@ -30,6 +30,7 @@ interface ChartDataPoint {
 export class ProposalMarketDatafeed implements IBasicDataFeed {
   private proposalId: number;
   private market: number;  // Numeric market index (0-3 for quantum markets)
+  private marketLabel: string;  // Display label for the market
   private moderatorId?: number;
   private tokenAddress: string | null = null;
   private poolAddress: string | null = null;
@@ -38,9 +39,10 @@ export class ProposalMarketDatafeed implements IBasicDataFeed {
   // NOTE: solPrice and totalSupply no longer needed - backend calculates market cap USD
   // All prices (pass, fail, spot) and trade prices are pre-calculated as market cap USD
 
-  constructor(proposalId: number, market: number, spotPoolAddress?: string, moderatorId?: number) {
+  constructor(proposalId: number, market: number, spotPoolAddress?: string, moderatorId?: number, marketLabel?: string) {
     this.proposalId = proposalId;
     this.market = market;
+    this.marketLabel = marketLabel || `Coin ${market + 1}`;
     this.spotPoolAddress = spotPoolAddress || null;
     this.moderatorId = moderatorId;
   }
@@ -86,8 +88,8 @@ export class ProposalMarketDatafeed implements IBasicDataFeed {
     const isSpotMarket = symbolName === 'SPOT-MARKET';
 
     const displayName = isSpotMarket
-      ? 'SPOT $ZC'
-      : `COIN ${this.market + 1} $ZC`;
+      ? 'ZC'
+      : this.marketLabel.toUpperCase();
 
     const symbolInfo: LibrarySymbolInfo = {
       name: displayName,

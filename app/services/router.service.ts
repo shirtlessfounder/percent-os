@@ -283,8 +283,8 @@ export class RouterService implements IRouterService {
             // Proposal is still active, reschedule tasks
             this.logger.info(`Rescheduling tasks for active proposal #${proposal.config.id} for moderator ${moderatorId}`);
 
-            // Note: Conditional market prices are only recorded when trades occur (not periodically)
-            // This prevents phantom candles from SOL price fluctuations
+            // Schedule price recording (every 5 seconds)
+            scheduler.schedulePriceRecording(moderatorId, proposal.config.id, 5000);
 
             // Schedule TWAP cranking (default 1 minute interval)
             scheduler.scheduleTWAPCranking(moderatorId, proposal.config.id, 60000);

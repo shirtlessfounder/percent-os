@@ -299,8 +299,8 @@ export class Moderator implements IModerator {
       // Schedule automatic TWAP cranking (every minute)
       this.scheduler.scheduleTWAPCranking(this.id, proposalIdCounter, params.twap.minUpdateInterval);
 
-      // Note: Conditional market prices are only recorded when trades occur (not periodically)
-      // This prevents phantom candles from SOL price fluctuations
+      // Schedule price recording for this proposal
+      this.scheduler.schedulePriceRecording(this.id, proposalIdCounter, 5000); // 5 seconds
 
       // Schedule spot price recording if spot pool address is provided
       if (params.spotPoolAddress) {
