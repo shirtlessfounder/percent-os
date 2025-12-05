@@ -299,7 +299,7 @@ export class Moderator implements IModerator {
       // Schedule automatic TWAP cranking (every minute)
       this.scheduler.scheduleTWAPCranking(this.id, proposalIdCounter, params.twap.minUpdateInterval);
 
-      // Schedule price recording for this proposal
+      // Also schedule price recording for this proposal
       this.scheduler.schedulePriceRecording(this.id, proposalIdCounter, 5000); // 5 seconds
 
       // Schedule spot price recording if spot pool address is provided
