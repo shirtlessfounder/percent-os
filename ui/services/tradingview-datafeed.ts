@@ -30,6 +30,7 @@ interface ChartDataPoint {
 export class ProposalMarketDatafeed implements IBasicDataFeed {
   private proposalId: number;
   private market: number;  // Numeric market index (0-3 for quantum markets)
+  private marketLabel: string;  // Display label for the market
   private moderatorId?: number;
   private tokenAddress: string | null = null;
   private poolAddress: string | null = null;
@@ -38,9 +39,10 @@ export class ProposalMarketDatafeed implements IBasicDataFeed {
   // NOTE: solPrice and totalSupply no longer needed - backend calculates market cap USD
   // All prices (pass, fail, spot) and trade prices are pre-calculated as market cap USD
 
-  constructor(proposalId: number, market: number, spotPoolAddress?: string, moderatorId?: number) {
+  constructor(proposalId: number, market: number, spotPoolAddress?: string, moderatorId?: number, marketLabel?: string) {
     this.proposalId = proposalId;
     this.market = market;
+    this.marketLabel = marketLabel || `Coin ${market + 1}`;
     this.spotPoolAddress = spotPoolAddress || null;
     this.moderatorId = moderatorId;
   }
@@ -86,8 +88,8 @@ export class ProposalMarketDatafeed implements IBasicDataFeed {
     const isSpotMarket = symbolName === 'SPOT-MARKET';
 
     const displayName = isSpotMarket
-      ? 'SPOT $ZC'
-      : `COIN ${this.market + 1} $ZC`;
+      ? 'ZC'
+      : this.marketLabel.toUpperCase();
 
     const symbolInfo: LibrarySymbolInfo = {
       name: displayName,
@@ -172,9 +174,9 @@ export class ProposalMarketDatafeed implements IBasicDataFeed {
       }
 
       // Filter data for the specific market and convert to bars
-      // For spot market, use 'spot' string. For others, use numeric index.
+      // Note: REST API sends 'spot' string, but accept -1 too for consistency
       const bars: Bar[] = data.data
-        .filter((item: any) => isSpotMarket ? item.market === 'spot' : item.market === this.market)
+        .filter((item: any) => isSpotMarket ? (item.market === 'spot' || item.market === -1) : item.market === this.market)
         .map((item: ChartDataPoint) => ({
           time: new Date(item.timestamp).getTime(),
           open: parseFloat(item.open),
@@ -291,9 +293,9 @@ export class ProposalMarketDatafeed implements IBasicDataFeed {
       }
 
       // Find the last bar for this market using direct comparison
-      // Backend returns market as numeric index (0-3) or 'spot' string
+      // Note: REST API sends 'spot' string, but accept -1 too for consistency
       const lastBar = data.data
-        .filter((item: any) => item.market === marketFilter)
+        .filter((item: any) => isSpotMarket ? (item.market === 'spot' || item.market === -1) : item.market === marketFilter)
         .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
 
       if (lastBar) {
@@ -386,8 +388,9 @@ export class ProposalMarketDatafeed implements IBasicDataFeed {
     let updatedCount = 0;
     for (const [listenerGuid, { callback, aggregator, isSpotMarket }] of this.subscribers) {
       // Match spot market subscribers to spot prices, pass/fail subscribers to their respective prices
+      // Note: REST API sends 'spot' string, WebSocket sends -1 number - accept both
       const marketMatches = isSpotMarket
-        ? priceUpdate.market === 'spot'
+        ? (priceUpdate.market === 'spot' || priceUpdate.market === -1)
         : priceUpdate.market === this.market;
 
       if (!marketMatches) {

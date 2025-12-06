@@ -1,17 +1,18 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import MarketChart from './MarketChart';
 import type { Trade } from '@/hooks/useTradeHistory';
 
 interface ChartBoxProps {
   proposalId: number;
   selectedMarketIndex: number;  // Numeric market index (0-3 for quantum markets)
+  marketLabels?: string[];  // Labels for each market option
   trades: Trade[];
-  totalVolume: number;
   tradesLoading: boolean;
   getTimeAgo: (timestamp: string) => string;
   getTokenUsed: (isBaseToQuote: boolean, market: number) => string;
+  calculateVolume?: (amountIn: string, isBaseToQuote: boolean, market: number) => number;
   moderatorId?: number;
   className?: string;
 }
@@ -19,16 +20,27 @@ interface ChartBoxProps {
 export function ChartBox({
   proposalId,
   selectedMarketIndex,
+  marketLabels,
   trades,
-  totalVolume,
   tradesLoading,
   getTimeAgo,
   getTokenUsed,
+  calculateVolume,
   moderatorId,
   className
 }: ChartBoxProps) {
+  // Get display label for the selected market (strip URLs and trim)
+  const selectedLabel = marketLabels?.[selectedMarketIndex]?.replace(/(https?:\/\/[^\s]+)/gi, '').trim() || `Coin ${selectedMarketIndex + 1}`;
   const [view, setView] = useState<'chart' | 'history'>('chart');
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
+
+  // Calculate volume for this specific market's trades
+  const marketVolume = useMemo(() => {
+    if (!calculateVolume || trades.length === 0) return 0;
+    return trades.reduce((sum, trade) => {
+      return sum + calculateVolume(trade.amountIn, trade.isBaseToQuote, trade.market);
+    }, 0);
+  }, [trades, calculateVolume]);
 
   // Format volume with K/M/B suffixes
   const formatVolume = (volume: number): string => {
@@ -50,15 +62,15 @@ export function ChartBox({
         <div className="flex items-center gap-3">
           <span className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] uppercase text-left" style={{ color: '#DDDDD7' }}>
             {view === 'chart'
-              ? `Chart: Coin ${selectedMarketIndex + 1}`
-              : `Trades: Coin ${selectedMarketIndex + 1}`
+              ? `Chart: "${selectedLabel}"`
+              : `Trades: "${selectedLabel}"`
             }
           </span>
-          <span className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] uppercase" style={{ color: '#DDDDD7' }}>
+          <span className="hidden md:inline text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] uppercase" style={{ color: '#DDDDD7' }}>
             •
           </span>
-          <span className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] uppercase" style={{ color: '#DDDDD7' }}>
-            VOL ${formatVolume(totalVolume)}
+          <span className="hidden md:inline text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] uppercase" style={{ color: '#DDDDD7' }}>
+            VOL ${formatVolume(marketVolume)}
           </span>
         </div>
 
@@ -94,11 +106,11 @@ export function ChartBox({
         <div className="bg-[#121212] border border-[#191919] overflow-hidden rounded-[6px] flex-1 flex flex-col">
           {/* Mobile: 400px */}
           <div className="md:hidden">
-            <MarketChart proposalId={proposalId} market={selectedMarketIndex} height={480} moderatorId={moderatorId} />
+            <MarketChart proposalId={proposalId} market={selectedMarketIndex} marketLabel={selectedLabel} height={480} moderatorId={moderatorId} />
           </div>
           {/* Desktop: fills available height */}
           <div className="hidden md:flex md:flex-1">
-            <MarketChart proposalId={proposalId} market={selectedMarketIndex} height="100%" moderatorId={moderatorId} />
+            <MarketChart proposalId={proposalId} market={selectedMarketIndex} marketLabel={selectedLabel} height="100%" moderatorId={moderatorId} />
           </div>
         </div>
       ) : (
@@ -107,7 +119,6 @@ export function ChartBox({
             <thead className="text-[#6B6E71] font-medium uppercase">
               <tr>
                 <th className="py-3 pl-3 text-left font-medium w-[240px]">Trader</th>
-                <th className="hidden md:table-cell py-3 text-left font-medium w-[100px]">Coin</th>
                 <th className="py-3 text-left font-medium w-[100px]">Trade</th>
                 <th className="py-3 text-left font-medium w-[120px]">MCAP</th>
                 <th className="py-3 text-left font-medium w-[140px]">Amount</th>
@@ -118,13 +129,13 @@ export function ChartBox({
             <tbody>
             {tradesLoading ? (
               <tr>
-                <td colSpan={7} className="py-8 text-center text-[#6B6E71]">
+                <td colSpan={6} className="py-8 text-center text-[#6B6E71]">
                   Loading trades...
                 </td>
               </tr>
             ) : trades.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-8 text-center text-[#6B6E71]">
+                <td colSpan={6} className="py-8 text-center text-[#6B6E71]">
                   No trades yet
                 </td>
               </tr>
@@ -175,7 +186,6 @@ export function ChartBox({
                       </a>
                     </div>
                   </td>
-                  <td className="hidden md:table-cell py-3 font-medium uppercase w-[100px]">{trade.market + 1}</td>
                   <td className="py-3 w-[100px]">
                     <span style={{ color: trade.isBaseToQuote ? '#FF6F94' : '#6ECC94' }}>
                       {trade.isBaseToQuote ? 'Sell' : 'Buy'}

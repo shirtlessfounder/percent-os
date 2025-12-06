@@ -37,7 +37,7 @@ export interface TradeUpdate {
 
 export interface ChartPriceUpdate {
   proposalId: number;
-  market: number | 'spot';  // Numeric market index or 'spot' for spot market
+  market: number | 'spot';  // -1 (WebSocket) or 'spot' (REST API) for spot market, 0+ for conditional markets
   price: number; // OLD: price in SOL (legacy backend)
   marketCapUsd?: number; // NEW: pre-calculated market cap USD (updated backend)
   timestamp: number;
