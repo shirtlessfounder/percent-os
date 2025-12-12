@@ -210,6 +210,7 @@ export class PersistenceService implements IPersistenceService {
         quoteDecimals: config.quoteDecimals,
         defaultAuthority: encryptKeypair(config.defaultAuthority, encryptionKey),
         rpcUrl: config.rpcEndpoint,
+        dammWithdrawalPercentage: config.dammWithdrawalPercentage,
       };
 
       const query = `
@@ -267,6 +268,7 @@ export class PersistenceService implements IPersistenceService {
         quoteDecimals: row.config.quoteDecimals,
         defaultAuthority: decryptKeypair(authorityData, encryptionKey),
         rpcEndpoint: row.config.rpcUrl,
+        dammWithdrawalPercentage: row.config.dammWithdrawalPercentage,
         // poolAuthorities loaded from env vars in router.service.ts
       };
 

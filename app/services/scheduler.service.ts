@@ -402,8 +402,12 @@ export class SchedulerService implements ISchedulerService {
       const poolState = await cpAmm.fetchPoolState(poolPubkey);
 
       // Calculate price from sqrt price
-      const tokenADecimal = (poolState as any).tokenADecimal ?? 6;
-      const tokenBDecimal = (poolState as any).tokenBDecimal ?? 9;
+      // tokenADecimal and tokenBDecimal come from Meteora's pool state
+      const tokenADecimal = (poolState as any).tokenADecimal;
+      const tokenBDecimal = (poolState as any).tokenBDecimal;
+      if (tokenADecimal === undefined || tokenBDecimal === undefined) {
+        throw new Error(`Pool ${spotPoolAddress} missing decimal configuration in Meteora state`);
+      }
       const priceDecimal = getPriceFromSqrtPrice(
         poolState.sqrtPrice,
         tokenADecimal,

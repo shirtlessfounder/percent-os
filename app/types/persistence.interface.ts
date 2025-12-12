@@ -80,6 +80,7 @@ export interface IModeratorStateDB {
     quoteDecimals: number;
     authority: string;
     rpcUrl: string;
+    dammWithdrawalPercentage?: number;
   };
   protocol_name?: string;
   updated_at: Date;

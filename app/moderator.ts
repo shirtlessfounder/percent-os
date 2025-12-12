@@ -128,6 +128,7 @@ export class Moderator implements IModerator {
         decimals: this.config.quoteDecimals
       },
       authority: this.config.defaultAuthority.publicKey.toBase58(),
+      dammWithdrawalPercentage: this.config.dammWithdrawalPercentage,
     };
 
     return info;

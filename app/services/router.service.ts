@@ -21,48 +21,48 @@ import { Moderator } from '../moderator';
 import { IModeratorConfig, ProposalStatus } from '../types/moderator.interface';
 import { IRouterService } from '../types/router.interface';
 import { PublicKey, Keypair } from '@solana/web3.js';
-import fs from 'fs';
 import { PersistenceService } from './persistence.service';
 import { SchedulerService } from './scheduler.service';
 import { LoggerService } from './logger.service';
 import { getPool } from '../utils/database';
 
+import bs58 from 'bs58';
+import { POOL_CONFIG } from '../../src/config/pools';
+
 /**
- * Load per-pool authority keypairs from wallet JSON files
- * Supports file-path based authority loading for security isolation
+ * Load per-pool manager keypairs from base58 private key environment variables
  *
- * Environment variable patterns:
- * - POOL_AUTHORITY_ZC_PATH - Path to wallet JSON file for ZC pool
- * - POOL_AUTHORITY_OOGWAY_PATH - Path to wallet JSON file for oogway pool
+ * Environment variable pattern:
+ * - MANAGER_PRIVATE_KEY_ZC - Base58-encoded private key for ZC pool manager
+ * - MANAGER_PRIVATE_KEY_OOGWAY - Base58-encoded private key for oogway pool manager
+ * - MANAGER_PRIVATE_KEY_SURF - Base58-encoded private key for SURF pool manager
+ *
+ * The manager wallet:
+ * - Receives withdrawn DAMM liquidity (same as MANAGER_WALLET_* in zcombinator)
+ * - Is the mint authority for conditional tokens (pass/fail)
+ * - Signs vault operations in percent
  *
  * @param logger - Logger instance for logging
- * @returns Map of pool addresses to authority keypairs, or undefined if none configured
+ * @returns Map of pool addresses to manager keypairs, or undefined if none configured
  */
 function loadPoolAuthorities(logger: LoggerService): Map<string, Keypair> | undefined {
-  // Pool ticker to address mapping (same as in damm-liquidity.ts)
-  const poolMapping: Record<string, string> = {
-    'ZC': 'CCZdbVvDqPN8DmMLVELfnt9G1Q9pQNt3bTGifSpUY9Ad',
-    'OOGWAY': '2FCqTyvFcE4uXgRL1yh56riZ9vdjVgoP6yknZW3f8afX',
-  };
-
   const poolAuthorities = new Map<string, Keypair>();
 
-  for (const [ticker, poolAddress] of Object.entries(poolMapping)) {
-    const envVarName = `POOL_AUTHORITY_${ticker}_PATH`;
-    const walletPath = process.env[envVarName];
+  for (const [ticker, poolAddress] of Object.entries(POOL_CONFIG.tickerToPool)) {
+    const envVarName = `MANAGER_PRIVATE_KEY_${ticker}`;
+    const privateKeyBase58 = process.env[envVarName];
 
-    if (walletPath) {
+    if (privateKeyBase58) {
       try {
-        const keypairData = JSON.parse(fs.readFileSync(walletPath, 'utf-8'));
-        const keypair = Keypair.fromSecretKey(Uint8Array.from(keypairData));
+        const secretKey = bs58.decode(privateKeyBase58);
+        const keypair = Keypair.fromSecretKey(secretKey);
         poolAuthorities.set(poolAddress, keypair);
-        logger.info(`Loaded pool-specific authority for ${ticker}`, {
+        logger.info(`Loaded manager keypair for ${ticker}`, {
           poolAddress,
-          authority: keypair.publicKey.toBase58(),
-          walletPath
+          manager: keypair.publicKey.toBase58(),
         });
       } catch (error) {
-        logger.warn(`Failed to load pool authority from ${walletPath}`, {
+        logger.warn(`Failed to load manager keypair for ${ticker}`, {
           envVarName,
           error: error instanceof Error ? error.message : String(error)
         });
@@ -70,7 +70,7 @@ function loadPoolAuthorities(logger: LoggerService): Map<string, Keypair> | unde
     }
   }
 
-  // Return undefined if no pool authorities were loaded (backward compat)
+  // Return undefined if no pool authorities were loaded
   return poolAuthorities.size > 0 ? poolAuthorities : undefined;
 }
 
@@ -169,6 +169,7 @@ export class RouterService implements IRouterService {
    * @param quoteDecimals - Decimals for quote token
    * @param authority - Authority keypair
    * @param protocolName - Optional protocol name
+   * @param dammWithdrawalPercentage - Optional DAMM withdrawal percentage (0-50)
    * @returns The newly created moderator and its ID
    */
   public async createModerator(
@@ -177,7 +178,8 @@ export class RouterService implements IRouterService {
     baseDecimals: number,
     quoteDecimals: number,
     authority: Keypair,
-    protocolName?: string
+    protocolName?: string,
+    dammWithdrawalPercentage?: number
   ): Promise<{ moderator: Moderator; id: number }> {
     const pool = getPool();
 
@@ -203,6 +205,7 @@ export class RouterService implements IRouterService {
         defaultAuthority: authority,
         poolAuthorities: poolAuthorities,
         rpcEndpoint: rpcUrl,
+        dammWithdrawalPercentage,
       };
 
       // Create moderator instance

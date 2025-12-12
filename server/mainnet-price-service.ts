@@ -106,9 +106,12 @@ export class MainnetPriceService {
 
       // Get price from the sqrt price stored in the pool
       // The price represents tokenB/tokenA (quote/base)
-      // Default to 9 decimals if not provided (standard for Solana tokens)
-      const tokenADecimal = (poolState as any).tokenADecimal ?? 6;
-      const tokenBDecimal = (poolState as any).tokenBDecimal ?? 9;
+      const tokenADecimal = (poolState as any).tokenADecimal;
+      const tokenBDecimal = (poolState as any).tokenBDecimal;
+      if (tokenADecimal === undefined || tokenBDecimal === undefined) {
+        console.error(`Pool ${poolAddress} missing decimal configuration in Meteora state`);
+        return null;
+      }
 
       const priceDecimal = getPriceFromSqrtPrice(
         poolState.sqrtPrice,

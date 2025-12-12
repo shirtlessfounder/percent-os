@@ -20,12 +20,12 @@ interface DepositCardProps {
   userBalances: UserBalancesResponse | null;
   onDepositSuccess: () => void;
   tokenSymbol?: string;
-  baseDecimals?: number;
+  baseDecimals: number; // Required - token decimals for base token
   proposalStatus?: 'Pending' | 'Passed' | 'Failed';
   winningMarketIndex?: number | null;
 }
 
-export function DepositCard({ proposalId, vaultPDA, solBalance, baseTokenBalance, userBalances, onDepositSuccess, tokenSymbol = 'ZC', baseDecimals = 6, proposalStatus = 'Pending', winningMarketIndex }: DepositCardProps) {
+export function DepositCard({ proposalId, vaultPDA, solBalance, baseTokenBalance, userBalances, onDepositSuccess, tokenSymbol = 'ZC', baseDecimals, proposalStatus = 'Pending', winningMarketIndex }: DepositCardProps) {
   const { ready, authenticated, walletAddress, login } = usePrivyWallet();
   const { signTransaction } = useTransactionSigner();
   const [mode, setMode] = useState<'deposit' | 'withdraw'>('deposit');

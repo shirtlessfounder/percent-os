@@ -27,7 +27,7 @@ import { formatNumber, formatCurrency } from '@/lib/formatters';
 import { openPosition } from '@/lib/trading';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
-import { getDecimals, toDecimal, toSmallestUnits } from '@/lib/constants/tokens';
+import { SOL_MULTIPLIER } from '@/lib/constants/tokens';
 import type { UserBalancesResponse } from '@/lib/programs/vault';
 import { useTokenContext } from '@/providers/TokenContext';
 
@@ -64,7 +64,8 @@ const TradingInterface = memo(({
 }: TradingInterfaceProps) => {
   // Get display label for the selected market (strip URLs and trim)
   const selectedLabel = marketLabels?.[selectedMarketIndex]?.replace(/(https?:\/\/[^\s]+)/gi, '').trim() || `Coin ${selectedMarketIndex + 1}`;
-  const { moderatorId } = useTokenContext();
+  const { moderatorId, baseDecimals } = useTokenContext();
+  const baseMultiplier = Math.pow(10, baseDecimals);
   const { authenticated, walletAddress, login } = usePrivyWallet();
   const isConnected = authenticated;
   const { sol: solPrice, baseToken: baseTokenPrice } = useTokenPrices(baseMint);
@@ -209,7 +210,9 @@ const TradingInterface = memo(({
 
       try {
         // Convert amount to smallest units
-        const amountInSmallestUnits = toSmallestUnits(parseFloat(amount), sellingToken);
+        const amountInSmallestUnits = Math.floor(
+          parseFloat(amount) * (sellingToken === 'sol' ? SOL_MULTIPLIER : baseMultiplier)
+        );
 
         // Skip if amount is too small (would result in 0 after conversion)
         if (amountInSmallestUnits === 0) {
@@ -266,14 +269,14 @@ const TradingInterface = memo(({
       : userBalances.quote.conditionalBalances[selectedMarketIndex] || '0';
 
     // Convert from smallest units to human-readable
-    const maxAmount = toDecimal(parseFloat(balance), sellingToken);
+    const maxAmount = parseFloat(balance) / (sellingToken === 'sol' ? SOL_MULTIPLIER : baseMultiplier);
 
     if (maxAmount > 0) {
       setAmount(maxAmount.toString());
     } else {
       toast.error(`No market ${selectedMarketIndex}-${sellingToken.toUpperCase()} balance available`);
     }
-  }, [userBalances, selectedMarketIndex, sellingToken]);
+  }, [userBalances, selectedMarketIndex, sellingToken, baseMultiplier]);
 
   // Check if amount exceeds available balance
   const balanceError = useMemo(() => {
@@ -287,14 +290,14 @@ const TradingInterface = memo(({
       ? userBalances.base.conditionalBalances[selectedMarketIndex] || '0'
       : userBalances.quote.conditionalBalances[selectedMarketIndex] || '0';
 
-    const maxAmount = toDecimal(parseFloat(balance), sellingToken);
+    const maxAmount = parseFloat(balance) / (sellingToken === 'sol' ? SOL_MULTIPLIER : baseMultiplier);
 
     if (inputAmount > maxAmount) {
       return `Insufficient balance. Max: ${formatNumber(maxAmount, sellingToken === 'sol' ? 3 : 0)} ${sellingToken === 'sol' ? 'SOL' : `$${tokenSymbol}`}`;
     }
 
     return null;
-  }, [amount, userBalances, selectedMarketIndex, sellingToken]);
+  }, [amount, userBalances, selectedMarketIndex, sellingToken, baseMultiplier]);
 
   const handleTrade = useCallback(async () => {
     if (!isConnected) {
@@ -322,6 +325,7 @@ const TradingInterface = memo(({
         inputAmount: amount,
         userAddress: walletAddress,
         signTransaction,
+        baseDecimals,
         moderatorId: moderatorId || undefined
       });
 
@@ -401,11 +405,11 @@ const TradingInterface = memo(({
   const handlePercentageClick = useCallback((percentValue: string) => {
     if (!userBalances) return;
 
-    // Get the ZC balance based on selectedMarketIndex (0-3)
+    // Get the base token balance based on selectedMarketIndex (0-3)
     const balance = userBalances.base.conditionalBalances[selectedMarketIndex] || '0';
 
     // Convert from smallest units to decimal
-    const maxAmount = toDecimal(parseFloat(balance), 'zc');
+    const maxAmount = parseFloat(balance) / baseMultiplier;
 
     // Calculate percentage
     const percent = parseFloat(percentValue);
@@ -416,9 +420,9 @@ const TradingInterface = memo(({
       setPercentage(percentValue);
       setAmount(calculatedAmount.toString());
     } else {
-      toast.error(`No market ${selectedMarketIndex} ZC balance available`);
+      toast.error(`No market ${selectedMarketIndex} ${tokenSymbol} balance available`);
     }
-  }, [userBalances, selectedMarketIndex]);
+  }, [userBalances, selectedMarketIndex, baseMultiplier, tokenSymbol]);
 
   // Handle SOL quick amount click (with auto-cap to max balance)
   const handleSolQuickAmountClick = useCallback((quickValue: string) => {
@@ -427,8 +431,8 @@ const TradingInterface = memo(({
     // Get the SOL balance based on selectedMarketIndex (0-3)
     const balance = userBalances.quote.conditionalBalances[selectedMarketIndex] || '0';
 
-    // Convert from smallest units to decimal
-    const maxAmount = toDecimal(parseFloat(balance), 'sol');
+    // Convert from smallest units to decimal (SOL is always 9 decimals)
+    const maxAmount = parseFloat(balance) / SOL_MULTIPLIER;
 
     // Parse the quick value
     const requestedAmount = parseFloat(quickValue);
@@ -505,7 +509,7 @@ const TradingInterface = memo(({
                   setPercentage(value);
                   if (value && userBalances) {
                     const balance = userBalances.base.conditionalBalances[selectedMarketIndex] || '0';
-                    const maxAmount = toDecimal(parseFloat(balance), 'zc');
+                    const maxAmount = parseFloat(balance) / baseMultiplier;
                     const calculatedAmount = (maxAmount * parseFloat(value)) / 100;
                     setAmount(calculatedAmount.toString());
                   } else {
@@ -607,7 +611,7 @@ const TradingInterface = memo(({
                 <span style={{ color: '#DDDDD7' }}>Expected Output:</span>
                 <span className="font-medium" style={{ color: '#DDDDD7' }}>
                   ~{formatNumber(
-                    toDecimal(parseFloat(quote.swapOutAmount), sellingToken === 'baseToken' ? 'sol' : 'zc'),
+                    parseFloat(quote.swapOutAmount) / (sellingToken === 'baseToken' ? SOL_MULTIPLIER : baseMultiplier),
                     sellingToken === 'baseToken' ? 4 : 2
                   )} {sellingToken === 'baseToken' ? 'SOL' : `$${tokenSymbol}`}
                 </span>

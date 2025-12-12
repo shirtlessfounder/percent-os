@@ -1,25 +1,21 @@
 /**
  * Whitelist configuration for multi-token decision markets
- * Maps DAMM pool addresses to authorized dev wallet addresses
+ *
+ * This file re-exports pool configuration from the consolidated pools.ts
+ * and provides helper functions for authorization checks.
  */
 
-// Map of DAMM pool address → array of authorized dev wallet public keys
-// Each pool can have multiple authorized wallets (e.g., team members)
-export const POOL_WHITELIST: Record<string, string[]> = {
-  // ZC-SOL DAMM Pool (default)
-  'CCZdbVvDqPN8DmMLVELfnt9G1Q9pQNt3bTGifSpUY9Ad': [
-    '79TLv4oneDA1tDUSNXBxNCnemzNmLToBHYXnfZWDQNeP',
-    'BXc9g3zxbQhhfkLjxXbtSHrfd6MSFRdJo8pDQhW95QUw',
-    'FgACAue3FuWPrL7xSqXWtUdHLne52dvVsKyKxjwqPYtr',
-    'FtV94i2JvmaqsE1rBT72C9YR58wYJXt1ZjRmPb4tDvMK',
-  ],
-  // oogway
-  '2FCqTyvFcE4uXgRL1yh56riZ9vdjVgoP6yknZW3f8afX': [
-    '79TLv4oneDA1tDUSNXBxNCnemzNmLToBHYXnfZWDQNeP',
-    'BXc9g3zxbQhhfkLjxXbtSHrfd6MSFRdJo8pDQhW95QUw',
-    'FgACAue3FuWPrL7xSqXWtUdHLne52dvVsKyKxjwqPYtr',
-  ],
-};
+import {
+  POOL_CONFIG,
+  POOL_WHITELIST as _POOL_WHITELIST,
+  POOL_METADATA as _POOL_METADATA,
+  PoolMetadata,
+} from './pools';
+
+// Re-export for backward compatibility
+export const POOL_WHITELIST = _POOL_WHITELIST;
+export const POOL_METADATA = _POOL_METADATA;
+export type { PoolMetadata };
 
 /**
  * Get all pool addresses that a wallet is authorized to use
@@ -29,7 +25,7 @@ export const POOL_WHITELIST: Record<string, string[]> = {
 export function getPoolsForWallet(walletAddress: string): string[] {
   const authorizedPools: string[] = [];
 
-  for (const [poolAddress, authorizedWallets] of Object.entries(POOL_WHITELIST)) {
+  for (const [poolAddress, authorizedWallets] of Object.entries(POOL_CONFIG.whitelist)) {
     if (authorizedWallets.includes(walletAddress)) {
       authorizedPools.push(poolAddress);
     }
@@ -45,7 +41,7 @@ export function getPoolsForWallet(walletAddress: string): string[] {
  * @returns true if wallet is authorized for the pool
  */
 export function isWalletAuthorizedForPool(walletAddress: string, poolAddress: string): boolean {
-  const authorizedWallets = POOL_WHITELIST[poolAddress];
+  const authorizedWallets = POOL_CONFIG.whitelist[poolAddress];
   if (!authorizedWallets) {
     return false;
   }
@@ -63,51 +59,13 @@ export function isWalletWhitelisted(walletAddress: string): boolean {
 
 /**
  * Get pool metadata by name/slug (case-insensitive)
- * @param name - The pool name/slug (e.g., 'zc', 'bangit')
+ * @param name - The pool name/slug (e.g., 'zc', 'surf')
  * @returns Pool metadata or null if not found
  */
 export function getPoolByName(name: string): PoolMetadata | null {
   const lowerName = name.toLowerCase();
-  const pool = Object.values(POOL_METADATA).find(
+  const pool = Object.values(POOL_CONFIG.metadata).find(
     p => p.ticker.toLowerCase() === lowerName
   );
   return pool || null;
 }
-
-/**
- * Get pool metadata (can be extended with more info like token name, mint address, etc.)
- */
-export interface PoolMetadata {
-  poolAddress: string;
-  ticker: string;
-  baseMint: string;
-  quoteMint: string;
-  baseDecimals: number;
-  quoteDecimals: number;
-  moderatorId: number;
-  icon?: string;
-}
-
-// Optional: Pool metadata for UI display
-export const POOL_METADATA: Record<string, PoolMetadata> = {
-  'CCZdbVvDqPN8DmMLVELfnt9G1Q9pQNt3bTGifSpUY9Ad': {
-    poolAddress: 'CCZdbVvDqPN8DmMLVELfnt9G1Q9pQNt3bTGifSpUY9Ad',
-    ticker: 'zc',
-    baseMint: 'GVvPZpC6ymCoiHzYJ7CWZ8LhVn9tL2AUpRjSAsLh6jZC', // ZC token
-    quoteMint: 'So11111111111111111111111111111111111111112', // Wrapped SOL
-    baseDecimals: 6,
-    quoteDecimals: 9,
-    moderatorId: 2, // Production ZC Decision Markets
-    icon: 'https://wsrv.nl/?w=128&h=128&default=1&url=https%3A%2F%2Folive-imaginative-aardvark-508.mypinata.cloud%2Fipfs%2FQmY56Yz44o1EhTJfy6b4uhKCXpNGYvmFdsRX9yuiX1X45a',
-  },
-  '2FCqTyvFcE4uXgRL1yh56riZ9vdjVgoP6yknZW3f8afX': {
-    poolAddress: '2FCqTyvFcE4uXgRL1yh56riZ9vdjVgoP6yknZW3f8afX',
-    ticker: 'oogway',
-    baseMint: 'C7MGcMnN8cXUkj8JQuMhkJZh6WqY2r8QnT3AUfKTkrix', // oogway token
-    quoteMint: 'So11111111111111111111111111111111111111112', // Wrapped SOL
-    baseDecimals: 6,
-    quoteDecimals: 9,
-    moderatorId: 3, // oogway Decision Markets
-    icon: 'https://wsrv.nl/?w=128&h=128&default=1&url=https%3A%2F%2Folive-imaginative-aardvark-508.mypinata.cloud%2Fipfs%2FQmV4rzAgYREFBpDRyM5VmboewHUwS1Xu8ey2wrs9rJKcfE',
-  },
-};

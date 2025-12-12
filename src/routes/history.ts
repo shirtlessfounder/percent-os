@@ -294,8 +294,15 @@ router.get('/:id/chart', async (req, res, next) => {
     // Get proposal to access totalSupply and baseDecimals
     const persistenceService = new PersistenceService(moderatorId, logger.createChild('persistence'));
     const proposal = await persistenceService.loadProposal(proposalId);
-    const totalSupply = proposal?.config.totalSupply || 1000000000;
-    const baseDecimals = proposal?.config.baseDecimals || 6;
+    if (!proposal) {
+      return res.status(404).json({ error: 'Proposal not found' });
+    }
+    if (proposal.config.baseDecimals === undefined) {
+      logger.error('[GET /:id/chart] Proposal missing baseDecimals', { proposalId, moderatorId });
+      return res.status(500).json({ error: 'Proposal configuration incomplete: missing baseDecimals' });
+    }
+    const totalSupply = proposal.config.totalSupply || 1000000000;
+    const baseDecimals = proposal.config.baseDecimals;
     // totalSupply is already decimal-adjusted when stored in database
     const actualSupply = totalSupply;
 

@@ -604,7 +604,12 @@ class PriceWebSocketServer {
       }
 
       const totalSupply = parseInt(result.rows[0].total_supply);
-      const baseDecimals = parseInt(result.rows[0].base_decimals) || 6;
+      const baseDecimalsRaw = result.rows[0].base_decimals;
+      if (baseDecimalsRaw === null || baseDecimalsRaw === undefined) {
+        console.error(`Proposal ${proposalId} missing base_decimals in database`);
+        throw new Error(`Proposal ${proposalId} configuration incomplete: missing base_decimals`);
+      }
+      const baseDecimals = parseInt(baseDecimalsRaw);
 
       // Total supply is already the actual token count, no decimal adjustment needed
       const actualSupply = totalSupply;

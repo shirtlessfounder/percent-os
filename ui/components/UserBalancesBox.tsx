@@ -7,9 +7,11 @@ interface UserBalancesBoxProps {
   failSol: number; // in lamports
   zcPrice: number | null;
   solPrice: number | null;
+  baseDecimals: number; // Required - token decimals for base token
 }
 
-export function UserBalancesBox({ passZC, passSol, failZC, failSol, zcPrice, solPrice }: UserBalancesBoxProps) {
+export function UserBalancesBox({ passZC, passSol, failZC, failSol, zcPrice, solPrice, baseDecimals }: UserBalancesBoxProps) {
+  const baseMultiplier = Math.pow(10, baseDecimals);
   return (
     <div className="bg-theme-card border border-theme-border rounded-[9px] py-3 px-5 hover:border-theme-border-hover transition-all duration-300">
       <div className="text-theme-text flex flex-col gap-3">
@@ -21,12 +23,12 @@ export function UserBalancesBox({ passZC, passSol, failZC, failSol, zcPrice, sol
           <div className="flex items-center gap-2 text-sm">
             <span
               className="group relative cursor-default"
-              title={zcPrice ? formatCurrency((passZC / 1e6) * zcPrice, 2) : 'Price unavailable'}
+              title={zcPrice ? formatCurrency((passZC / baseMultiplier) * zcPrice, 2) : 'Price unavailable'}
             >
-              {formatNumber(passZC / 1e6, 0)} $ZC
+              {formatNumber(passZC / baseMultiplier, 0)} $ZC
               {zcPrice && (
                 <span className="absolute left-0 top-full mt-1 px-2 py-1 bg-theme-input border border-theme-border-divider rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                  {formatCurrency((passZC / 1e6) * zcPrice, 2)}
+                  {formatCurrency((passZC / baseMultiplier) * zcPrice, 2)}
                 </span>
               )}
             </span>
@@ -51,12 +53,12 @@ export function UserBalancesBox({ passZC, passSol, failZC, failSol, zcPrice, sol
           <div className="flex items-center gap-2 text-sm">
             <span
               className="group relative cursor-default"
-              title={zcPrice ? formatCurrency((failZC / 1e6) * zcPrice, 2) : 'Price unavailable'}
+              title={zcPrice ? formatCurrency((failZC / baseMultiplier) * zcPrice, 2) : 'Price unavailable'}
             >
-              {formatNumber(failZC / 1e6, 0)} $ZC
+              {formatNumber(failZC / baseMultiplier, 0)} $ZC
               {zcPrice && (
                 <span className="absolute left-0 top-full mt-1 px-2 py-1 bg-theme-input border border-theme-border-divider rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                  {formatCurrency((failZC / 1e6) * zcPrice, 2)}
+                  {formatCurrency((failZC / baseMultiplier) * zcPrice, 2)}
                 </span>
               )}
             </span>

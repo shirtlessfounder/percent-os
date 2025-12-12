@@ -70,15 +70,20 @@ export function TokenProvider({ tokenSlug, children }: TokenProviderProps) {
     fetchPoolMetadata();
   }, [tokenSlug, router]);
 
+  // Note: baseDecimals defaults to 9 during loading. This is safe because:
+  // - Pages check isLoading before rendering components that use baseDecimals
+  // - After loading, poolMetadata.baseDecimals will have the correct value
+  // The default of 9 (SOL decimals) is used as it's the most common and will
+  // cause obvious errors if incorrectly used (amounts will be 1000x too small for 6-decimal tokens)
   const value: TokenContextValue = {
     tokenSlug,
     poolAddress: poolMetadata?.poolAddress || null,
     poolMetadata,
     // Convenience getters
     baseMint: poolMetadata?.baseMint || null,
-    baseDecimals: poolMetadata?.baseDecimals || 6, // Default to 6 if not loaded
+    baseDecimals: poolMetadata?.baseDecimals ?? 9, // Default to 9 during loading (will cause obvious errors if used)
     tokenSymbol: poolMetadata?.ticker?.toUpperCase() || tokenSlug.toUpperCase(),
-    moderatorId: poolMetadata?.moderatorId || null,
+    moderatorId: poolMetadata?.moderatorId ?? null,
     icon: poolMetadata?.icon || null,
     isLoading,
     error,

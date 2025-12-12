@@ -1,44 +1,16 @@
 /**
- * Token configuration and utility functions
+ * Token constants
+ *
+ * Note: Only SOL has a fixed decimal count (9). All other token decimals
+ * should be fetched dynamically from the token context or API response.
  */
 
-export const TOKEN_DECIMALS = {
-  SOL: 9,
-  ZC: 6,
-} as const;
+/** SOL always has 9 decimals */
+export const SOL_DECIMALS = 9;
+
+/** Multiplier for converting SOL to lamports */
+export const SOL_MULTIPLIER = 1e9;
 
 export const TOKEN_MINTS = {
   SOL: 'So11111111111111111111111111111111111111112',
-  ZC: 'GVvPZpC6ymCoiHzYJ7CWZ8LhVn9tL2AUpRjSAsLh6jZC',
 } as const;
-
-/**
- * Convert human-readable amount to smallest token units
- * @param amount - The human-readable amount (e.g., 1.5 SOL)
- * @param token - The token type ('sol', 'zc', or 'baseToken')
- * @returns The amount in smallest units (e.g., 1500000000 for 1.5 SOL)
- */
-export function toSmallestUnits(amount: number, token: 'sol' | 'zc' | 'baseToken'): number {
-  const decimals = token === 'sol' ? TOKEN_DECIMALS.SOL : TOKEN_DECIMALS.ZC;
-  return Math.floor(amount * Math.pow(10, decimals));
-}
-
-/**
- * Convert smallest token units to human-readable decimal amount
- * @param amount - The amount in smallest units
- * @param token - The token type ('sol', 'zc', or 'baseToken')
- * @returns The human-readable amount (e.g., 1.5 for 1500000000)
- */
-export function toDecimal(amount: number, token: 'sol' | 'zc' | 'baseToken'): number {
-  const decimals = token === 'sol' ? TOKEN_DECIMALS.SOL : TOKEN_DECIMALS.ZC;
-  return amount / Math.pow(10, decimals);
-}
-
-/**
- * Get the decimal places for a given token
- * @param token - The token type ('sol', 'zc', or 'baseToken')
- * @returns The number of decimal places
- */
-export function getDecimals(token: 'sol' | 'zc' | 'baseToken'): number {
-  return token === 'sol' ? TOKEN_DECIMALS.SOL : TOKEN_DECIMALS.ZC;
-}

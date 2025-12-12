@@ -35,7 +35,7 @@ export interface OpenPositionConfig {
   inputAmount: string;  // Amount of conditional tokens to sell
   userAddress: string;
   signTransaction: (transaction: Transaction) => Promise<Transaction>;
-  baseDecimals?: number;  // Decimals for the base token (default 6)
+  baseDecimals: number;  // Required - decimals for the base token
   moderatorId?: number;  // Moderator ID for multi-moderator support
 }
 
@@ -44,7 +44,7 @@ export interface OpenPositionConfig {
  * Swaps conditional tokens: e.g., Pass-ZC → Pass-SOL or Fail-SOL → Fail-ZC
  */
 export async function openPosition(config: OpenPositionConfig): Promise<void> {
-  const { proposalId, market, inputToken, inputAmount, userAddress, signTransaction, baseDecimals = 6, moderatorId } = config;
+  const { proposalId, market, inputToken, inputAmount, userAddress, signTransaction, baseDecimals, moderatorId } = config;
 
   // Determine swap direction based on inputToken
   // inputToken 'baseToken' means we're selling base conditional for quote (SOL conditional)

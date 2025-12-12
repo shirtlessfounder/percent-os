@@ -49,6 +49,7 @@ export interface IModeratorInfo {
     decimals: number;
   };
   authority: string;
+  dammWithdrawalPercentage?: number;
 }
 
 /**
@@ -99,6 +100,7 @@ export interface IModeratorConfig {
   rpcEndpoint: string;                         // Solana RPC endpoint URL
   commitment?: Commitment;                     // Optional commitment level (defaults to 'confirmed')
   jitoUuid?: string;                           // Optional Jito UUID for bundle submissions (mainnet only)
+  dammWithdrawalPercentage?: number;           // DAMM liquidity withdrawal percentage (0-50, defaults to 12)
 }
 
 /**

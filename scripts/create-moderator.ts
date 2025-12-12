@@ -20,7 +20,8 @@
 
 import { CreateModeratorRequest } from '@src/routes/router';
 import { encryptKeypair } from '@app/utils/crypto';
-import { ExecutionService } from '@app/services/execution.service';
+import { Keypair } from '@solana/web3.js';
+import bs58 from 'bs58';
 import * as dotenv from 'dotenv';
 
 dotenv.config();
@@ -40,29 +41,53 @@ async function createModerator() {
     process.exit(1);
   }
 
-  // Load authority keypair
-  const keypairPath = process.env.SOLANA_KEYPAIR_PATH || './wallet.json';
-  console.log(`Loading keypair from: ${keypairPath}`);
+  // Token configuration - UPDATE THESE FOR EACH NEW TOKEN
+  const SOL_MINT = 'So11111111111111111111111111111111111111112'; // Wrapped SOL
+
+  // SURF token
+  const TICKER = 'SURF';
+  const BASE_MINT = 'SurfwRjQQFV6P7JdhxSptf4CjWU8sb88rUiaLCystar';
+  const BASE_DECIMALS = 9;
+  const DAMM_WITHDRAWAL_PERCENTAGE = 12; // Optional: DAMM withdrawal percentage (0-50, defaults to 12)
+
+  // // ZC token (example)
+  // const TICKER = 'ZC';
+  // const BASE_MINT = 'GVvPZpC6ymCoiHzYJ7CWZ8LhVn9tL2AUpRjSAsLh6jZC';
+  // const BASE_DECIMALS = 6;
+  // const DAMM_WITHDRAWAL_PERCENTAGE = 12;
+
+  // // oogway token (example)
+  // const TICKER = 'OOGWAY';
+  // const BASE_MINT = 'C7MGcMnN8cXUkj8JQuMhkJZh6WqY2r8QnT3AUfKTkrix';
+  // const BASE_DECIMALS = 6;
+  // const DAMM_WITHDRAWAL_PERCENTAGE = 12;
+
+  // Load manager keypair from MANAGER_PRIVATE_KEY_<TICKER> env var
+  const envVarName = `MANAGER_PRIVATE_KEY_${TICKER}`;
+  const managerPrivateKey = process.env[envVarName];
+
+  if (!managerPrivateKey) {
+    console.error(`${envVarName} environment variable is required`);
+    process.exit(1);
+  }
 
   try {
-    const authority = ExecutionService.loadKeypair(keypairPath);
-    console.log(`Authority: ${authority.publicKey.toBase58()}`);
+    // Decode base58 private key to keypair
+    const secretKey = bs58.decode(managerPrivateKey);
+    const authority = Keypair.fromSecretKey(secretKey);
+    console.log(`Manager wallet for ${TICKER}: ${authority.publicKey.toBase58()}`);
 
-    // Encrypt the keypair
+    // Encrypt the keypair for storage in database
     const encryptedAuthority = encryptKeypair(authority, ENCRYPTION_KEY);
 
-    // Token configuration
-    // ZC token address (you'll need to replace this with actual ZC token address)
-    const BASE_MINT = ''; // Replace with actual ZC token mint
-    const SOL_MINT = 'So11111111111111111111111111111111111111112'; // Wrapped SOL
-
     const request: CreateModeratorRequest = {
-      baseMint: BASE_MINT,      // ZC token
-      quoteMint: SOL_MINT,    // SOL
-      baseDecimals: 6,        // ZC decimals
+      baseMint: BASE_MINT,
+      quoteMint: SOL_MINT,
+      baseDecimals: BASE_DECIMALS,
       quoteDecimals: 9,       // SOL decimals
       authority: encryptedAuthority,
-      protocolName: 'Percent Protocol'
+      protocolName: TICKER,
+      dammWithdrawalPercentage: DAMM_WITHDRAWAL_PERCENTAGE
     };
 
     console.log('\nRequest:');

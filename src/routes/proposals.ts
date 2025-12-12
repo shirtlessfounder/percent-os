@@ -35,8 +35,8 @@ import { VaultType } from '@zcomb/vault-sdk';
 const routerService = RouterService.getInstance();
 const logger = new LoggerService('api').createChild('proposals');
 
-// DAMM Configuration
-const DAMM_WITHDRAWAL_PERCENTAGE = 12;
+// DAMM Configuration (default if not set per-moderator)
+const DEFAULT_DAMM_WITHDRAWAL_PERCENTAGE = 12;
 
 // Type definition for creating a proposal
 export interface CreateProposalRequest {
@@ -116,6 +116,8 @@ router.get('/', async (req, res, next) => {
         markets: p.config.markets,
         marketLabels: p.config.market_labels,
         totalSupply: p.config.totalSupply,
+        baseDecimals: p.config.baseDecimals,
+        quoteDecimals: p.config.quoteDecimals,
         poolAddress: p.config.spotPoolAddress || null,
         poolName: p.config.spotPoolAddress? (POOL_METADATA[p.config.spotPoolAddress]?.ticker || 'unknown') : 'unknown',
         vaultPDA: p.deriveVaultPDA(VaultType.Base).toBase58(),
@@ -184,6 +186,8 @@ router.get('/:id', async (req, res, next) => {
       quoteMint: proposal.config.quoteMint.toString(),
       spotPoolAddress: proposal.config.spotPoolAddress,
       totalSupply: proposal.config.totalSupply,
+      baseDecimals: proposal.config.baseDecimals,
+      quoteDecimals: proposal.config.quoteDecimals,
       markets: proposal.config.markets,
       marketLabels: proposal.config.market_labels,
       ammConfig: serialized.ammConfig,
@@ -408,10 +412,13 @@ router.post('/', requireApiKey, requireModeratorId, async (req, res, next) => {
       });
     }
 
+    // Get DAMM withdrawal percentage from moderator config (with fallback to default)
+    const dammWithdrawalPercentage = moderator.config.dammWithdrawalPercentage ?? DEFAULT_DAMM_WITHDRAWAL_PERCENTAGE;
+
     // Step 1: Build DAMM withdrawal transaction (confirmation happens in Proposal.initialize())
     logger.info('[POST /] Building DAMM withdrawal transaction', {
       moderatorId,
-      percentage: DAMM_WITHDRAWAL_PERCENTAGE,
+      percentage: dammWithdrawalPercentage,
       poolAddress
     });
 
@@ -419,7 +426,7 @@ router.post('/', requireApiKey, requireModeratorId, async (req, res, next) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        withdrawalPercentage: DAMM_WITHDRAWAL_PERCENTAGE,
+        withdrawalPercentage: dammWithdrawalPercentage,
         poolAddress
       })
     });
@@ -502,7 +509,7 @@ router.post('/', requireApiKey, requireModeratorId, async (req, res, next) => {
       dammWithdrawal: {
         requestId: withdrawBuildData.requestId,
         signedTransaction: signedTxBase58,
-        withdrawalPercentage: DAMM_WITHDRAWAL_PERCENTAGE,
+        withdrawalPercentage: dammWithdrawalPercentage,
         estimatedAmounts: withdrawBuildData.estimatedAmounts,
         poolAddress,
         ammPrice

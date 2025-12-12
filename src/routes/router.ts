@@ -33,6 +33,7 @@ export interface CreateModeratorRequest {
   quoteDecimals: number;
   authority: string;  // Encrypted keypair
   protocolName?: string;
+  dammWithdrawalPercentage?: number;  // DAMM withdrawal percentage (0-50, defaults to 12)
 }
 
 // Response type for GET /moderators
@@ -91,7 +92,8 @@ router.post('/moderators', requireApiKey, async (req, res, next) => {
       baseDecimals,
       quoteDecimals,
       authority,
-      protocolName
+      protocolName,
+      dammWithdrawalPercentage
     } = req.body;
 
     // Validate required fields
@@ -134,6 +136,18 @@ router.post('/moderators', requireApiKey, async (req, res, next) => {
       return res.status(400).json({
         error: 'Decimals must be between 0 and 18'
       });
+    }
+
+    // Validate dammWithdrawalPercentage if provided
+    if (dammWithdrawalPercentage !== undefined) {
+      if (typeof dammWithdrawalPercentage !== 'number' || dammWithdrawalPercentage <= 0 || dammWithdrawalPercentage > 50) {
+        logger.warn('[POST /moderators] Invalid dammWithdrawalPercentage', {
+          dammWithdrawalPercentage
+        });
+        return res.status(400).json({
+          error: 'dammWithdrawalPercentage must be a number between 0 and 50'
+        });
+      }
     }
 
     // Validate mint addresses
@@ -183,7 +197,8 @@ router.post('/moderators', requireApiKey, async (req, res, next) => {
       baseDecimals,
       quoteDecimals,
       authorityKeypair,
-      protocolName
+      protocolName,
+      dammWithdrawalPercentage
     );
 
     // Get the info for the newly created moderator
