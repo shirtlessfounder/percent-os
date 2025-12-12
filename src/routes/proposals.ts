@@ -29,14 +29,20 @@ import { PersistenceService } from '../../app/services/persistence.service';
 import { RouterService } from '@app/services/router.service';
 import { LoggerService } from '../../app/services/logger.service';
 import { ProposalStatus } from '../../app/types/moderator.interface';
-import { getPoolsForWallet, POOL_METADATA } from '../config/whitelist';
+import { getPoolsForWallet, POOL_METADATA, getAuthorizedPoolsAsync, AuthMethod } from '../config/whitelist';
 import { VaultType } from '@zcomb/vault-sdk';
 
 const routerService = RouterService.getInstance();
 const logger = new LoggerService('api').createChild('proposals');
 
-// DAMM Configuration
-const DAMM_WITHDRAWAL_PERCENTAGE = 12;
+// Initialize Solana connection for token balance checks
+const rpcUrl = process.env.HELIUS_API_KEY
+  ? `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`
+  : process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
+const authConnection = new Connection(rpcUrl, 'confirmed');
+
+// DAMM Configuration (default if not set per-moderator)
+const DEFAULT_DAMM_WITHDRAWAL_PERCENTAGE = 12;
 
 // Type definition for creating a proposal
 export interface CreateProposalRequest {
@@ -116,6 +122,8 @@ router.get('/', async (req, res, next) => {
         markets: p.config.markets,
         marketLabels: p.config.market_labels,
         totalSupply: p.config.totalSupply,
+        baseDecimals: p.config.baseDecimals,
+        quoteDecimals: p.config.quoteDecimals,
         poolAddress: p.config.spotPoolAddress || null,
         poolName: p.config.spotPoolAddress? (POOL_METADATA[p.config.spotPoolAddress]?.ticker || 'unknown') : 'unknown',
         vaultPDA: p.deriveVaultPDA(VaultType.Base).toBase58(),
@@ -184,6 +192,8 @@ router.get('/:id', async (req, res, next) => {
       quoteMint: proposal.config.quoteMint.toString(),
       spotPoolAddress: proposal.config.spotPoolAddress,
       totalSupply: proposal.config.totalSupply,
+      baseDecimals: proposal.config.baseDecimals,
+      quoteDecimals: proposal.config.quoteDecimals,
       markets: proposal.config.markets,
       marketLabels: proposal.config.market_labels,
       ammConfig: serialized.ammConfig,
@@ -265,43 +275,49 @@ router.post('/', requireApiKey, requireModeratorId, async (req, res, next) => {
       });
     }
 
-    // Step 0: Validate whitelist and get pool address
+    // Step 0: Validate authorization (whitelist OR token balance) and get pool address
     const creatorWallet = body.creatorWallet;
     const spotPoolAddress = body.spotPoolAddress as string | undefined;
-    const authorizedPools = getPoolsForWallet(creatorWallet);
+
+    // Get authorized pools (checks both whitelist and token balance)
+    const authorizedPools = await getAuthorizedPoolsAsync(authConnection, creatorWallet);
 
     if (authorizedPools.length === 0) {
-      logger.warn('[POST /] Creator wallet not whitelisted', {
+      logger.warn('[POST /] Creator wallet not authorized', {
         creatorWallet,
         moderatorId
       });
       return res.status(403).json({
-        error: 'Creator wallet is not authorized to create decision markets',
+        error: 'Creator wallet is not authorized to create decision markets. You need to be whitelisted or hold the minimum required token balance.',
         wallet: creatorWallet
       });
     }
 
     // Use pool from request body if provided, otherwise default to first authorized
     let poolAddress: string;
+    let authMethod: AuthMethod;
     if (spotPoolAddress) {
       // Validate wallet is authorized for the requested pool
-      if (!authorizedPools.includes(spotPoolAddress)) {
+      const poolAuth = authorizedPools.find(p => p.poolAddress === spotPoolAddress);
+      if (!poolAuth) {
         logger.warn('[POST /] Wallet not authorized for requested pool', {
           creatorWallet,
           requestedPool: spotPoolAddress,
-          authorizedPools
+          authorizedPools: authorizedPools.map(p => p.poolAddress)
         });
         return res.status(403).json({
           error: 'Wallet not authorized for requested pool',
           wallet: creatorWallet,
           requestedPool: spotPoolAddress,
-          authorizedPools
+          authorizedPools: authorizedPools.map(p => p.poolAddress)
         });
       }
       poolAddress = spotPoolAddress;
+      authMethod = poolAuth.authMethod;
     } else {
       // Backward compatibility: use first authorized pool
-      poolAddress = authorizedPools[0];
+      poolAddress = authorizedPools[0].poolAddress;
+      authMethod = authorizedPools[0].authMethod;
     }
 
     const poolMetadata = POOL_METADATA[poolAddress];
@@ -314,11 +330,12 @@ router.post('/', requireApiKey, requireModeratorId, async (req, res, next) => {
       });
     }
 
-    logger.info('[POST /] Whitelist validation passed', {
+    logger.info('[POST /] Authorization validation passed', {
       creatorWallet,
       poolAddress,
       poolName: poolMetadata?.ticker || 'Unknown',
-      requestedPool: spotPoolAddress || 'not specified'
+      requestedPool: spotPoolAddress || 'not specified',
+      authMethod
     });
 
     // Validate user attestation (proves user authorized the withdrawal)
@@ -408,10 +425,13 @@ router.post('/', requireApiKey, requireModeratorId, async (req, res, next) => {
       });
     }
 
+    // Get DAMM withdrawal percentage from moderator config (with fallback to default)
+    const dammWithdrawalPercentage = moderator.config.dammWithdrawalPercentage ?? DEFAULT_DAMM_WITHDRAWAL_PERCENTAGE;
+
     // Step 1: Build DAMM withdrawal transaction (confirmation happens in Proposal.initialize())
     logger.info('[POST /] Building DAMM withdrawal transaction', {
       moderatorId,
-      percentage: DAMM_WITHDRAWAL_PERCENTAGE,
+      percentage: dammWithdrawalPercentage,
       poolAddress
     });
 
@@ -419,7 +439,7 @@ router.post('/', requireApiKey, requireModeratorId, async (req, res, next) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        withdrawalPercentage: DAMM_WITHDRAWAL_PERCENTAGE,
+        withdrawalPercentage: dammWithdrawalPercentage,
         poolAddress
       })
     });
@@ -479,13 +499,19 @@ router.post('/', requireApiKey, requireModeratorId, async (req, res, next) => {
       ammPrice
     });
 
+    // Override proposal length for SURF to 10 minutes (for testing)
+    const SURF_PROPOSAL_LENGTH_OVERRIDE = 10 * 60; // 10 minutes in seconds
+    const effectiveProposalLength = poolMetadata.ticker.toLowerCase() === 'surf'
+      ? SURF_PROPOSAL_LENGTH_OVERRIDE
+      : body.proposalLength;
+
     // Create the proposal with DAMM withdrawal data (confirmation happens in initialize())
     const proposal = await moderator.createProposal({
       title: body.title,
       description: body.description,
       markets: body.markets || 2,
       market_labels: body.market_labels || ["Fail", "Pass"],
-      proposalLength: body.proposalLength,
+      proposalLength: effectiveProposalLength,
       spotPoolAddress: poolAddress,
       totalSupply,
       twap: {
@@ -502,7 +528,7 @@ router.post('/', requireApiKey, requireModeratorId, async (req, res, next) => {
       dammWithdrawal: {
         requestId: withdrawBuildData.requestId,
         signedTransaction: signedTxBase58,
-        withdrawalPercentage: DAMM_WITHDRAWAL_PERCENTAGE,
+        withdrawalPercentage: dammWithdrawalPercentage,
         estimatedAmounts: withdrawBuildData.estimatedAmounts,
         poolAddress,
         ammPrice
@@ -513,7 +539,8 @@ router.post('/', requireApiKey, requireModeratorId, async (req, res, next) => {
       proposalId: proposal.config.id,
       moderatorId,
       title: body.title,
-      proposalLength: body.proposalLength,
+      proposalLength: effectiveProposalLength,
+      requestedProposalLength: body.proposalLength,
       totalSupply,
       ammPrice
     });

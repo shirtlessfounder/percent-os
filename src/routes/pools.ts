@@ -86,9 +86,15 @@ router.get('/:poolAddress/price', async (req, res, next) => {
       throw error;
     }
 
-    // Extract decimals (default to standard values if not provided)
-    const tokenADecimal = (poolState as any).tokenADecimal ?? 6;
-    const tokenBDecimal = (poolState as any).tokenBDecimal ?? 9;
+    // Extract decimals from Meteora pool state
+    const tokenADecimal = (poolState as any).tokenADecimal;
+    const tokenBDecimal = (poolState as any).tokenBDecimal;
+    if (tokenADecimal === undefined || tokenBDecimal === undefined) {
+      return res.status(500).json({
+        error: 'Pool missing decimal configuration in Meteora state',
+        poolAddress
+      });
+    }
 
     // Calculate price from sqrt price
     const priceDecimal = getPriceFromSqrtPrice(

@@ -7,14 +7,14 @@ This guide covers everything needed to add a new token to the decision market sy
 Adding a new token requires:
 1. Creating a dedicated manager wallet (authority keypair)
 2. Configuring the wallet in both percent and zcombinator
-3. Updating whitelist with authorized users (percent only)
-4. Adding pool metadata for routing
+3. Updating pool config (whitelist, metadata, ticker mapping) in `src/config/pools.ts`
+4. **Running the create-moderator script** to create the moderator in database
 
 ---
 
 ## Step 1: Create Manager Wallet
 
-Each token needs its own **manager/authority wallet** for security isolation. If one token's wallet is compromised, other tokens remain safe.
+Each token needs its own **manager wallet** for security isolation. If one token's wallet is compromised, other tokens remain safe.
 
 ### Generate Wallet Keypair
 
@@ -38,30 +38,33 @@ solana-keygen pubkey wallet-newtoken.json
 
 ### 2a. percent Configuration
 
-Add environment variable pointing to the wallet file:
+Add environment variable with the base58-encoded private key:
 
 **File:** `percent/.env`
 
 ```bash
-# Existing wallets
-POOL_AUTHORITY_ZC_PATH=./wallet-zc.json
-POOL_AUTHORITY_OOGWAY_PATH=./wallet-oogway.json
+# Existing manager private keys (base58 encoded)
+# This is the same wallet as MANAGER_WALLET_* in zcombinator
+MANAGER_PRIVATE_KEY_ZC=<base58-private-key>
+MANAGER_PRIVATE_KEY_OOGWAY=<base58-private-key>
 
-# NEW: Add your token's wallet
-POOL_AUTHORITY_NEWTOKEN_PATH=./wallet-newtoken.json
+# NEW: Add your token's manager private key
+MANAGER_PRIVATE_KEY_NEWTOKEN=<base58-private-key>
 ```
 
-**File:** `percent/app/services/router.service.ts`
+**File:** `percent/src/config/pools.ts`
 
-Update the `poolMapping` object (lines 43-46):
+Update the `TICKER_TO_POOL` object:
 
 ```typescript
-const poolMapping: Record<string, string> = {
+const TICKER_TO_POOL: Record<string, string> = {
   'ZC': 'CCZdbVvDqPN8DmMLVELfnt9G1Q9pQNt3bTGifSpUY9Ad',
   'OOGWAY': '2FCqTyvFcE4uXgRL1yh56riZ9vdjVgoP6yknZW3f8afX',
   'NEWTOKEN': 'YOUR_NEW_POOL_ADDRESS_HERE',  // ADD THIS LINE
 };
 ```
+
+Then add the whitelist and metadata entries in the same file.
 
 ### 2b. zcombinator Configuration
 
@@ -101,20 +104,29 @@ The functions `getManagerWalletForPool()` and `getLpOwnerPrivateKeyForPool()` au
 
 ---
 
-## Step 3: Update Whitelist
+## Step 3: Update Pool Configuration
 
-**File:** `percent/src/config/whitelist.ts`
+**File:** `src/config/pools.ts`
 
-Add pool whitelist entry with authorized user wallets:
+This file is the single source of truth for all pool configuration in percent. Add entries to all three objects:
+
+### 3a. Add to TICKER_TO_POOL
 
 ```typescript
-export const POOL_WHITELIST: Record<string, string[]> = {
-  // Existing pools...
-  'CCZdbVvDqPN8DmMLVELfnt9G1Q9pQNt3bTGifSpUY9Ad': [...],
-  '2FCqTyvFcE4uXgRL1yh56riZ9vdjVgoP6yknZW3f8afX': [...],
+const TICKER_TO_POOL: Record<string, string> = {
+  'ZC': 'CCZdbVvDqPN8DmMLVELfnt9G1Q9pQNt3bTGifSpUY9Ad',
+  'OOGWAY': '2FCqTyvFcE4uXgRL1yh56riZ9vdjVgoP6yknZW3f8afX',
+  'SURF': 'Ez1QYeC95xJRwPA9SR7YWC1H1Tj43exJr91QqKf8Puu1',
+  'NEWTOKEN': 'YOUR_NEW_POOL_ADDRESS_HERE',  // ADD THIS LINE
+};
+```
 
-  // NEW: Your token's pool
-  'YOUR_NEW_POOL_ADDRESS_HERE': [
+### 3b. Add to POOL_WHITELIST
+
+```typescript
+const POOL_WHITELIST: Record<string, string[]> = {
+  // ... existing entries
+  [TICKER_TO_POOL.NEWTOKEN]: [
     '79TLv4oneDA1tDUSNXBxNCnemzNmLToBHYXnfZWDQNeP',  // User wallet 1
     'BXc9g3zxbQhhfkLjxXbtSHrfd6MSFRdJo8pDQhW95QUw',  // User wallet 2
     // Add more authorized user wallets as needed
@@ -124,27 +136,19 @@ export const POOL_WHITELIST: Record<string, string[]> = {
 
 This whitelist controls which user wallets can create decision markets for this pool.
 
----
-
-## Step 4: Add Pool Metadata
-
-**File:** `percent/src/config/whitelist.ts`
-
-Add pool metadata for routing and display:
+### 3c. Add to POOL_METADATA
 
 ```typescript
-export const POOL_METADATA: Record<string, PoolMetadata> = {
-  // Existing pools...
-
-  // NEW: Your token
-  'YOUR_NEW_POOL_ADDRESS_HERE': {
-    poolAddress: 'YOUR_NEW_POOL_ADDRESS_HERE',
+const POOL_METADATA: Record<string, PoolMetadata> = {
+  // ... existing entries
+  [TICKER_TO_POOL.NEWTOKEN]: {
+    poolAddress: TICKER_TO_POOL.NEWTOKEN,
     ticker: 'newtoken',  // ⚠️ MUST BE UNIQUE! Used for routing (/newtoken)
     baseMint: 'YOUR_TOKEN_MINT_ADDRESS',
     quoteMint: 'So11111111111111111111111111111111111111112',  // SOL
     baseDecimals: 6,  // Check your token's decimals
     quoteDecimals: 9,  // SOL always 9
-    moderatorId: 4,  // Next available ID (ZC=2, oogway=3, so use 4)
+    moderatorId: 5,  // Next available ID (ZC=2, oogway=3, SURF=4)
     icon: 'https://your-token-icon-url.png',  // Optional
   },
 };
@@ -156,35 +160,65 @@ export const POOL_METADATA: Record<string, PoolMetadata> = {
 
 ---
 
-## Step 5: Moderator ID
+## Step 4: Create Moderator in Database (REQUIRED)
 
-Each token needs a unique `moderatorId` to isolate proposals:
+Each token needs a moderator entry in the `qm_moderators` table. **This is required before proposals can be created** - without it, the API returns 404 "Moderator not found".
 
+**Current moderator IDs:**
 - **ZC**: `moderatorId: 2`
 - **oogway**: `moderatorId: 3`
-- **Your new token**: Choose next available (e.g., `4`)
+- **SURF**: `moderatorId: 4`
 
-The moderator:
-- Auto-initializes in database on first proposal creation
-- Tracks independent `proposal_counter` per token
-- Cannot be changed after creation
+### Run the create-moderator script
+
+**File:** `scripts/create-moderator.ts`
+
+1. Update the token configuration in the script:
+```typescript
+// SURF token
+const TICKER = 'SURF';
+const BASE_MINT = 'SurfwRjQQFV6P7JdhxSptf4CjWU8sb88rUiaLCystar';
+const BASE_DECIMALS = 9;
+```
+
+2. Set required environment variables:
+```bash
+export API_URL=http://localhost:3001  # or production URL
+export API_KEY=<your-api-key>
+export ENCRYPTION_KEY=<your-encryption-key>
+export MANAGER_PRIVATE_KEY_SURF=<base58-private-key>  # same env var used at runtime
+```
+
+3. Run the script:
+```bash
+npx ts-node scripts/create-moderator.ts
+```
+
+The script will:
+- Read the manager keypair from `MANAGER_PRIVATE_KEY_<TICKER>` env var
+- Encrypt and send it to `POST /api/router/moderators`
+- Create the moderator in `qm_moderators` table
+- Add it to the in-memory map (no server restart needed)
+
+**Note:** The script uses the **same env var** (`MANAGER_PRIVATE_KEY_<TICKER>`) that the server uses at runtime. This ensures the DB-stored authority matches the env var.
 
 ---
 
-## Step 6: Verify Configuration
+## Step 5: Verify Configuration
 
 ### Checklist Before Deploying
 
-- [ ] Manager wallet keypair created (`wallet-newtoken.json`)
+- [ ] Manager wallet keypair created
 - [ ] Manager wallet public key copied
-- [ ] `POOL_AUTHORITY_NEWTOKEN_PATH` in percent `.env`
+- [ ] `MANAGER_PRIVATE_KEY_NEWTOKEN` in percent `.env` (base58 private key)
 - [ ] `MANAGER_WALLET_NEWTOKEN` in zcombinator `.env`
 - [ ] `LP_OWNER_PRIVATE_KEY_NEWTOKEN` in zcombinator `.env`
-- [ ] `poolMapping` updated in `router.service.ts` (percent)
+- [ ] `TICKER_TO_POOL` updated in `src/config/pools.ts` (percent)
+- [ ] `POOL_WHITELIST` updated in `src/config/pools.ts` (percent)
+- [ ] `POOL_METADATA` updated in `src/config/pools.ts` (percent)
 - [ ] `poolToTicker` updated in `damm-liquidity.ts` (zcombinator)
-- [ ] User wallets added to `POOL_WHITELIST` in percent
-- [ ] `POOL_METADATA` entry added with unique ticker
 - [ ] Unique `moderatorId` assigned
+- [ ] **Moderator created in `qm_moderators` table** (via API or SQL)
 - [ ] Manager wallet funded with SOL for transaction fees
 
 ---
@@ -195,41 +229,54 @@ The moderator:
 // 1. Generate wallet
 // solana-keygen new --outfile wallet-shirtless.json
 // Public key: ShRt1essABC123... (example)
+// Get base58 private key: solana-keygen export-private-key wallet-shirtless.json
 
-// 2. percent/.env
-POOL_AUTHORITY_SHIRTLESS_PATH=./wallet-shirtless.json
+// 2. percent/.env (base58 private key - same wallet as MANAGER_WALLET in zcombinator)
+MANAGER_PRIVATE_KEY_SHIRTLESS=<base58-private-key>
 
 // 3. zcombinator/.env
 MANAGER_WALLET_SHIRTLESS=ShRt1essABC123...
 LP_OWNER_PRIVATE_KEY_SHIRTLESS=<base58-encoded-private-key>
 
-// 4. percent/app/services/router.service.ts - poolMapping
-const poolMapping = {
+// 4. percent/src/config/pools.ts - Add to TICKER_TO_POOL
+const TICKER_TO_POOL: Record<string, string> = {
+  // ... existing entries
   'SHIRTLESS': '8qWx3PQrZKm9VNYu4ThJ6Kp5XmD2Hf7Lb1Rj3Cw6Sv9T',
 };
 
-// 5. zcombinator/ui/routes/damm-liquidity.ts - poolToTicker
+// 5. percent/src/config/pools.ts - Add to POOL_WHITELIST
+const POOL_WHITELIST: Record<string, string[]> = {
+  // ... existing entries
+  [TICKER_TO_POOL.SHIRTLESS]: [
+    '79TLv4oneDA1tDUSNXBxNCnemzNmLToBHYXnfZWDQNeP',
+    'BXc9g3zxbQhhfkLjxXbtSHrfd6MSFRdJo8pDQhW95QUw',
+  ],
+};
+
+// 6. percent/src/config/pools.ts - Add to POOL_METADATA
+const POOL_METADATA: Record<string, PoolMetadata> = {
+  // ... existing entries
+  [TICKER_TO_POOL.SHIRTLESS]: {
+    poolAddress: TICKER_TO_POOL.SHIRTLESS,
+    ticker: 'shirtless',
+    baseMint: 'SHRT1ess...',
+    quoteMint: 'So11111111111111111111111111111111111111112',
+    baseDecimals: 6,
+    quoteDecimals: 9,
+    moderatorId: 5,  // Next available after SURF=4
+    icon: 'https://shirtless.com/icon.png',
+  },
+};
+
+// 7. zcombinator/ui/routes/damm-liquidity.ts - poolToTicker
 const poolToTicker = {
+  // ... existing entries
   '8qWx3PQrZKm9VNYu4ThJ6Kp5XmD2Hf7Lb1Rj3Cw6Sv9T': 'SHIRTLESS',
 };
 
-// 6. percent/src/config/whitelist.ts - POOL_WHITELIST
-'8qWx3PQrZKm9VNYu4ThJ6Kp5XmD2Hf7Lb1Rj3Cw6Sv9T': [
-  '79TLv4oneDA1tDUSNXBxNCnemzNmLToBHYXnfZWDQNeP',  // Authorized user 1
-  'BXc9g3zxbQhhfkLjxXbtSHrfd6MSFRdJo8pDQhW95QUw',  // Authorized user 2
-],
-
-// 7. percent/src/config/whitelist.ts - POOL_METADATA
-'8qWx3PQrZKm9VNYu4ThJ6Kp5XmD2Hf7Lb1Rj3Cw6Sv9T': {
-  poolAddress: '8qWx3PQrZKm9VNYu4ThJ6Kp5XmD2Hf7Lb1Rj3Cw6Sv9T',
-  ticker: 'shirtless',
-  baseMint: 'SHRT1ess...',
-  quoteMint: 'So11111111111111111111111111111111111111112',
-  baseDecimals: 6,
-  quoteDecimals: 9,
-  moderatorId: 4,
-  icon: 'https://shirtless.com/icon.png',
-},
+// 8. Create moderator in database (via API or direct SQL)
+// POST /api/router/moderators with encrypted keypair
+// OR direct SQL insert into qm_moderators table
 ```
 
 Routes automatically available:
@@ -267,8 +314,12 @@ Please add support for [TOKEN_NAME] with the following setup:
    - Authorized wallets: [LIST_OF_USER_PUBLIC_KEYS]
 
 4. Deploy to:
-   - percent backend
-   - zcombinator API
+   - percent backend (update pools.ts, add env var)
+   - zcombinator API (update damm-liquidity.ts, add env vars)
+
+5. Run create-moderator script:
+   - Update scripts/create-moderator.ts with token config
+   - Run: npx ts-node scripts/create-moderator.ts
 
 Once deployed, I'll test by creating a test DM.
 ```
@@ -279,8 +330,10 @@ Once deployed, I'll test by creating a test DM.
 
 To whitelist a new token:
 1. ✅ Generate dedicated manager wallet
-2. ✅ Configure wallet in percent (`POOL_AUTHORITY_<TICKER>_PATH`, `poolMapping`)
+2. ✅ Configure wallet in percent (`MANAGER_PRIVATE_KEY_<TICKER>` env var)
 3. ✅ Configure wallet in zcombinator (`MANAGER_WALLET_<TICKER>`, `LP_OWNER_PRIVATE_KEY_<TICKER>`, `poolToTicker`)
-4. ✅ Add authorized user wallets to `POOL_WHITELIST` in percent
-5. ✅ Add pool metadata with unique ticker and moderatorId
+4. ✅ Update `src/config/pools.ts` in percent (`TICKER_TO_POOL`, `POOL_WHITELIST`, `POOL_METADATA`)
+5. ✅ **Run `scripts/create-moderator.ts`** to create moderator in database
 6. ✅ Fund manager wallet with SOL
+
+**Note:** `MANAGER_PRIVATE_KEY_<TICKER>` (percent) and `MANAGER_WALLET_<TICKER>` (zcombinator) are the **same wallet** - percent needs the private key, zcombinator only needs the public key.

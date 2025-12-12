@@ -223,21 +223,28 @@ export class HistoryService {
 
     const result = await pool.query(query, params);
 
-    return result.rows.map(row => ({
-      id: row.id,
-      timestamp: row.timestamp,
-      moderatorId: row.moderator_id,
-      proposalId: row.proposal_id,
-      market: row.market,
-      userAddress: row.user_address,
-      isBaseToQuote: row.is_base_to_quote,
-      amountIn: new Decimal(row.amount_in),
-      amountOut: new Decimal(row.amount_out),
-      price: new Decimal(row.price),
-      txSignature: row.tx_signature,
-      totalSupply: row.total_supply ? parseInt(row.total_supply) : undefined,
-      baseDecimals: row.base_decimals ? parseInt(row.base_decimals) : 6,
-    }));
+    return result.rows.map(row => {
+      if (row.base_decimals === null || row.base_decimals === undefined) {
+        console.warn(`Trade ${row.id} for proposal ${row.proposal_id} missing base_decimals from joined proposal data`);
+      }
+      return {
+        id: row.id,
+        timestamp: row.timestamp,
+        moderatorId: row.moderator_id,
+        proposalId: row.proposal_id,
+        market: row.market,
+        userAddress: row.user_address,
+        isBaseToQuote: row.is_base_to_quote,
+        amountIn: new Decimal(row.amount_in),
+        amountOut: new Decimal(row.amount_out),
+        price: new Decimal(row.price),
+        txSignature: row.tx_signature,
+        totalSupply: row.total_supply ? parseInt(row.total_supply) : undefined,
+        baseDecimals: row.base_decimals !== null && row.base_decimals !== undefined
+          ? parseInt(row.base_decimals)
+          : undefined,
+      };
+    });
   }
 
   /**

@@ -100,16 +100,24 @@ export function useClaimablePositions(walletAddress: string | null, moderatorId?
 
       // Check if user has ANY winning tokens to claim
       if (baseWinningTokens > 0 || quoteWinningTokens > 0) {
+        // Use proposal decimals - these are required from the API
+        if (proposal.baseDecimals === undefined || proposal.quoteDecimals === undefined) {
+          console.error(`Proposal ${proposalId} missing decimals configuration`);
+          return;
+        }
+        const baseMultiplier = Math.pow(10, proposal.baseDecimals);
+        const quoteMultiplier = Math.pow(10, proposal.quoteDecimals);
+
         // Check base vault winning tokens (ZC)
         if (baseWinningTokens > 0) {
-          const value = (baseWinningTokens / 1e6) * baseTokenPrice;
+          const value = (baseWinningTokens / baseMultiplier) * baseTokenPrice;
           claimableList.push({
             proposalId,
             proposalDescription: proposal.description,
             proposalStatus: proposal.status as 'Passed' | 'Failed',
             winningMarketIndex: winningIndex,
             isWinner: true,
-            claimableAmount: baseWinningTokens / 1e6,
+            claimableAmount: baseWinningTokens / baseMultiplier,
             claimableToken: 'zc',
             claimableValue: value
           });
@@ -118,14 +126,14 @@ export function useClaimablePositions(walletAddress: string | null, moderatorId?
 
         // Check quote vault winning tokens (SOL)
         if (quoteWinningTokens > 0) {
-          const value = (quoteWinningTokens / 1e9) * solPrice;
+          const value = (quoteWinningTokens / quoteMultiplier) * solPrice;
           claimableList.push({
             proposalId,
             proposalDescription: proposal.description,
             proposalStatus: proposal.status as 'Passed' | 'Failed',
             winningMarketIndex: winningIndex,
             isWinner: true,
-            claimableAmount: quoteWinningTokens / 1e9,
+            claimableAmount: quoteWinningTokens / quoteMultiplier,
             claimableToken: 'sol',
             claimableValue: value
           });

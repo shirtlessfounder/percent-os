@@ -35,13 +35,17 @@ interface WalletBalances extends WalletBalancesState {
 interface UseWalletBalancesParams {
   walletAddress: string | null;
   baseMint?: string | null; // Token mint address
-  baseDecimals?: number; // Token decimals (default 6)
+  // Note: baseDecimals is only used when baseMint is non-null. During TokenContext loading,
+  // baseMint is null (preventing base token fetch), so any temporary default value for
+  // baseDecimals won't cause incorrect calculations. When baseMint becomes available,
+  // baseDecimals will have the correct value from poolMetadata.
+  baseDecimals: number;
 }
 
 export function useWalletBalances({
   walletAddress,
   baseMint,
-  baseDecimals = 6,
+  baseDecimals,
 }: UseWalletBalancesParams): WalletBalances {
   const [balances, setBalances] = useState<WalletBalancesState>({
     sol: 0,

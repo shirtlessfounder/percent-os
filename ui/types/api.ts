@@ -39,6 +39,8 @@ export interface ProposalListItem {
   markets: number;
   marketLabels?: string[];
   totalSupply?: number;
+  baseDecimals: number;
+  quoteDecimals: number;
   poolAddress?: string | null;
   poolName?: string;
   vaultPDA: string;
@@ -65,6 +67,8 @@ export interface ProposalDetailResponse {
   quoteMint: string;
   spotPoolAddress?: string;
   totalSupply?: number;
+  baseDecimals: number;
+  quoteDecimals: number;
   markets: number;
   marketLabels?: string[];
   ammConfig: {

@@ -1,5 +1,5 @@
 import { formatNumber, formatCurrency } from '@/lib/formatters';
-import { toDecimal } from '@/lib/constants/tokens';
+import { SOL_MULTIPLIER } from '@/lib/constants/tokens';
 
 interface PayoutCardProps {
   marketIndex: number;  // Which market this payout is for (0-3)
@@ -11,6 +11,7 @@ interface PayoutCardProps {
   isHovered: boolean;
   onHover: (id: string | null) => void;
   hoverId: string;
+  baseDecimals: number;  // Required - decimals for the base token
 }
 
 const SolIcon = ({ className }: { className?: string }) => (
@@ -53,8 +54,10 @@ export function PayoutCard({
   isHovered,
   onHover,
   hoverId,
+  baseDecimals,
 }: PayoutCardProps) {
-  const decimalAmount = toDecimal(amount, token);
+  const multiplier = token === 'sol' ? SOL_MULTIPLIER : Math.pow(10, baseDecimals);
+  const decimalAmount = amount / multiplier;
   const usdValue = decimalAmount * tokenPrice;
   // Use green for winners, market-specific color otherwise
   const statusColor = isWinning ? '#6ECC94' : MARKET_COLORS[marketIndex % MARKET_COLORS.length];

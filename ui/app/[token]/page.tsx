@@ -425,14 +425,15 @@ export default function HomePage() {
                       // Get display label for the selected market (strip URLs and trim)
                       const selectedLabel = effectiveMarketLabels[selectedMarketIndex]?.replace(/(https?:\/\/[^\s]+)/gi, '').trim() || `Coin ${selectedMarketIndex + 1}`;
 
-                      // Calculate actual balances using market index
+                      // Calculate actual balances using market index and dynamic decimals
+                      const baseMultiplier = Math.pow(10, baseDecimals);
                       const baseTokenBalance = userBalances ? parseFloat(
                         userBalances.base.conditionalBalances[selectedMarketIndex] || '0'
-                      ) / 1e6 : 0;
+                      ) / baseMultiplier : 0;
 
                       const solBalance = userBalances ? parseFloat(
                         userBalances.quote.conditionalBalances[selectedMarketIndex] || '0'
-                      ) / 1e9 : 0;
+                      ) / 1e9 : 0; // SOL is always 9 decimals
 
                       // Zero out if showing losing tokens on expired market
                       const displayBaseTokenBalance = (isExpired && isShowingLosingTokens) ? 0 : baseTokenBalance;

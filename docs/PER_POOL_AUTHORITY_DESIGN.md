@@ -159,15 +159,11 @@ const config: IModeratorConfig = {
 
 **New Environment Variable Pattern**
 ```bash
-# Default authority (required)
-AUTHORITY_KEYPAIR_PATH=./authority-default.json
-
-# Pool-specific overrides (optional)
-POOL_AUTHORITY_ZC=./authority-zc.json
-POOL_AUTHORITY_OOGWAY=./authority-oogway.json
-
-# Or as JSON strings
-POOL_AUTHORITIES='{"CCZdbVvDqPN8DmMLVELfnt9G1Q9pQNt3bTGifSpUY9Ad": "./authority-zc.json", "2FCqTyvFcE4uXgRL1yh56riZ9vdjVgoP6yknZW3f8afX": "./authority-oogway.json"}'
+# Pool-specific manager private keys (base58 encoded)
+# Same wallet as MANAGER_WALLET_* in zcombinator
+MANAGER_PRIVATE_KEY_ZC=<base58-private-key>
+MANAGER_PRIVATE_KEY_OOGWAY=<base58-private-key>
+MANAGER_PRIVATE_KEY_SURF=<base58-private-key>
 ```
 
 ### 4. Proposal Creation Route Changes
@@ -277,7 +273,7 @@ const config: IModeratorConfig = {
    - No other changes needed - spotPoolAddress already passed
 
 5. **.env.example / .env**
-   - Document new environment variable pattern
+   - Document new environment variable pattern (`MANAGER_PRIVATE_KEY_<TICKER>`)
 
 ## Security Improvements
 
