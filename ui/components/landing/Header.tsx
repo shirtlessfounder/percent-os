@@ -27,7 +27,7 @@ export default function Header() {
           </a>
           <nav className="flex items-center gap-3 sm:gap-6">
             <a
-              href="https://x.com/zcombinatorio"
+              href="https://x.com/combinatortrade"
               target="_blank"
               rel="noopener noreferrer"
               className="text-gray-400 hover:text-white transition-colors"

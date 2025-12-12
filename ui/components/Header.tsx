@@ -179,7 +179,7 @@ export default function Header({ walletAddress, authenticated, solBalance, baseT
           <span className="text-sm">$ZC</span>
         </a>
         <a
-          href="https://docs.zcombinator.io/"
+          href="https://docs.combinator.trade/"
           target="_blank"
           rel="noopener noreferrer"
           className="transition-colors"
@@ -191,7 +191,7 @@ export default function Header({ walletAddress, authenticated, solBalance, baseT
           <span className="hidden sm:inline text-sm">Docs</span>
         </a>
         <a
-          href="https://github.com/percent-markets/percent-core"
+          href="https://github.com/zcombinatorio"
           target="_blank"
           rel="noopener noreferrer"
           className="transition-colors"
@@ -219,7 +219,7 @@ export default function Header({ walletAddress, authenticated, solBalance, baseT
           <span className="hidden sm:inline text-sm">Discord</span>
         </a>
         <a
-          href="https://x.com/percentmarkets"
+          href="https://x.com/combinatortrade"
           target="_blank"
           rel="noopener noreferrer"
           className="transition-colors"
