@@ -499,13 +499,19 @@ router.post('/', requireApiKey, requireModeratorId, async (req, res, next) => {
       ammPrice
     });
 
+    // Override proposal length for SURF to 10 minutes (for testing)
+    const SURF_PROPOSAL_LENGTH_OVERRIDE = 10 * 60; // 10 minutes in seconds
+    const effectiveProposalLength = poolMetadata.ticker.toLowerCase() === 'surf'
+      ? SURF_PROPOSAL_LENGTH_OVERRIDE
+      : body.proposalLength;
+
     // Create the proposal with DAMM withdrawal data (confirmation happens in initialize())
     const proposal = await moderator.createProposal({
       title: body.title,
       description: body.description,
       markets: body.markets || 2,
       market_labels: body.market_labels || ["Fail", "Pass"],
-      proposalLength: body.proposalLength,
+      proposalLength: effectiveProposalLength,
       spotPoolAddress: poolAddress,
       totalSupply,
       twap: {
@@ -533,7 +539,8 @@ router.post('/', requireApiKey, requireModeratorId, async (req, res, next) => {
       proposalId: proposal.config.id,
       moderatorId,
       title: body.title,
-      proposalLength: body.proposalLength,
+      proposalLength: effectiveProposalLength,
+      requestedProposalLength: body.proposalLength,
       totalSupply,
       ammPrice
     });
