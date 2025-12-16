@@ -8,9 +8,10 @@ interface UserBalancesBoxProps {
   zcPrice: number | null;
   solPrice: number | null;
   baseDecimals: number; // Required - token decimals for base token
+  tokenSymbol?: string; // Display symbol for the base token
 }
 
-export function UserBalancesBox({ passZC, passSol, failZC, failSol, zcPrice, solPrice, baseDecimals }: UserBalancesBoxProps) {
+export function UserBalancesBox({ passZC, passSol, failZC, failSol, zcPrice, solPrice, baseDecimals, tokenSymbol = 'ZC' }: UserBalancesBoxProps) {
   const baseMultiplier = Math.pow(10, baseDecimals);
   return (
     <div className="bg-theme-card border border-theme-border rounded-[9px] py-3 px-5 hover:border-theme-border-hover transition-all duration-300">
@@ -25,7 +26,7 @@ export function UserBalancesBox({ passZC, passSol, failZC, failSol, zcPrice, sol
               className="group relative cursor-default"
               title={zcPrice ? formatCurrency((passZC / baseMultiplier) * zcPrice, 2) : 'Price unavailable'}
             >
-              {formatNumber(passZC / baseMultiplier, 0)} $ZC
+              {formatNumber(passZC / baseMultiplier, 0)} ${tokenSymbol}
               {zcPrice && (
                 <span className="absolute left-0 top-full mt-1 px-2 py-1 bg-theme-input border border-theme-border-divider rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
                   {formatCurrency((passZC / baseMultiplier) * zcPrice, 2)}
@@ -55,7 +56,7 @@ export function UserBalancesBox({ passZC, passSol, failZC, failSol, zcPrice, sol
               className="group relative cursor-default"
               title={zcPrice ? formatCurrency((failZC / baseMultiplier) * zcPrice, 2) : 'Price unavailable'}
             >
-              {formatNumber(failZC / baseMultiplier, 0)} $ZC
+              {formatNumber(failZC / baseMultiplier, 0)} ${tokenSymbol}
               {zcPrice && (
                 <span className="absolute left-0 top-full mt-1 px-2 py-1 bg-theme-input border border-theme-border-divider rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
                   {formatCurrency((failZC / baseMultiplier) * zcPrice, 2)}

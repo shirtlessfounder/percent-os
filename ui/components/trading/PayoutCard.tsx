@@ -12,6 +12,7 @@ interface PayoutCardProps {
   onHover: (id: string | null) => void;
   hoverId: string;
   baseDecimals: number;  // Required - decimals for the base token
+  tokenSymbol?: string;  // Display symbol for the base token
 }
 
 const SolIcon = ({ className }: { className?: string }) => (
@@ -55,6 +56,7 @@ export function PayoutCard({
   onHover,
   hoverId,
   baseDecimals,
+  tokenSymbol = 'ZC',
 }: PayoutCardProps) {
   const multiplier = token === 'sol' ? SOL_MULTIPLIER : Math.pow(10, baseDecimals);
   const decimalAmount = amount / multiplier;
@@ -80,7 +82,7 @@ export function PayoutCard({
             {token === 'zc' ? (
               <>
                 {formatNumber(decimalAmount)}
-                <span className="text-theme-text-secondary text-sm font-bold">$ZC</span>
+                <span className="text-theme-text-secondary text-sm font-bold">${tokenSymbol}</span>
               </>
             ) : (
               <>
