@@ -1027,7 +1027,15 @@ export function StakeContent() {
                       How It Works
                     </h1>
                     <div className="text-sm" style={{ color: '#DDDDD7' }}>
-                      Staked $ZC acts as a license to earn protocol fees, conditional on you trading and proposing QMs. The community polices this obligation. If you passively collect rewards without contributing, a QM is initiated to slash and redistribute your stake.
+                      Staked $ZC acts as a license to earn protocol fees, conditional on you trading and proposing QMs. The community polices this obligation. If you passively collect rewards without contributing, a{' '}
+                      <a
+                        href="/zc/create?reportStaker=true"
+                        className="underline hover:text-white transition-colors"
+                        style={{ color: '#BEE8FC' }}
+                      >
+                        QM is initiated to slash
+                      </a>
+                      {' '}and redistribute your stake.
                     </div>
                   </div>
 

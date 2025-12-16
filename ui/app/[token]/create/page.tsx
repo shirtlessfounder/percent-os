@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { usePrivyWallet } from '@/hooks/usePrivyWallet';
 import { useSolanaWallets } from '@privy-io/react-auth/solana';
 import { useWalletBalances } from '@/hooks/useWalletBalances';
@@ -12,6 +13,7 @@ import toast from 'react-hot-toast';
 import bs58 from 'bs58';
 
 export default function CreatePage() {
+  const searchParams = useSearchParams();
   const { ready, authenticated, user, walletAddress, login } = usePrivyWallet();
   const { wallets } = useSolanaWallets();
   const { tokenSlug, poolAddress, poolMetadata, baseMint, baseDecimals, tokenSymbol, moderatorId, icon, isLoading: poolLoading } = useTokenContext();
@@ -31,6 +33,42 @@ export default function CreatePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
+  const [isReportStaker, setIsReportStaker] = useState(false);
+  const [proposalSubmitted, setProposalSubmitted] = useState(false);
+
+  // Check for reportStaker query parameter and auto-activate toggle
+  useEffect(() => {
+    if (searchParams.get('reportStaker') === 'true' && !isReportStaker) {
+      // Trigger the toggle to auto-fill the form
+      setIsReportStaker(true);
+      setTitle('Should we slash Staker [paste wallet here]?');
+      setDescription("I believe [paste wallet here] is not fulfilling their Staker's obligation because...");
+      setChoices(['20%', '40%', '60%', '80%', '100%']);
+      setSelectedChoiceIndex(0);
+    }
+  }, [searchParams]);
+
+  // Report Staker toggle handler - auto-fills or clears form
+  const handleReportStakerToggle = () => {
+    if (isSubmitting) return;
+
+    const newValue = !isReportStaker;
+    setIsReportStaker(newValue);
+
+    if (newValue) {
+      // Auto-fill form for reporting a staker
+      setTitle('Should we slash Staker [paste wallet here]?');
+      setDescription("I believe [paste wallet here] is not fulfilling their Staker's obligation because...");
+      setChoices(['20%', '40%', '60%', '80%', '100%']);
+      setSelectedChoiceIndex(0);
+    } else {
+      // Clear form
+      setTitle('');
+      setDescription('');
+      setChoices(['']);
+      setSelectedChoiceIndex(0);
+    }
+  };
 
   // Choice management helpers
   const MAX_CHOICES = 7; // 8 markets total including "No"
@@ -97,10 +135,109 @@ export default function CreatePage() {
   }, [walletAddress, poolAddress, tokenSlug]);
 
   const hasPermission = isAuthorized;
+  // For /zc/, logged-in users can propose even if not whitelisted
+  const canPropose = tokenSlug === 'zc' && walletAddress && !isAuthorized;
+  // For button text: show "PROPOSE" for /zc/ when not authorized (regardless of login state)
+  const showProposeText = tokenSlug === 'zc' && !isAuthorized;
   const poolName = poolMetadata?.ticker?.toUpperCase() || tokenSlug.toUpperCase();
 
   // Check if form is valid (title, description, at least first custom choice, and duration filled)
   const isFormInvalid = !title.trim() || !description.trim() || !choices[0]?.trim() || parseFloat(proposalLengthHours) <= 0;
+
+  // Handle proposal submission for non-whitelisted users
+  const handlePropose = async () => {
+    if (!walletAddress) {
+      toast.error('Wallet not connected');
+      return;
+    }
+
+    setIsSubmitting(true);
+    const toastId = toast.loading('Sign the message in your wallet...');
+
+    try {
+      // Get wallet for signing
+      const wallet = wallets[0];
+      if (!wallet) {
+        toast.error('No Solana wallet found', { id: toastId });
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Generate message to sign (proves wallet ownership)
+      const messageObj = {
+        action: 'propose',
+        timestamp: Date.now(),
+        nonce: crypto.randomUUID()
+      };
+      const message = JSON.stringify(messageObj);
+
+      // Request user to sign message
+      let signatureBytes: Uint8Array;
+      try {
+        const messageBytes = new TextEncoder().encode(message);
+        signatureBytes = await wallet.signMessage(messageBytes);
+      } catch (signError) {
+        console.error('Signature rejected:', signError);
+        toast.error('Signature rejected by user', { id: toastId });
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Encode signature as base58
+      const signature = bs58.encode(signatureBytes);
+
+      toast.loading('Submitting proposal...', { id: toastId });
+
+      const response = await fetch('/api/proposal-requests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          submitterWallet: walletAddress,
+          title: title.trim(),
+          description: description.trim(),
+          choices: ['No', ...choices.filter(c => c.trim()).map(c => c.trim())],
+          proposalLengthHours: parseFloat(proposalLengthHours),
+          isReportStaker,
+          signature,
+          message,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to submit proposal');
+      }
+
+      toast.success('Proposal submitted!', { id: toastId });
+
+      // Show "Proposal submitted" for 2 seconds
+      setProposalSubmitted(true);
+
+      // Reset form
+      setTitle('');
+      setDescription('');
+      setChoices(['']);
+      setSelectedChoiceIndex(0);
+      setProposalLengthHours('24');
+      setIsReportStaker(false);
+
+      // Reset button after 2 seconds
+      setTimeout(() => {
+        setProposalSubmitted(false);
+      }, 2000);
+
+    } catch (error) {
+      console.error('Proposal submission failed:', error);
+      toast.error(
+        `Failed to submit proposal: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        { id: toastId }
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -249,6 +386,7 @@ export default function CreatePage() {
           tokenSymbol={tokenSymbol}
           tokenIcon={icon}
           poolAddress={poolAddress}
+          isCreateAuthorized={tokenSlug !== 'zc' || isAuthorized}
         />
 
         {/* Content Area */}
@@ -257,7 +395,7 @@ export default function CreatePage() {
             <div className="w-full max-w-[1332px] 2xl:max-w-[1512px] pt-8 pb-8 px-4 md:px-0">
               <div className="mb-6">
                 <h2 className="text-2xl font-medium" style={{ color: '#E9E9E3' }}>
-                  Create Quantum Market
+                  {tokenSlug === 'zc' && !isAuthorized ? 'Propose' : 'Create'} Quantum Market
                 </h2>
               </div>
 
@@ -272,9 +410,25 @@ export default function CreatePage() {
                   <div className="md:col-span-3 flex flex-col gap-4">
                     {/* Title Card */}
                     <div className="bg-[#121212] border border-[#191919] rounded-[9px] py-4 px-5">
-                      <span className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] uppercase mb-4 block" style={{ color: '#DDDDD7' }}>
-                        Proposal*
-                      </span>
+                      <div className="flex items-center justify-between mb-4">
+                        <span className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] uppercase" style={{ color: '#DDDDD7' }}>
+                          Proposal*
+                        </span>
+                        {/* Report Staker Toggle */}
+                        <div
+                          onClick={handleReportStakerToggle}
+                          className="flex items-center p-[3px] border border-[#191919] rounded-full cursor-pointer"
+                        >
+                          <span
+                            className={`px-3 py-1 rounded-full text-xs font-medium font-ibm-plex-mono ${
+                              isReportStaker ? 'bg-[#DDDDD7]' : 'bg-transparent'
+                            }`}
+                            style={{ color: isReportStaker ? '#161616' : '#6B6E71', fontFamily: 'IBM Plex Mono, monospace' }}
+                          >
+                            Report Staker
+                          </span>
+                        </div>
+                      </div>
                       <input
                         id="title"
                         type="text"
@@ -515,17 +669,20 @@ export default function CreatePage() {
                       {/* Bordered Container for Button */}
                       <div className="border border-[#191919] rounded-[6px] py-6 px-4">
                         <button
-                          type="submit"
-                          disabled={!hasPermission || isSubmitting || isFormInvalid}
+                          type={canPropose ? 'button' : 'submit'}
+                          onClick={canPropose ? handlePropose : undefined}
+                          disabled={(!hasPermission && !canPropose) || isSubmitting || isFormInvalid || proposalSubmitted}
                           className={`w-full h-[56px] rounded-full font-semibold transition flex items-center justify-center gap-1 uppercase font-ibm-plex-mono ${
-                            !hasPermission || isSubmitting || isFormInvalid
+                            (!hasPermission && !canPropose) || isSubmitting || isFormInvalid || proposalSubmitted
                               ? 'bg-[#414346] cursor-not-allowed text-[#181818]'
                               : 'bg-[#DDDDD7] text-[#161616] cursor-pointer'
                           }`}
                         >
-                          {!hasPermission
-                            ? 'NOT AUTHORIZED'
-                            : (isSubmitting ? `Creating ${poolName} QM...` : `CREATE ${poolName} QM`)}
+                          {proposalSubmitted
+                            ? 'PROPOSAL SUBMITTED'
+                            : isSubmitting
+                              ? `${showProposeText ? 'Proposing' : 'Creating'} ${poolName} QM...`
+                              : `${showProposeText ? 'PROPOSE' : 'CREATE'} ${poolName} QM`}
                         </button>
                       </div>
                     </div>
