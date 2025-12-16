@@ -23,6 +23,7 @@ import { Commitment } from './execution.interface';
 import { IProposal } from './proposal.interface';
 import { ITWAPConfig } from './twap-oracle.interface';
 import { PersistenceService } from '@app/services/persistence.service';
+import { PoolType } from '../../src/config/pools';
 
 /**
  * Enum representing the possible states of a proposal
@@ -53,20 +54,27 @@ export interface IModeratorInfo {
 }
 
 /**
- * DAMM withdrawal build data passed from route to proposal initialization
+ * Withdrawal build data passed from route to proposal initialization
  * Contains the unsigned transaction and metadata needed to confirm the withdrawal
+ * Supports both DAMM (CP-AMM) and DLMM pool types
  */
-export interface IDammWithdrawalBuildData {
-  requestId: string;                            // DAMM API request ID for confirmation
+export interface IWithdrawalBuildData {
+  requestId: string;                            // API request ID for confirmation
   signedTransaction: string;                    // Base58-encoded signed transaction
-  withdrawalPercentage: number;                 // Percentage withdrawn from DAMM pool
+  withdrawalPercentage: number;                 // Percentage withdrawn from pool
   estimatedAmounts: {
     tokenA: string;                             // Estimated base token amount (raw)
     tokenB: string;                             // Estimated quote token amount (raw)
   };
-  poolAddress: string;                          // DAMM pool address
+  poolAddress: string;                          // Pool address (DAMM or DLMM)
+  poolType: PoolType;                           // Pool type for routing to correct confirm endpoint
   ammPrice: number;                             // Calculated AMM price from withdrawn amounts
 }
+
+/**
+ * @deprecated Use IWithdrawalBuildData instead
+ */
+export type IDammWithdrawalBuildData = IWithdrawalBuildData;
 
 /**
  * Parameters for creating a new proposal
@@ -84,7 +92,7 @@ export interface ICreateProposalParams {
     initialBaseAmount: BN;                      // Initial base token liquidity (same for all AMMs)
     initialQuoteAmount: BN;                     // Initial quote token liquidity (same for all AMMs)
   };
-  dammWithdrawal?: IDammWithdrawalBuildData;    // Optional DAMM withdrawal data to confirm during initialize
+  dammWithdrawal?: IWithdrawalBuildData;        // Optional withdrawal data to confirm during initialize (DAMM or DLMM)
 }
 
 /**

@@ -29,7 +29,7 @@ import { PersistenceService } from '../../app/services/persistence.service';
 import { RouterService } from '@app/services/router.service';
 import { LoggerService } from '../../app/services/logger.service';
 import { ProposalStatus } from '../../app/types/moderator.interface';
-import { getPoolsForWallet, POOL_METADATA, getAuthorizedPoolsAsync, AuthMethod } from '../config/whitelist';
+import { getPoolsForWallet, POOL_METADATA, getAuthorizedPoolsAsync, AuthMethod, PoolType } from '../config/whitelist';
 import { VaultType } from '@zcomb/vault-sdk';
 
 const routerService = RouterService.getInstance();
@@ -425,38 +425,60 @@ router.post('/', requireApiKey, requireModeratorId, async (req, res, next) => {
       });
     }
 
-    // Get DAMM withdrawal percentage from moderator config (with fallback to default)
-    const dammWithdrawalPercentage = moderator.config.dammWithdrawalPercentage ?? DEFAULT_DAMM_WITHDRAWAL_PERCENTAGE;
+    // Get withdrawal percentage from moderator config (with fallback to default)
+    const withdrawalPercentage = moderator.config.dammWithdrawalPercentage ?? DEFAULT_DAMM_WITHDRAWAL_PERCENTAGE;
 
-    // Step 1: Build DAMM withdrawal transaction (confirmation happens in Proposal.initialize())
-    logger.info('[POST /] Building DAMM withdrawal transaction', {
+    // Step 1: Build withdrawal transaction (confirmation happens in Proposal.initialize())
+    // Route to correct endpoint based on pool type (DAMM vs DLMM)
+    const poolType = poolMetadata.poolType;
+    const apiUrl = process.env.DAMM_API_URL || 'https://api.zcombinator.io';
+    const withdrawEndpoint = poolType === 'dlmm'
+      ? `${apiUrl}/dlmm/withdraw/build`
+      : `${apiUrl}/damm/withdraw/build`;
+
+    logger.info('[POST /] Building withdrawal transaction', {
       moderatorId,
-      percentage: dammWithdrawalPercentage,
-      poolAddress
+      percentage: withdrawalPercentage,
+      poolAddress,
+      poolType
     });
 
-    const withdrawBuildResponse = await fetch(`${process.env.DAMM_API_URL || 'https://api.zcombinator.io'}/damm/withdraw/build`, {
+    const withdrawBuildResponse = await fetch(withdrawEndpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        withdrawalPercentage: dammWithdrawalPercentage,
+        withdrawalPercentage,
         poolAddress
       })
     });
 
     if (!withdrawBuildResponse.ok) {
       const error = await withdrawBuildResponse.json() as { error?: string };
-      throw new Error(`DAMM withdrawal build failed: ${error.error || withdrawBuildResponse.statusText}`);
+      throw new Error(`${poolType.toUpperCase()} withdrawal build failed: ${error.error || withdrawBuildResponse.statusText}`);
     }
 
-    const withdrawBuildData = await withdrawBuildResponse.json() as {
+    // Handle response - DLMM uses tokenX/Y, DAMM uses tokenA/B
+    const withdrawBuildDataRaw = await withdrawBuildResponse.json() as {
       requestId: string;
       transaction: string;
-      estimatedAmounts: { tokenA: string; tokenB: string };
+      estimatedAmounts?: { tokenA: string; tokenB: string; tokenX?: string; tokenY?: string };
     };
-    logger.info('[POST /] Built DAMM withdrawal transaction', {
+
+    // Normalize field names: DLMM returns tokenX/Y, DAMM returns tokenA/B
+    // We use tokenA/B internally (base/quote)
+    const withdrawBuildData = {
+      requestId: withdrawBuildDataRaw.requestId,
+      transaction: withdrawBuildDataRaw.transaction,
+      estimatedAmounts: {
+        tokenA: withdrawBuildDataRaw.estimatedAmounts?.tokenX || withdrawBuildDataRaw.estimatedAmounts?.tokenA || '0',
+        tokenB: withdrawBuildDataRaw.estimatedAmounts?.tokenY || withdrawBuildDataRaw.estimatedAmounts?.tokenB || '0',
+      }
+    };
+
+    logger.info('[POST /] Built withdrawal transaction', {
       requestId: withdrawBuildData.requestId,
-      estimatedAmounts: withdrawBuildData.estimatedAmounts
+      estimatedAmounts: withdrawBuildData.estimatedAmounts,
+      poolType
     });
 
     // Sign the transaction with pool-specific authority keypair
@@ -524,9 +546,10 @@ router.post('/', requireApiKey, requireModeratorId, async (req, res, next) => {
       dammWithdrawal: {
         requestId: withdrawBuildData.requestId,
         signedTransaction: signedTxBase58,
-        withdrawalPercentage: dammWithdrawalPercentage,
+        withdrawalPercentage,
         estimatedAmounts: withdrawBuildData.estimatedAmounts,
         poolAddress,
+        poolType,
         ammPrice
       }
     });

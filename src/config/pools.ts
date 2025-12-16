@@ -6,6 +6,11 @@
  */
 
 /**
+ * Pool type enum - distinguishes between DAMM (CP-AMM) and DLMM pools
+ */
+export type PoolType = 'damm' | 'dlmm';
+
+/**
  * Pool metadata interface
  */
 export interface PoolMetadata {
@@ -16,6 +21,7 @@ export interface PoolMetadata {
   baseDecimals: number;
   quoteDecimals: number;
   moderatorId: number;
+  poolType: PoolType;
   icon?: string;
   minTokenBalance?: number; // Minimum base token balance required to create proposals (in whole tokens)
 }
@@ -25,7 +31,7 @@ export interface PoolMetadata {
  * Used by router.service.ts for loading manager keypairs
  */
 const TICKER_TO_POOL: Record<string, string> = {
-  'ZC': 'CCZdbVvDqPN8DmMLVELfnt9G1Q9pQNt3bTGifSpUY9Ad',
+  'ZC': '7jbhVZcYqCRmciBcZzK8L5B96Pyw7i1SpXQFKBkzD3G2', // DLMM pool
   'OOGWAY': '2FCqTyvFcE4uXgRL1yh56riZ9vdjVgoP6yknZW3f8afX',
   'SURF': 'Ez1QYeC95xJRwPA9SR7YWC1H1Tj43exJr91QqKf8Puu1',
   'SURFTEST': 'PS3rPSb49GnAkmh3tec1RQizgNSb1hUwPsYHGGuAy5r',
@@ -71,6 +77,7 @@ const POOL_WHITELIST: Record<string, string[]> = {
  * Pool metadata for UI display and routing
  */
 const POOL_METADATA: Record<string, PoolMetadata> = {
+  // ZC DLMM Pool (Meteora DLMM)
   [TICKER_TO_POOL.ZC]: {
     poolAddress: TICKER_TO_POOL.ZC,
     ticker: 'zc',
@@ -79,8 +86,10 @@ const POOL_METADATA: Record<string, PoolMetadata> = {
     baseDecimals: 6,
     quoteDecimals: 9,
     moderatorId: 2,
+    poolType: 'dlmm',
     icon: 'https://wsrv.nl/?w=128&h=128&default=1&url=https%3A%2F%2Folive-imaginative-aardvark-508.mypinata.cloud%2Fipfs%2FQmY56Yz44o1EhTJfy6b4uhKCXpNGYvmFdsRX9yuiX1X45a',
   },
+  // oogway DAMM Pool (Meteora CP-AMM)
   [TICKER_TO_POOL.OOGWAY]: {
     poolAddress: TICKER_TO_POOL.OOGWAY,
     ticker: 'oogway',
@@ -89,9 +98,10 @@ const POOL_METADATA: Record<string, PoolMetadata> = {
     baseDecimals: 6,
     quoteDecimals: 9,
     moderatorId: 3,
+    poolType: 'damm',
     icon: 'https://wsrv.nl/?w=128&h=128&default=1&url=https%3A%2F%2Folive-imaginative-aardvark-508.mypinata.cloud%2Fipfs%2FQmV4rzAgYREFBpDRyM5VmboewHUwS1Xu8ey2wrs9rJKcfE',
   },
-  // Test SURF pool
+  // Test SURF DAMM pool
   [TICKER_TO_POOL.SURFTEST]: {
     poolAddress: TICKER_TO_POOL.SURFTEST,
     ticker: 'surftest',
@@ -100,10 +110,11 @@ const POOL_METADATA: Record<string, PoolMetadata> = {
     baseDecimals: 9,
     quoteDecimals: 9,
     moderatorId: 4,
+    poolType: 'damm',
     icon: 'https://arweave.net/r02Vz3jHG5_ZH0BrKbkIJOkF4LDcTTdLNljefYpJYJo',
     minTokenBalance: 5_000_000, // 5M SURF required to create proposals
   },
-  // Production SURF pool
+  // Production SURF DAMM pool
   [TICKER_TO_POOL.SURF]: {
     poolAddress: TICKER_TO_POOL.SURF,
     ticker: 'surf',
@@ -112,6 +123,7 @@ const POOL_METADATA: Record<string, PoolMetadata> = {
     baseDecimals: 9,
     quoteDecimals: 9,
     moderatorId: 5,
+    poolType: 'damm',
     icon: 'https://arweave.net/r02Vz3jHG5_ZH0BrKbkIJOkF4LDcTTdLNljefYpJYJo',
     minTokenBalance: 5_000_000, // 5M SURF required to create proposals
   },

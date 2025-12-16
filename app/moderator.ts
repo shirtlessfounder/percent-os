@@ -27,7 +27,8 @@ import { PersistenceService } from './services/persistence.service';
 import { ExecutionService } from './services/execution.service';
 import { LoggerService } from './services/logger.service';
 import { DammService } from './services/damm.service';
-import { POOL_METADATA } from '../src/config/whitelist';
+import { DlmmService } from './services/dlmm.service';
+import { POOL_METADATA, PoolType } from '../src/config/whitelist';
 //import { BlockEngineUrl, JitoService } from '@slateos/jito';
 
 /**
@@ -42,6 +43,7 @@ export class Moderator implements IModerator {
   public persistenceService: PersistenceService;          // Database persistence service
   private executionService: ExecutionService;              // Execution service for transactions
   private dammService: DammService;                        // DAMM pool interaction service
+  private dlmmService: DlmmService;                        // DLMM pool interaction service
   private logger: LoggerService;                           // Logger service for this moderator
   //private jitoService?: JitoService;                       // Jito service @deprecated
 
@@ -83,6 +85,7 @@ export class Moderator implements IModerator {
 
     this.executionService = new ExecutionService(executionConfig, this.logger);
     this.dammService = new DammService(this.logger.createChild('damm'));
+    this.dlmmService = new DlmmService(this.logger.createChild('dlmm'));
 
     /** @deprecated */
     // if (this.config.jitoUuid) {
@@ -187,17 +190,23 @@ export class Moderator implements IModerator {
       let confirmDammWithdrawal: (() => Promise<void>) | undefined;
       if (params.dammWithdrawal) {
         const withdrawal = params.dammWithdrawal;
+        const poolType = withdrawal.poolType || 'damm'; // Default to DAMM for backwards compatibility
         confirmDammWithdrawal = async () => {
-          this.logger.info('Confirming DAMM withdrawal', {
+          this.logger.info('Confirming withdrawal', {
             requestId: withdrawal.requestId,
             poolAddress: withdrawal.poolAddress,
+            poolType,
             estimatedAmounts: withdrawal.estimatedAmounts,
           });
 
-          // Confirm the withdrawal with DAMM API
-          const dammApiUrl = process.env.DAMM_API_URL || 'https://api.zcombinator.io';
+          // Route to correct confirm endpoint based on pool type
+          const apiUrl = process.env.DAMM_API_URL || 'https://api.zcombinator.io';
+          const confirmEndpoint = poolType === 'dlmm'
+            ? `${apiUrl}/dlmm/withdraw/confirm`
+            : `${apiUrl}/damm/withdraw/confirm`;
+
           const withdrawConfirmResponse = await fetch(
-            `${dammApiUrl}/damm/withdraw/confirm`,
+            confirmEndpoint,
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -211,34 +220,43 @@ export class Moderator implements IModerator {
           if (!withdrawConfirmResponse.ok) {
             const error = (await withdrawConfirmResponse.json()) as { error?: string };
             throw new Error(
-              `DAMM withdrawal confirm failed: ${error.error || withdrawConfirmResponse.statusText}`
+              `${poolType.toUpperCase()} withdrawal confirm failed: ${error.error || withdrawConfirmResponse.statusText}`
             );
           }
 
-          const withdrawConfirmData = (await withdrawConfirmResponse.json()) as {
+          // Handle response - DLMM uses tokenX/Y, DAMM uses tokenA/B
+          const withdrawConfirmDataRaw = (await withdrawConfirmResponse.json()) as {
             signature: string;
-            estimatedAmounts: { tokenA: string; tokenB: string };
+            estimatedAmounts?: { tokenA?: string; tokenB?: string; tokenX?: string; tokenY?: string };
           };
 
-          this.logger.info('Confirmed DAMM withdrawal', {
-            signature: withdrawConfirmData.signature,
-            amounts: withdrawConfirmData.estimatedAmounts,
+          // Normalize field names
+          const confirmedAmounts = {
+            tokenA: withdrawConfirmDataRaw.estimatedAmounts?.tokenX || withdrawConfirmDataRaw.estimatedAmounts?.tokenA || '0',
+            tokenB: withdrawConfirmDataRaw.estimatedAmounts?.tokenY || withdrawConfirmDataRaw.estimatedAmounts?.tokenB || '0',
+          };
+
+          this.logger.info('Confirmed withdrawal', {
+            signature: withdrawConfirmDataRaw.signature,
+            amounts: confirmedAmounts,
+            poolType,
           });
 
           // Store withdrawal data in memory - will be persisted after proposal save
           withdrawalMetadata = {
             requestId: withdrawal.requestId,
-            signature: withdrawConfirmData.signature,
+            signature: withdrawConfirmDataRaw.signature,
             percentage: withdrawal.withdrawalPercentage,
-            tokenA: withdrawConfirmData.estimatedAmounts.tokenA,
-            tokenB: withdrawConfirmData.estimatedAmounts.tokenB,
+            tokenA: confirmedAmounts.tokenA,
+            tokenB: confirmedAmounts.tokenB,
             spotPrice: withdrawal.ammPrice,
             poolAddress: withdrawal.poolAddress,
           };
 
-          this.logger.info('DAMM withdrawal confirmed, metadata will be stored after proposal save', {
+          this.logger.info('Withdrawal confirmed, metadata will be stored after proposal save', {
             proposalId: proposalIdCounter,
-            withdrawalSignature: withdrawConfirmData.signature,
+            withdrawalSignature: withdrawConfirmDataRaw.signature,
+            poolType,
           });
         };
       }
@@ -357,9 +375,9 @@ export class Moderator implements IModerator {
   }
 
   /**
-   * Handle automatic deposit-back to DAMM pool after proposal finalization
-   * Deposits available ZC/SOL from authority wallet back to DAMM pool
-   * The DAMM API handles pool ratio calculation internally
+   * Handle automatic deposit-back to pool after proposal finalization
+   * Deposits available tokens from authority wallet back to pool (DAMM or DLMM)
+   * The API handles pool ratio calculation internally
    * @param proposalId - The ID of the finalized proposal
    */
   private async handleDepositBack(proposalId: number): Promise<void> {
@@ -378,18 +396,21 @@ export class Moderator implements IModerator {
         return;
       }
 
-      this.logger.info('Starting deposit-back to DAMM pool', {
-        proposalId,
-        originalWithdrawnTokenA: metadata.tokenA,
-        originalWithdrawnTokenB: metadata.tokenB,
-        poolAddress: metadata.poolAddress
-      });
-
-      // Get pool metadata for dynamic decimal lookup
+      // Get pool metadata for dynamic decimal lookup and pool type
       const poolMetadata = POOL_METADATA[metadata.poolAddress];
       if (!poolMetadata) {
         throw new Error(`Pool metadata not found for ${metadata.poolAddress}`);
       }
+
+      const poolType = poolMetadata.poolType;
+
+      this.logger.info('Starting deposit-back to pool', {
+        proposalId,
+        originalWithdrawnTokenA: metadata.tokenA,
+        originalWithdrawnTokenB: metadata.tokenB,
+        poolAddress: metadata.poolAddress,
+        poolType
+      });
 
       const BASE_DECIMALS = poolMetadata.baseDecimals;
       const QUOTE_DECIMALS = poolMetadata.quoteDecimals;
@@ -397,25 +418,12 @@ export class Moderator implements IModerator {
       this.logger.info('Using pool-specific decimals for deposit', {
         proposalId,
         poolAddress: metadata.poolAddress,
+        poolType,
         baseDecimals: BASE_DECIMALS,
         quoteDecimals: QUOTE_DECIMALS
       });
 
-      // Step 1: Convert raw withdrawal amounts to UI units for DAMM API
-      // The withdrawal API returns raw amounts, but deposit API expects UI amounts
-      const tokenAAmountUI = metadata.tokenA / Math.pow(10, BASE_DECIMALS);
-      const tokenBAmountUI = metadata.tokenB / Math.pow(10, QUOTE_DECIMALS);
-
-      this.logger.info('Depositing withdrawal amounts (full precision)', {
-        proposalId,
-        tokenA: tokenAAmountUI,
-        tokenB: tokenBAmountUI,
-        rawTokenA: metadata.tokenA,
-        rawTokenB: metadata.tokenB,
-        poolAddress: metadata.poolAddress
-      });
-
-      // Step 2: Create transaction signer from authority keypair with validation
+      // Step 1: Create transaction signer from authority keypair with validation
       const authority = this.getAuthorityForPool(metadata.poolAddress);
       const signTransaction = async (transaction: any) => {
         // Validate fee payer matches authority wallet
@@ -429,14 +437,15 @@ export class Moderator implements IModerator {
           proposalId,
           feePayer: transaction.feePayer.toBase58(),
           authority: authority.publicKey.toBase58(),
-          poolAddress: metadata.poolAddress
+          poolAddress: metadata.poolAddress,
+          poolType
         });
 
         transaction.partialSign(authority);
         return transaction;
       };
 
-      // Step 4: Execute deposit with retry logic
+      // Step 2: Execute deposit with retry logic
       const MAX_RETRIES = 3;
       const RETRY_DELAY_MS = 2000;
       let lastError: Error | null = null;
@@ -445,39 +454,64 @@ export class Moderator implements IModerator {
         try {
           this.logger.info(`Attempting deposit-back (${attempt}/${MAX_RETRIES})`, {
             proposalId,
-            tokenAAmount: tokenAAmountUI,
-            tokenBAmount: tokenBAmountUI,
-            poolAddress: metadata.poolAddress
+            rawTokenA: metadata.tokenA,
+            rawTokenB: metadata.tokenB,
+            poolAddress: metadata.poolAddress,
+            poolType
           });
 
-          // Execute deposit with original withdrawal amounts
-          const depositResult = await this.dammService.depositToDammPool(
-            tokenAAmountUI,
-            tokenBAmountUI,
-            signTransaction,
-            metadata.poolAddress
-          );
+          let depositSignature: string;
+          let confirmedAmounts: { tokenA: string; tokenB: string };
+
+          if (poolType === 'dlmm') {
+            // DLMM uses raw amounts (strings)
+            const depositResult = await this.dlmmService.depositToDlmmPool(
+              String(metadata.tokenA),  // Raw token X amount
+              String(metadata.tokenB),  // Raw token Y amount
+              signTransaction,
+              metadata.poolAddress
+            );
+            depositSignature = depositResult.signature;
+            // Normalize DLMM response (tokenX/Y) to internal format (tokenA/B)
+            confirmedAmounts = {
+              tokenA: depositResult.amounts.tokenX,
+              tokenB: depositResult.amounts.tokenY
+            };
+          } else {
+            // DAMM uses UI amounts (numbers)
+            const tokenAAmountUI = metadata.tokenA / Math.pow(10, BASE_DECIMALS);
+            const tokenBAmountUI = metadata.tokenB / Math.pow(10, QUOTE_DECIMALS);
+
+            this.logger.info('Converting to UI amounts for DAMM deposit', {
+              proposalId,
+              tokenAUI: tokenAAmountUI,
+              tokenBUI: tokenBAmountUI
+            });
+
+            const depositResult = await this.dammService.depositToDammPool(
+              tokenAAmountUI,
+              tokenBAmountUI,
+              signTransaction,
+              metadata.poolAddress
+            );
+            depositSignature = depositResult.signature;
+            confirmedAmounts = depositResult.amounts;
+          }
 
           // Mark as deposited in database with actual amounts from API response
           await this.persistenceService.markWithdrawalDeposited(
             proposalId,
-            depositResult.signature,
-            depositResult.amounts.tokenA,
-            depositResult.amounts.tokenB
+            depositSignature,
+            confirmedAmounts.tokenA,
+            confirmedAmounts.tokenB
           );
 
           this.logger.info('Deposit-back completed successfully', {
             proposalId,
             attempt,
-            depositSignature: depositResult.signature,
-            requestedAmounts: {
-              tokenA: tokenAAmountUI,
-              tokenB: tokenBAmountUI
-            },
-            confirmedDeposit: {
-              tokenA: depositResult.amounts.tokenA,
-              tokenB: depositResult.amounts.tokenB
-            }
+            depositSignature,
+            poolType,
+            confirmedDeposit: confirmedAmounts
           });
 
           return; // Success, exit the method
@@ -486,6 +520,7 @@ export class Moderator implements IModerator {
           this.logger.warn(`Deposit-back attempt ${attempt}/${MAX_RETRIES} failed`, {
             proposalId,
             attempt,
+            poolType,
             error: lastError.message
           });
 
@@ -500,6 +535,7 @@ export class Moderator implements IModerator {
       this.logger.error('All deposit-back attempts failed', {
         proposalId,
         totalAttempts: MAX_RETRIES,
+        poolType,
         lastError: lastError?.message,
         note: 'Tokens remain in authority wallet, needs_deposit_back=true for manual retry'
       });

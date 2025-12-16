@@ -13,12 +13,13 @@ import {
   POOL_WHITELIST as _POOL_WHITELIST,
   POOL_METADATA as _POOL_METADATA,
   PoolMetadata,
+  PoolType,
 } from './pools';
 
 // Re-export for backward compatibility
 export const POOL_WHITELIST = _POOL_WHITELIST;
 export const POOL_METADATA = _POOL_METADATA;
-export type { PoolMetadata };
+export type { PoolMetadata, PoolType };
 
 /**
  * Get all pool addresses that a wallet is authorized to use
