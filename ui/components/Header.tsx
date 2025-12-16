@@ -262,18 +262,6 @@ export default function Header({ walletAddress, authenticated, solBalance, baseT
             )}
             History
           </button>
-          <button
-            onClick={() => router.push(`/${tokenSlug}/create`)}
-            className="text-sm py-1 px-4 transition-all duration-200 ease-in-out cursor-pointer my-0.5 hover:bg-white/10 hover:rounded relative"
-            style={activeTab === 'create' ? { color: '#DDDDD7' } : { color: '#6B6E71' }}
-            onMouseEnter={(e) => { if (activeTab !== 'create') e.currentTarget.style.color = '#9B9E9F'; }}
-            onMouseLeave={(e) => { if (activeTab !== 'create') e.currentTarget.style.color = '#6B6E71'; }}
-          >
-            {activeTab === 'create' && (
-              <div className="absolute -bottom-[4px] left-0 right-0 h-[2px] z-10" style={{ backgroundColor: '#DDDDD7' }} />
-            )}
-            Create
-          </button>
           {tokenSlug === 'zc' && (
             <button
               onClick={() => router.push(`/${tokenSlug}/stake`)}
@@ -288,6 +276,18 @@ export default function Header({ walletAddress, authenticated, solBalance, baseT
               Stake
             </button>
           )}
+          <button
+            onClick={() => router.push(`/${tokenSlug}/create`)}
+            className="text-sm py-1 px-4 transition-all duration-200 ease-in-out cursor-pointer my-0.5 hover:bg-white/10 hover:rounded relative"
+            style={activeTab === 'create' ? { color: '#DDDDD7' } : { color: '#6B6E71' }}
+            onMouseEnter={(e) => { if (activeTab !== 'create') e.currentTarget.style.color = '#9B9E9F'; }}
+            onMouseLeave={(e) => { if (activeTab !== 'create') e.currentTarget.style.color = '#6B6E71'; }}
+          >
+            {activeTab === 'create' && (
+              <div className="absolute -bottom-[4px] left-0 right-0 h-[2px] z-10" style={{ backgroundColor: '#DDDDD7' }} />
+            )}
+            Create
+          </button>
           <a
             href="https://v1.zcombinator.io/launch"
             className="text-sm py-1 px-4 transition-all duration-200 ease-in-out cursor-pointer my-0.5 hover:bg-white/10 hover:rounded relative"
