@@ -24,6 +24,29 @@ interface WindowWithWallets extends Window {
   solflare?: SolanaWalletProvider;
 }
 
+interface StakerTrade {
+  id: number;
+  timestamp: string;
+  moderatorId: number;
+  ticker: string;
+  proposalId: number;
+  market: number;
+  marketLabel: string;
+  userAddress: string;
+  isBaseToQuote: boolean;
+  amountIn: string;
+  amountOut: string;
+  price: string;
+  txSignature: string | null;
+}
+
+interface Staker {
+  address: string;
+  balance: string;
+  percentage: string;
+  volumeUsd: string;
+}
+
 export function StakeContent() {
   const { ready, authenticated, walletAddress, login } = usePrivyWallet();
   const { wallets } = useSolanaWallets();
@@ -50,6 +73,13 @@ export function StakeContent() {
   const [refreshing, setRefreshing] = useState(false);
   const [postTransactionRefreshing, setPostTransactionRefreshing] = useState(false);
   const [withdrawalsEnabled, setWithdrawalsEnabled] = useState<boolean>(true);
+  const [vaultTab, setVaultTab] = useState<"stats" | "stakers" | "trades">("stats");
+  const [timeFilter, setTimeFilter] = useState<"1D" | "1W" | "ALL">("ALL");
+  const [stakerTrades, setStakerTrades] = useState<StakerTrade[]>([]);
+  const [tradesLoading, setTradesLoading] = useState(false);
+  const [stakersList, setStakersList] = useState<Staker[]>([]);
+  const [stakersLoading, setStakersLoading] = useState(false);
+  const [stakersSort, setStakersSort] = useState<{ column: 'balance' | 'volume'; direction: 'asc' | 'desc' }>({ column: 'balance', direction: 'desc' });
 
   const connection = useMemo(() => new Connection(process.env.NEXT_PUBLIC_RPC_URL || "https://api.mainnet-beta.solana.com"), []);
 
@@ -261,6 +291,83 @@ export function StakeContent() {
       fetchUserData();
     }
   }, [wallet, fetchUserData]);
+
+  // Fetch staker trades
+  const fetchStakerTrades = useCallback(async () => {
+    setTradesLoading(true);
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/stakers/trades?limit=100&period=${timeFilter}`);
+      const data = await response.json();
+      setStakerTrades(data.trades || []);
+    } catch (error) {
+      console.error("Failed to fetch staker trades:", error);
+      setStakerTrades([]);
+    } finally {
+      setTradesLoading(false);
+    }
+  }, [timeFilter]);
+
+  const fetchStakersList = useCallback(async () => {
+    setStakersLoading(true);
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/stakers/list?period=${timeFilter}`);
+      const data = await response.json();
+      setStakersList(data.stakers || []);
+    } catch (error) {
+      console.error("Failed to fetch stakers list:", error);
+      setStakersList([]);
+    } finally {
+      setStakersLoading(false);
+    }
+  }, [timeFilter]);
+
+  // Fetch data when tab is selected
+  useEffect(() => {
+    if (vaultTab === 'trades') {
+      fetchStakerTrades();
+    } else if (vaultTab === 'stakers') {
+      fetchStakersList();
+    }
+  }, [vaultTab, fetchStakerTrades, fetchStakersList]);
+
+  // Helper functions for trades table
+  const getTimeAgo = useCallback((timestamp: string) => {
+    const now = Date.now();
+    const then = new Date(timestamp).getTime();
+    const diff = now - then;
+
+    const seconds = Math.floor(diff / 1000);
+    const minutes = Math.floor(diff / (1000 * 60));
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+
+    if (days > 0) return `${days}d`;
+    if (hours > 0) return `${hours}h`;
+    if (minutes > 0) return `${minutes}m`;
+    if (seconds > 0) return `${seconds}s`;
+    return 'now';
+  }, []);
+
+  const formatTradeAddress = useCallback((address: string) => {
+    if (!address || address.length <= 13) return address || '';
+    return `${address.slice(0, 6)}...${address.slice(-6)}`;
+  }, []);
+
+  // Sort stakers list
+  const sortedStakersList = useMemo(() => {
+    return [...stakersList].sort((a, b) => {
+      const aVal = stakersSort.column === 'balance' ? parseFloat(a.balance) : parseFloat(a.volumeUsd);
+      const bVal = stakersSort.column === 'balance' ? parseFloat(b.balance) : parseFloat(b.volumeUsd);
+      return stakersSort.direction === 'desc' ? bVal - aVal : aVal - bVal;
+    });
+  }, [stakersList, stakersSort]);
+
+  const toggleStakersSort = useCallback((column: 'balance' | 'volume') => {
+    setStakersSort(prev => ({
+      column,
+      direction: prev.column === column && prev.direction === 'desc' ? 'asc' : 'desc'
+    }));
+  }, []);
 
   const handleDeposit = async () => {
     const depositAmount = parseFloat(amount);
@@ -509,64 +616,405 @@ export function StakeContent() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {/* Left Column: Vault Stats (2/3 width) */}
                 <div className="contents md:flex md:col-span-2 md:flex-col md:gap-4 md:pb-12">
-                  <div className="bg-[#121212] border border-[#191919] rounded-[9px] py-4 px-5 flex flex-col md:flex-1">
-                  <span className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] uppercase mb-4 block text-center" style={{ color: '#DDDDD7' }}>
-                    ZC Vault
-                  </span>
+                  <div className={`bg-[#121212] border border-[#191919] rounded-[9px] flex flex-col md:flex-1 ${vaultTab === 'trades' || vaultTab === 'stakers' ? '' : 'py-4 px-5'}`}>
+                  {/* Header with title left, toggle right */}
+                  <div className={`flex items-center justify-between ${vaultTab === 'trades' || vaultTab === 'stakers' ? 'py-4 px-5' : 'mb-4'}`}>
+                    <span className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] uppercase" style={{ color: '#DDDDD7' }}>
+                      {vaultTab === 'stats' ? 'ZC Stakers Vault' : vaultTab === 'stakers' ? 'ZC Stakers' : 'ZC Stakers QM Trades'}
+                    </span>
 
-                  {/* Bordered Container for Stats - 2x2 Grid */}
-                  <div className="border border-[#191919] rounded-[6px] py-6 px-4 flex-1 flex flex-col">
-                    <div className="grid grid-cols-2 gap-x-3 gap-y-5 flex-1">
-                      {/* TVL Box */}
-                      <div className="flex flex-col">
-                        <div className="flex-1 border border-[#191919] rounded-[30px] px-4 flex flex-col items-center justify-center">
-                          <p className="text-[60px] leading-none font-semibold font-ibm-plex-mono" style={{ color: '#DDDDD7', fontFamily: 'IBM Plex Mono, monospace', letterSpacing: '0em' }}>
-                            {formatCompactNumber(vaultBalance)}
-                          </p>
+                    <div className="flex items-center gap-2">
+                      {/* Time Filter Toggle - only shows on stakers/trades tabs */}
+                      {(vaultTab === 'stakers' || vaultTab === 'trades') && (
+                        <div className="flex items-center gap-[2px] p-[3px] border border-[#191919] rounded-full">
+                          <button
+                            onClick={() => setTimeFilter("1D")}
+                            className={`px-3 py-1 rounded-full text-xs font-medium transition cursor-pointer font-ibm-plex-mono ${
+                              timeFilter === '1D'
+                                ? 'bg-[#DDDDD7]'
+                                : 'bg-transparent'
+                            }`}
+                            style={timeFilter === '1D' ? { color: '#161616', fontFamily: 'IBM Plex Mono, monospace' } : { color: '#6B6E71', fontFamily: 'IBM Plex Mono, monospace' }}
+                          >
+                            1D
+                          </button>
+                          <button
+                            onClick={() => setTimeFilter("1W")}
+                            className={`px-3 py-1 rounded-full text-xs font-medium transition cursor-pointer font-ibm-plex-mono ${
+                              timeFilter === '1W'
+                                ? 'bg-[#DDDDD7]'
+                                : 'bg-transparent'
+                            }`}
+                            style={timeFilter === '1W' ? { color: '#161616', fontFamily: 'IBM Plex Mono, monospace' } : { color: '#6B6E71', fontFamily: 'IBM Plex Mono, monospace' }}
+                          >
+                            1W
+                          </button>
+                          <button
+                            onClick={() => setTimeFilter("ALL")}
+                            className={`px-3 py-1 rounded-full text-xs font-medium transition cursor-pointer font-ibm-plex-mono ${
+                              timeFilter === 'ALL'
+                                ? 'bg-[#DDDDD7]'
+                                : 'bg-transparent'
+                            }`}
+                            style={timeFilter === 'ALL' ? { color: '#161616', fontFamily: 'IBM Plex Mono, monospace' } : { color: '#6B6E71', fontFamily: 'IBM Plex Mono, monospace' }}
+                          >
+                            ALL
+                          </button>
                         </div>
-                        <p className="text-sm text-center mt-2" style={{ color: '#6B6E71', fontFamily: 'IBM Plex Mono, monospace' }}>
-                          Total Value Locked (ZC)
-                        </p>
-                      </div>
-                      {/* Exchange Rate Box */}
-                      <div className="flex flex-col">
-                        <div className="flex-1 border border-[#191919] rounded-[30px] px-4 flex flex-col items-center justify-center">
-                          <p className="text-[60px] leading-none font-semibold font-ibm-plex-mono" style={{ color: '#DDDDD7', fontFamily: 'IBM Plex Mono, monospace', letterSpacing: '0em' }}>
-                            1:{exchangeRate > 0 ? exchangeRate.toFixed(3) : '1.000'}
-                          </p>
-                        </div>
-                        <p className="text-sm text-center mt-2" style={{ color: '#6B6E71', fontFamily: 'IBM Plex Mono, monospace' }}>
-                          sZC:ZC
-                        </p>
-                      </div>
-                      {/* Stakers Box */}
-                      <div className="flex flex-col">
-                        <div className="flex-1 border border-[#191919] rounded-[30px] px-4 flex flex-col items-center justify-center">
-                          <p className="text-[60px] leading-none font-semibold font-ibm-plex-mono" style={{ color: '#DDDDD7', fontFamily: 'IBM Plex Mono, monospace', letterSpacing: '0em' }}>
-                            {stakerCount}
-                          </p>
-                        </div>
-                        <p className="text-sm text-center mt-2" style={{ color: '#6B6E71', fontFamily: 'IBM Plex Mono, monospace' }}>
+                      )}
+
+                      {/* Triple Toggle */}
+                      <div className="flex items-center gap-[2px] p-[3px] border border-[#191919] rounded-full">
+                        <button
+                          onClick={() => setVaultTab("stats")}
+                          className={`px-3 py-1 rounded-full text-xs font-medium transition cursor-pointer font-ibm-plex-mono ${
+                            vaultTab === 'stats'
+                              ? 'bg-[#DDDDD7]'
+                              : 'bg-transparent'
+                          }`}
+                          style={vaultTab === 'stats' ? { color: '#161616', fontFamily: 'IBM Plex Mono, monospace' } : { color: '#6B6E71', fontFamily: 'IBM Plex Mono, monospace' }}
+                        >
+                          Stats
+                        </button>
+                        <button
+                          onClick={() => setVaultTab("stakers")}
+                          className={`px-3 py-1 rounded-full text-xs font-medium transition cursor-pointer font-ibm-plex-mono ${
+                            vaultTab === 'stakers'
+                              ? 'bg-[#DDDDD7]'
+                              : 'bg-transparent'
+                          }`}
+                          style={vaultTab === 'stakers' ? { color: '#161616', fontFamily: 'IBM Plex Mono, monospace' } : { color: '#6B6E71', fontFamily: 'IBM Plex Mono, monospace' }}
+                        >
                           Stakers
-                        </p>
-                      </div>
-                      {/* QM Volume Box */}
-                      <div className="flex flex-col">
-                        <div className="flex-1 border border-[#191919] rounded-[30px] px-4 flex flex-col items-center justify-center">
-                          <p className="text-[60px] leading-none font-semibold font-ibm-plex-mono" style={{ color: '#DDDDD7', fontFamily: 'IBM Plex Mono, monospace', letterSpacing: '0em' }}>
-                            {qmVolumeUsd >= 1000000
-                              ? `$${(qmVolumeUsd / 1000000).toFixed(1)}M`
-                              : qmVolumeUsd >= 1000
-                                ? `$${(qmVolumeUsd / 1000).toFixed(0)}K`
-                                : `$${qmVolumeUsd.toFixed(0)}`
-                            }
-                          </p>
-                        </div>
-                        <p className="text-sm text-center mt-2" style={{ color: '#6B6E71', fontFamily: 'IBM Plex Mono, monospace' }}>
-                          Total QM Volume
-                        </p>
+                        </button>
+                        <button
+                          onClick={() => setVaultTab("trades")}
+                          className={`px-3 py-1 rounded-full text-xs font-medium transition cursor-pointer font-ibm-plex-mono ${
+                            vaultTab === 'trades'
+                              ? 'bg-[#DDDDD7]'
+                              : 'bg-transparent'
+                          }`}
+                          style={vaultTab === 'trades' ? { color: '#161616', fontFamily: 'IBM Plex Mono, monospace' } : { color: '#6B6E71', fontFamily: 'IBM Plex Mono, monospace' }}
+                        >
+                          Trades
+                        </button>
                       </div>
                     </div>
+                  </div>
+
+                  {/* Bordered Container - Content changes based on tab */}
+                  <div className={`flex-1 flex flex-col px-5 ${vaultTab === 'trades' || vaultTab === 'stakers' ? 'pb-4' : 'border border-[#191919] rounded-[6px] py-6'}`}>
+                    {vaultTab === 'stats' ? (
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-5 flex-1">
+                        {/* TVL Box */}
+                        <div className="flex flex-col">
+                          <div className="flex-1 border border-[#191919] rounded-[30px] px-4 flex flex-col items-center justify-center">
+                            <p className="text-[60px] leading-none font-semibold font-ibm-plex-mono" style={{ color: '#DDDDD7', fontFamily: 'IBM Plex Mono, monospace', letterSpacing: '0em' }}>
+                              {formatCompactNumber(vaultBalance)}
+                            </p>
+                          </div>
+                          <p className="text-sm text-center mt-2" style={{ color: '#6B6E71', fontFamily: 'IBM Plex Mono, monospace' }}>
+                            Total Value Locked (ZC)
+                          </p>
+                        </div>
+                        {/* Exchange Rate Box */}
+                        <div className="flex flex-col">
+                          <div className="flex-1 border border-[#191919] rounded-[30px] px-4 flex flex-col items-center justify-center">
+                            <p className="text-[60px] leading-none font-semibold font-ibm-plex-mono" style={{ color: '#DDDDD7', fontFamily: 'IBM Plex Mono, monospace', letterSpacing: '0em' }}>
+                              1:{exchangeRate > 0 ? exchangeRate.toFixed(3) : '1.000'}
+                            </p>
+                          </div>
+                          <p className="text-sm text-center mt-2" style={{ color: '#6B6E71', fontFamily: 'IBM Plex Mono, monospace' }}>
+                            sZC:ZC
+                          </p>
+                        </div>
+                        {/* Stakers Box */}
+                        <div className="flex flex-col">
+                          <div className="flex-1 border border-[#191919] rounded-[30px] px-4 flex flex-col items-center justify-center">
+                            <p className="text-[60px] leading-none font-semibold font-ibm-plex-mono" style={{ color: '#DDDDD7', fontFamily: 'IBM Plex Mono, monospace', letterSpacing: '0em' }}>
+                              {stakerCount}
+                            </p>
+                          </div>
+                          <p className="text-sm text-center mt-2" style={{ color: '#6B6E71', fontFamily: 'IBM Plex Mono, monospace' }}>
+                            Stakers
+                          </p>
+                        </div>
+                        {/* QM Volume Box */}
+                        <div className="flex flex-col">
+                          <div className="flex-1 border border-[#191919] rounded-[30px] px-4 flex flex-col items-center justify-center">
+                            <p className="text-[60px] leading-none font-semibold font-ibm-plex-mono" style={{ color: '#DDDDD7', fontFamily: 'IBM Plex Mono, monospace', letterSpacing: '0em' }}>
+                              {qmVolumeUsd >= 1000000
+                                ? `$${(qmVolumeUsd / 1000000).toFixed(1)}M`
+                                : qmVolumeUsd >= 1000
+                                  ? `$${(qmVolumeUsd / 1000).toFixed(0)}K`
+                                  : `$${qmVolumeUsd.toFixed(0)}`
+                              }
+                            </p>
+                          </div>
+                          <p className="text-sm text-center mt-2" style={{ color: '#6B6E71', fontFamily: 'IBM Plex Mono, monospace' }}>
+                            Total QM Volume
+                          </p>
+                        </div>
+                      </div>
+                    ) : vaultTab === 'trades' ? (
+                      <div className="flex-1 min-h-0 relative border border-[#191919] rounded-[6px]">
+                        <div className="absolute inset-0 overflow-y-auto scrollbar-hide">
+                        <table className="w-full text-sm">
+                          <thead className="text-[#6B6E71] font-medium uppercase">
+                            <tr>
+                              <th className="py-3 pl-3 text-left font-medium">Staker</th>
+                              <th className="py-3 text-left font-medium w-[100px]">QM</th>
+                              <th className="py-3 text-left font-medium w-[100px]">Coin</th>
+                              <th className="py-3 text-left font-medium w-[100px]">Trade</th>
+                              <th className="py-3 text-left font-medium w-[100px]">Amount</th>
+                              <th className="py-3 text-left font-medium">Tx</th>
+                              <th className="py-3 pr-3 text-right font-medium">Age</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                          {tradesLoading ? (
+                            <tr>
+                              <td colSpan={7} className="py-8 text-center text-[#6B6E71]">
+                                Loading trades...
+                              </td>
+                            </tr>
+                          ) : stakerTrades.length === 0 ? (
+                            <tr>
+                              <td colSpan={7} className="py-8 text-center text-[#6B6E71]">
+                                No trades yet
+                              </td>
+                            </tr>
+                          ) : (
+                            stakerTrades.map((trade) => {
+                              const isBuy = !trade.isBaseToQuote;
+                              const amount = parseFloat(trade.amountIn);
+                              const tokenUsed = trade.isBaseToQuote ? 'ZC' : 'SOL';
+
+                              const removeTrailingZeros = (num: string): string => {
+                                return num.replace(/\.?0+$/, '');
+                              };
+
+                              let formattedAmount;
+                              if (tokenUsed === 'SOL') {
+                                formattedAmount = removeTrailingZeros(amount.toFixed(3));
+                              } else {
+                                if (amount >= 1000000000) {
+                                  formattedAmount = removeTrailingZeros((amount / 1000000000).toFixed(3)) + 'B';
+                                } else if (amount >= 1000000) {
+                                  formattedAmount = removeTrailingZeros((amount / 1000000).toFixed(3)) + 'M';
+                                } else if (amount >= 1000) {
+                                  formattedAmount = removeTrailingZeros((amount / 1000).toFixed(3)) + 'K';
+                                } else {
+                                  formattedAmount = removeTrailingZeros(amount.toFixed(3));
+                                }
+                              }
+
+                              return (
+                                <tr
+                                  key={trade.id}
+                                  className="border-t border-[#191919] hover:bg-[#1a1a1a] transition-colors"
+                                  style={{ color: '#E9E9E3' }}
+                                >
+                                  <td className="py-3 pl-3 whitespace-nowrap" style={{ color: '#DDDDD7' }}>
+                                    {formatTradeAddress(trade.userAddress)}
+                                    <button
+                                      onClick={() => navigator.clipboard.writeText(trade.userAddress)}
+                                      className="text-[#6B6E71] hover:text-theme-text transition-colors ml-1 inline"
+                                      title="Copy address"
+                                    >
+                                      <svg
+                                        width="12"
+                                        height="12"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        className="inline"
+                                      >
+                                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                      </svg>
+                                    </button>
+                                    <a
+                                      href={`https://solscan.io/account/${trade.userAddress}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-[#6B6E71] hover:text-theme-text transition-colors ml-1 inline"
+                                      title="View on Solscan"
+                                    >
+                                      <svg
+                                        width="12"
+                                        height="12"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        className="inline"
+                                      >
+                                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                                        <polyline points="15 3 21 3 21 9"></polyline>
+                                        <line x1="10" y1="14" x2="21" y2="3"></line>
+                                      </svg>
+                                    </a>
+                                  </td>
+                                  <td className="py-3 w-[100px]" style={{ color: '#DDDDD7' }}>
+                                    {trade.ticker}-{trade.proposalId}
+                                  </td>
+                                  <td className="py-3 w-[100px]" style={{ color: '#DDDDD7' }}>
+                                    {trade.marketLabel}
+                                  </td>
+                                  <td className="py-3 w-[100px]" style={{ color: isBuy ? '#6ECC94' : '#FF6F94' }}>
+                                    {isBuy ? 'Buy' : 'Sell'}
+                                  </td>
+                                  <td className="py-3 w-[100px]" style={{ color: '#DDDDD7' }}>
+                                    {formattedAmount} {tokenUsed}
+                                  </td>
+                                  <td className="py-3 whitespace-nowrap" style={{ color: '#DDDDD7' }}>
+                                    {trade.txSignature ? `${trade.txSignature.slice(0, 12)}...` : '—'}
+                                    {trade.txSignature && (
+                                      <a
+                                        href={`https://solscan.io/tx/${trade.txSignature}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-[#6B6E71] hover:text-theme-text transition-colors ml-1 inline"
+                                      >
+                                        <svg
+                                          width="12"
+                                          height="12"
+                                          viewBox="0 0 24 24"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          strokeWidth="2"
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          className="inline"
+                                        >
+                                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                                          <polyline points="15 3 21 3 21 9"></polyline>
+                                          <line x1="10" y1="14" x2="21" y2="3"></line>
+                                        </svg>
+                                      </a>
+                                    )}
+                                  </td>
+                                  <td className="py-3 pr-3 text-right text-[#6B6E71]">{getTimeAgo(trade.timestamp)}</td>
+                                </tr>
+                              );
+                            })
+                          )}
+                          </tbody>
+                        </table>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex-1 min-h-0 relative border border-[#191919] rounded-[6px]">
+                        <div className="absolute inset-0 overflow-y-auto scrollbar-hide">
+                        <table className="w-full text-sm">
+                          <thead className="text-[#6B6E71] font-medium uppercase">
+                            <tr>
+                              <th className="py-3 pl-3 text-left font-medium">Staker</th>
+                              <th
+                                className="py-3 text-right font-medium cursor-pointer hover:text-[#DDDDD7] transition-colors select-none"
+                                onClick={() => toggleStakersSort('volume')}
+                              >
+                                QM Trade Vol
+                              </th>
+                              <th
+                                className="py-3 pr-3 text-right font-medium cursor-pointer hover:text-[#DDDDD7] transition-colors select-none"
+                                onClick={() => toggleStakersSort('balance')}
+                              >
+                                Staked ZC Bal
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                          {stakersLoading ? (
+                            <tr>
+                              <td colSpan={3} className="py-8 text-center text-[#6B6E71]">
+                                Loading stakers...
+                              </td>
+                            </tr>
+                          ) : stakersList.length === 0 ? (
+                            <tr>
+                              <td colSpan={3} className="py-8 text-center text-[#6B6E71]">
+                                No stakers yet
+                              </td>
+                            </tr>
+                          ) : (
+                            sortedStakersList.map((staker) => (
+                              <tr
+                                key={staker.address}
+                                className="border-t border-[#191919] hover:bg-[#1a1a1a] transition-colors"
+                                style={{ color: '#E9E9E3' }}
+                              >
+                                <td className="py-3 pl-3 whitespace-nowrap" style={{ color: '#DDDDD7' }}>
+                                  {formatTradeAddress(staker.address)}
+                                  <button
+                                    onClick={() => navigator.clipboard.writeText(staker.address)}
+                                    className="text-[#6B6E71] hover:text-theme-text transition-colors ml-1 inline"
+                                    title="Copy address"
+                                  >
+                                    <svg
+                                      width="12"
+                                      height="12"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      className="inline"
+                                    >
+                                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                    </svg>
+                                  </button>
+                                  <a
+                                    href={`https://solscan.io/account/${staker.address}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[#6B6E71] hover:text-theme-text transition-colors ml-1 inline"
+                                    title="View on Solscan"
+                                  >
+                                    <svg
+                                      width="12"
+                                      height="12"
+                                      viewBox="0 0 24 24"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      strokeWidth="2"
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      className="inline"
+                                    >
+                                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                                      <polyline points="15 3 21 3 21 9"></polyline>
+                                      <line x1="10" y1="14" x2="21" y2="3"></line>
+                                    </svg>
+                                  </a>
+                                </td>
+                                <td className="py-3 text-right" style={{ color: '#DDDDD7' }}>
+                                  {(() => {
+                                    const vol = parseFloat(staker.volumeUsd);
+                                    if (vol >= 1000000) return `$${(vol / 1000000).toFixed(2)}M`;
+                                    if (vol >= 1000) return `$${(vol / 1000).toFixed(2)}K`;
+                                    return `$${vol.toFixed(2)}`;
+                                  })()}
+                                </td>
+                                <td className="py-3 pr-3 text-right" style={{ color: '#DDDDD7' }}>
+                                  {parseFloat(staker.balance).toLocaleString()} ({staker.percentage}%)
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                          </tbody>
+                        </table>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   </div>
                 </div>
@@ -599,7 +1047,7 @@ export function StakeContent() {
                               {calculateAPY().toFixed(0)}%
                             </p>
                           </div>
-                          <p className="text-sm text-center mt-4" style={{ color: '#6B6E71', fontFamily: 'IBM Plex Mono, monospace' }}>
+                          <p className="text-sm text-center mt-2" style={{ color: '#6B6E71', fontFamily: 'IBM Plex Mono, monospace' }}>
                             APY
                           </p>
                         </div>
@@ -610,7 +1058,7 @@ export function StakeContent() {
                               {wallet ? formatCompactNumber(userShareValue) : '0'}
                             </p>
                           </div>
-                          <p className="text-sm text-center mt-4" style={{ color: '#6B6E71', fontFamily: 'IBM Plex Mono, monospace' }}>
+                          <p className="text-sm text-center mt-2" style={{ color: '#6B6E71', fontFamily: 'IBM Plex Mono, monospace' }}>
                             Staked (ZC)
                           </p>
                         </div>
