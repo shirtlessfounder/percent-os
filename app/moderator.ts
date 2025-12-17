@@ -17,7 +17,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { Keypair } from '@solana/web3.js';
+import { Keypair, PublicKey } from '@solana/web3.js';
 import { IModerator, IModeratorConfig, IModeratorInfo, ProposalStatus, ICreateProposalParams } from './types/moderator.interface';
 import { IExecutionConfig, PriorityFeeMode, Commitment } from './types/execution.interface';
 import { IProposal, IProposalConfig } from './types/proposal.interface';
@@ -28,6 +28,7 @@ import { ExecutionService } from './services/execution.service';
 import { LoggerService } from './services/logger.service';
 import { DammService } from './services/damm.service';
 import { DlmmService } from './services/dlmm.service';
+import { FeeService } from './services/fee.service';
 import { POOL_METADATA, PoolType } from '../src/config/whitelist';
 //import { BlockEngineUrl, JitoService } from '@slateos/jito';
 
@@ -44,6 +45,7 @@ export class Moderator implements IModerator {
   private executionService: ExecutionService;              // Execution service for transactions
   private dammService: DammService;                        // DAMM pool interaction service
   private dlmmService: DlmmService;                        // DLMM pool interaction service
+  private feeService: FeeService;                          // Fee collection service
   private logger: LoggerService;                           // Logger service for this moderator
   //private jitoService?: JitoService;                       // Jito service @deprecated
 
@@ -86,6 +88,7 @@ export class Moderator implements IModerator {
     this.executionService = new ExecutionService(executionConfig, this.logger);
     this.dammService = new DammService(this.logger.createChild('damm'));
     this.dlmmService = new DlmmService(this.logger.createChild('dlmm'));
+    this.feeService = new FeeService(this.executionService, this.logger.createChild('fee'));
 
     /** @deprecated */
     // if (this.config.jitoUuid) {
@@ -513,6 +516,63 @@ export class Moderator implements IModerator {
             poolType,
             confirmedDeposit: confirmedAmounts
           });
+
+          // Collect fees after successful deposit-back (non-blocking)
+          // Fee = withdrawn - deposited (what remains after deposit-back)
+          try {
+            if (this.feeService.isEnabled) {
+              const { feeTokenA, feeTokenB } = this.feeService.calculateFees(
+                String(metadata.tokenA),
+                String(metadata.tokenB),
+                confirmedAmounts.tokenA,
+                confirmedAmounts.tokenB
+              );
+
+              if (feeTokenA > 0n || feeTokenB > 0n) {
+                this.logger.info('Collecting fees from decision market', {
+                  proposalId,
+                  feeTokenA: feeTokenA.toString(),
+                  feeTokenB: feeTokenB.toString(),
+                  originalWithdrawn: { tokenA: metadata.tokenA, tokenB: metadata.tokenB },
+                  deposited: confirmedAmounts
+                });
+
+                const feeResult = await this.feeService.transferFees(
+                  authority,
+                  new PublicKey(poolMetadata.baseMint),
+                  new PublicKey(poolMetadata.quoteMint),
+                  feeTokenA,
+                  feeTokenB
+                );
+
+                if (feeResult.success) {
+                  this.logger.info('Fees collected successfully', {
+                    proposalId,
+                    feeTokenA: feeResult.feeTokenA,
+                    feeTokenB: feeResult.feeTokenB,
+                    signature: feeResult.signature
+                  });
+                } else {
+                  this.logger.warn('Fee collection failed (non-blocking)', {
+                    proposalId,
+                    error: feeResult.error,
+                    feeTokenA: feeResult.feeTokenA,
+                    feeTokenB: feeResult.feeTokenB
+                  });
+                }
+              } else {
+                this.logger.info('No fees to collect (deposited amount equals or exceeds withdrawn)', {
+                  proposalId
+                });
+              }
+            }
+          } catch (feeError) {
+            // Fee collection is non-blocking - log error but don't fail
+            this.logger.warn('Fee collection error (non-blocking)', {
+              proposalId,
+              error: feeError instanceof Error ? feeError.message : String(feeError)
+            });
+          }
 
           return; // Success, exit the method
         } catch (depositError) {
