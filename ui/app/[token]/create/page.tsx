@@ -392,7 +392,7 @@ export default function CreatePage() {
         {/* Content Area */}
         <div className="flex-1 flex overflow-hidden">
           <div className="flex-1 flex justify-center overflow-y-auto">
-            <div className="w-full max-w-[1332px] 2xl:max-w-[1512px] pt-8 pb-8 px-4 md:px-0">
+            <div className="w-full max-w-[1332px] 2xl:max-w-[1512px] pt-8 pb-16 md:pb-8 px-4 md:px-0">
               <div className="mb-6">
                 <h2 className="text-2xl font-medium" style={{ color: '#E9E9E3' }}>
                   {tokenSlug === 'zc' && !isAuthorized ? 'Propose' : 'Create'} Quantum Market
@@ -407,7 +407,7 @@ export default function CreatePage() {
               <form onSubmit={handleSubmit}>
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                   {/* Left Column (3/5 width) */}
-                  <div className="md:col-span-3 flex flex-col gap-4">
+                  <div className="md:col-span-3 flex flex-col gap-4 md:pb-12">
                     {/* Title Card */}
                     <div className="bg-[#121212] border border-[#191919] rounded-[9px] py-4 px-5">
                       <div className="flex items-center justify-between mb-4">
@@ -618,7 +618,7 @@ export default function CreatePage() {
                   </div>
 
                   {/* Right Column (2/5 width) */}
-                  <div className="md:col-span-2 flex flex-col gap-4">
+                  <div className="md:col-span-2 flex flex-col gap-4 pb-12 md:pb-12">
                     {/* Proposal Length Card */}
                     <div className="bg-[#121212] border border-[#191919] rounded-[9px] py-4 px-5">
                       <span className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] uppercase mb-4 block text-center" style={{ color: '#DDDDD7' }}>
