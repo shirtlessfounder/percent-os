@@ -457,38 +457,56 @@ router.post('/', requireApiKey, requireModeratorId, async (req, res, next) => {
       throw new Error(`${poolType.toUpperCase()} withdrawal build failed: ${error.error || withdrawBuildResponse.statusText}`);
     }
 
-    // Handle response - DLMM uses tokenX/Y, DAMM uses tokenA/B
+    // Handle response - DLMM uses tokenX/Y and transactions array, DAMM uses tokenA/B and transaction
     const withdrawBuildDataRaw = await withdrawBuildResponse.json() as {
       requestId: string;
-      transaction: string;
-      estimatedAmounts?: { tokenA: string; tokenB: string; tokenX?: string; tokenY?: string };
+      transaction?: string;        // DAMM: single transaction
+      transactions?: string[];     // DLMM: array of transactions
+      estimatedAmounts?: { tokenA?: string; tokenB?: string; tokenX?: string; tokenY?: string };
     };
 
     // Normalize field names: DLMM returns tokenX/Y, DAMM returns tokenA/B
     // We use tokenA/B internally (base/quote)
     const withdrawBuildData = {
       requestId: withdrawBuildDataRaw.requestId,
-      transaction: withdrawBuildDataRaw.transaction,
+      transaction: withdrawBuildDataRaw.transaction,       // DAMM single tx
+      transactions: withdrawBuildDataRaw.transactions,     // DLMM multi tx
       estimatedAmounts: {
         tokenA: withdrawBuildDataRaw.estimatedAmounts?.tokenX || withdrawBuildDataRaw.estimatedAmounts?.tokenA || '0',
         tokenB: withdrawBuildDataRaw.estimatedAmounts?.tokenY || withdrawBuildDataRaw.estimatedAmounts?.tokenB || '0',
       }
     };
 
-    logger.info('[POST /] Built withdrawal transaction', {
+    logger.info('[POST /] Built withdrawal transaction(s)', {
       requestId: withdrawBuildData.requestId,
       estimatedAmounts: withdrawBuildData.estimatedAmounts,
-      poolType
+      poolType,
+      transactionCount: withdrawBuildData.transactions?.length || 1
     });
 
-    // Sign the transaction with pool-specific authority keypair
-    const transactionBuffer = bs58.decode(withdrawBuildData.transaction);
-    const unsignedTx = Transaction.from(transactionBuffer);
+    // Sign the transaction(s) with pool-specific authority keypair
     const poolAuthority = moderator.getAuthorityForPool(poolAddress);
-    unsignedTx.sign(poolAuthority);
-    const signedTxBase58 = bs58.encode(
-      unsignedTx.serialize({ requireAllSignatures: false })
-    );
+    let signedTxBase58: string | undefined;
+    let signedTxsBase58: string[] | undefined;
+
+    if (poolType === 'dlmm' && withdrawBuildData.transactions) {
+      // DLMM: Sign all transactions in the array
+      signedTxsBase58 = withdrawBuildData.transactions.map(txBase58 => {
+        const transactionBuffer = bs58.decode(txBase58);
+        const unsignedTx = Transaction.from(transactionBuffer);
+        unsignedTx.sign(poolAuthority);
+        return bs58.encode(unsignedTx.serialize({ requireAllSignatures: false }));
+      });
+      logger.info('[POST /] Signed DLMM transactions', { count: signedTxsBase58.length });
+    } else if (withdrawBuildData.transaction) {
+      // DAMM: Sign single transaction
+      const transactionBuffer = bs58.decode(withdrawBuildData.transaction);
+      const unsignedTx = Transaction.from(transactionBuffer);
+      unsignedTx.sign(poolAuthority);
+      signedTxBase58 = bs58.encode(unsignedTx.serialize({ requireAllSignatures: false }));
+    } else {
+      throw new Error('No transaction(s) returned from withdrawal build');
+    }
 
     // Use estimated amounts for initial liquidity (actual amounts confirmed during initialize)
     const initialBaseAmount = withdrawBuildData.estimatedAmounts.tokenA;
@@ -545,7 +563,8 @@ router.post('/', requireApiKey, requireModeratorId, async (req, res, next) => {
       },
       dammWithdrawal: {
         requestId: withdrawBuildData.requestId,
-        signedTransaction: signedTxBase58,
+        signedTransaction: signedTxBase58,       // DAMM single tx
+        signedTransactions: signedTxsBase58,     // DLMM multi tx
         withdrawalPercentage,
         estimatedAmounts: withdrawBuildData.estimatedAmounts,
         poolAddress,

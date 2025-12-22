@@ -57,10 +57,14 @@ export interface IModeratorInfo {
  * Withdrawal build data passed from route to proposal initialization
  * Contains the unsigned transaction and metadata needed to confirm the withdrawal
  * Supports both DAMM (CP-AMM) and DLMM pool types
+ *
+ * DAMM uses single transaction, DLMM may use multiple transactions for wide bin ranges
  */
 export interface IWithdrawalBuildData {
   requestId: string;                            // API request ID for confirmation
-  signedTransaction: string;                    // Base58-encoded signed transaction
+  signedTransaction?: string;                   // Base58-encoded signed transaction (DAMM, single tx)
+  signedTransactions?: string[];                // Base58-encoded signed transactions (DLMM, multi-tx)
+  transactionCount?: number;                    // Number of transactions (1 for DAMM, 1+ for DLMM)
   withdrawalPercentage: number;                 // Percentage withdrawn from pool
   estimatedAmounts: {
     tokenA: string;                             // Estimated base token amount (raw)

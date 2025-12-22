@@ -200,6 +200,7 @@ export class Moderator implements IModerator {
             poolAddress: withdrawal.poolAddress,
             poolType,
             estimatedAmounts: withdrawal.estimatedAmounts,
+            transactionCount: withdrawal.signedTransactions?.length || 1,
           });
 
           // Route to correct confirm endpoint based on pool type
@@ -208,15 +209,24 @@ export class Moderator implements IModerator {
             ? `${apiUrl}/dlmm/withdraw/confirm`
             : `${apiUrl}/damm/withdraw/confirm`;
 
+          // Build request body based on pool type
+          // DLMM uses signedTransactions (array), DAMM uses signedTransaction (single)
+          const requestBody = poolType === 'dlmm' && withdrawal.signedTransactions
+            ? {
+                signedTransactions: withdrawal.signedTransactions,
+                requestId: withdrawal.requestId,
+              }
+            : {
+                signedTransaction: withdrawal.signedTransaction,
+                requestId: withdrawal.requestId,
+              };
+
           const withdrawConfirmResponse = await fetch(
             confirmEndpoint,
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                signedTransaction: withdrawal.signedTransaction,
-                requestId: withdrawal.requestId,
-              }),
+              body: JSON.stringify(requestBody),
             }
           );
 
@@ -227,9 +237,10 @@ export class Moderator implements IModerator {
             );
           }
 
-          // Handle response - DLMM uses tokenX/Y, DAMM uses tokenA/B
+          // Handle response - DLMM uses tokenX/Y and signatures array, DAMM uses tokenA/B and signature
           const withdrawConfirmDataRaw = (await withdrawConfirmResponse.json()) as {
-            signature: string;
+            signature?: string;           // DAMM single signature
+            signatures?: string[];        // DLMM array of signatures
             estimatedAmounts?: { tokenA?: string; tokenB?: string; tokenX?: string; tokenY?: string };
           };
 
@@ -239,8 +250,14 @@ export class Moderator implements IModerator {
             tokenB: withdrawConfirmDataRaw.estimatedAmounts?.tokenY || withdrawConfirmDataRaw.estimatedAmounts?.tokenB || '0',
           };
 
+          // Use last signature for DLMM (transfer tx), or single signature for DAMM
+          const finalSignature = withdrawConfirmDataRaw.signatures
+            ? withdrawConfirmDataRaw.signatures[withdrawConfirmDataRaw.signatures.length - 1]
+            : withdrawConfirmDataRaw.signature || '';
+
           this.logger.info('Confirmed withdrawal', {
-            signature: withdrawConfirmDataRaw.signature,
+            signature: finalSignature,
+            allSignatures: withdrawConfirmDataRaw.signatures,
             amounts: confirmedAmounts,
             poolType,
           });
@@ -248,7 +265,7 @@ export class Moderator implements IModerator {
           // Store withdrawal data in memory - will be persisted after proposal save
           withdrawalMetadata = {
             requestId: withdrawal.requestId,
-            signature: withdrawConfirmDataRaw.signature,
+            signature: finalSignature,
             percentage: withdrawal.withdrawalPercentage,
             tokenA: confirmedAmounts.tokenA,
             tokenB: confirmedAmounts.tokenB,
@@ -258,7 +275,7 @@ export class Moderator implements IModerator {
 
           this.logger.info('Withdrawal confirmed, metadata will be stored after proposal save', {
             proposalId: proposalIdCounter,
-            withdrawalSignature: withdrawConfirmDataRaw.signature,
+            withdrawalSignature: finalSignature,
             poolType,
           });
         };
