@@ -159,24 +159,24 @@ async function dammDeposit() {
 
     logger.info('DAMM deposit completed', {
       signature: result.signature,
-      amounts: result.amounts
+      deposited: result.deposited
     });
 
     // Mark as deposited in database
     await persistenceService.markWithdrawalDeposited(
       proposalId,
       result.signature,
-      result.amounts.tokenA,
-      result.amounts.tokenB
+      result.deposited.tokenA,
+      result.deposited.tokenB
     );
 
     console.log('\n✅ DAMM deposit successful!');
     console.log(`   Signature: ${result.signature}`);
     console.log(`   Solscan: https://solscan.io/tx/${result.signature}`);
     console.log('\n   Amounts deposited:');
-    console.log(`   Token A: ${result.amounts.tokenA}`);
-    console.log(`   Token B: ${result.amounts.tokenB}`);
-    console.log(`   Liquidity Delta: ${result.amounts.liquidityDelta}`);
+    console.log(`   Token A: ${result.deposited.tokenA}`);
+    console.log(`   Token B: ${result.deposited.tokenB}`);
+    console.log(`   Liquidity Delta: ${result.deposited.liquidityDelta}`);
 
   } catch (error) {
     logger.error('DAMM deposit failed', {
