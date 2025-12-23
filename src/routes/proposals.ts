@@ -21,7 +21,7 @@ import { Router } from 'express';
 import { requireApiKey } from '../middleware/auth';
 import { attachModerator, requireModeratorId, getModerator } from '../middleware/validation';
 import { Transaction, PublicKey, Connection } from '@solana/web3.js';
-import { getMint } from '@solana/spl-token';
+import { getMint, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import BN from 'bn.js';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
@@ -32,6 +32,11 @@ import { ProposalStatus } from '../../app/types/moderator.interface';
 import { POOL_METADATA, getAuthorizedPoolsAsync, AuthMethod } from '../config/whitelist';
 import { VaultType } from '@zcomb/vault-sdk';
 import { normalizeWithdrawBuildResponse, calculateMarketPriceFromAmounts } from '../../app/utils/pool-api.utils';
+import { getPool } from '../../app/utils/database';
+
+// Staking vault constants for slash amount calculation
+const STAKING_PROGRAM_ID = new PublicKey("47rZ1jgK7zU6XAgffAfXkDX1JkiiRi4HRPBytossWR12");
+const ZC_TOKEN_MINT = new PublicKey("GVvPZpC6ymCoiHzYJ7CWZ8LhVn9tL2AUpRjSAsLh6jZC");
 
 const routerService = RouterService.getInstance();
 const logger = new LoggerService('api').createChild('proposals');
@@ -625,6 +630,17 @@ router.post('/:id/finalize', requireModeratorId, async (req, res, next) => {
       status
     });
 
+    // Check if this is a slash proposal and record the slash if applicable
+    try {
+      await recordSlashIfApplicable(moderatorId, id, proposal);
+    } catch (slashError) {
+      // Log but don't fail the finalization if slash recording fails
+      logger.error('[POST /:id/finalize] Failed to record slash', {
+        proposalId: id,
+        error: slashError instanceof Error ? slashError.message : String(slashError)
+      });
+    }
+
     res.json({
       moderatorId,
       id,
@@ -639,6 +655,108 @@ router.post('/:id/finalize', requireModeratorId, async (req, res, next) => {
     next(error);
   }
 });
+
+/**
+ * Helper function to record a slash if the finalized proposal is a slash proposal
+ * with a winning outcome other than "No"
+ */
+async function recordSlashIfApplicable(
+  moderatorId: number,
+  proposalId: number,
+  proposal: { config: { title: string; market_labels?: string[] }; getStatus: () => { winningMarketIndex?: number | null; winningMarketLabel?: string | null } }
+): Promise<void> {
+  const title = proposal.config.title;
+
+  // Check if this is a slash proposal (format: "Should we slash Staker {wallet}?")
+  const walletMatch = title.match(/Should we slash Staker ([A-Za-z0-9]{32,44})\?/);
+  if (!walletMatch) {
+    return; // Not a slash proposal
+  }
+
+  const targetWallet = walletMatch[1];
+  const statusInfo = proposal.getStatus();
+
+  // Get the winning market label
+  const winningLabel = statusInfo.winningMarketLabel;
+  if (!winningLabel) {
+    logger.info('[recordSlash] No winning label found', { proposalId, moderatorId });
+    return;
+  }
+
+  // Check if the winning outcome is "No" - if so, no slash occurs
+  if (winningLabel.toLowerCase() === 'no') {
+    logger.info('[recordSlash] Slash proposal resolved to No - no slash recorded', {
+      proposalId,
+      moderatorId,
+      targetWallet
+    });
+    return;
+  }
+
+  // Parse the slash percentage from the winning label (e.g., "20%", "40%", "60%", "80%", "100%")
+  const percentMatch = winningLabel.match(/(\d+)%/);
+  if (!percentMatch) {
+    logger.warn('[recordSlash] Could not parse percentage from winning label', {
+      proposalId,
+      winningLabel
+    });
+    return;
+  }
+
+  const slashPercentage = parseInt(percentMatch[1]);
+
+  // Query the user's staked ZC balance from on-chain
+  let zcAmountSlashed = 0;
+  try {
+    const connection = new Connection(rpcUrl, 'confirmed');
+
+    // Derive share mint PDA
+    const [shareMint] = PublicKey.findProgramAddressSync(
+      [Buffer.from("share_mint")],
+      STAKING_PROGRAM_ID
+    );
+
+    // Find user's sZC token account
+    const tokenAccounts = await connection.getProgramAccounts(TOKEN_PROGRAM_ID, {
+      filters: [
+        { dataSize: 165 },
+        { memcmp: { offset: 0, bytes: shareMint.toBase58() } },
+        { memcmp: { offset: 32, bytes: targetWallet } }
+      ]
+    });
+
+    if (tokenAccounts.length > 0) {
+      // Parse the token account balance
+      const accountData = tokenAccounts[0].account.data;
+      const rawBalance = accountData.readBigUInt64LE(64);
+      const stakedBalance = Number(rawBalance) / 1_000_000; // sZC has 6 decimals
+
+      // Calculate slashed amount
+      zcAmountSlashed = stakedBalance * (slashPercentage / 100);
+    }
+  } catch (error) {
+    logger.warn('[recordSlash] Failed to fetch staked balance, recording with 0 amount', {
+      targetWallet,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+
+  // Insert into qm_slashed table
+  const pool = getPool();
+  await pool.query(
+    `INSERT INTO qm_slashed (moderator_id, proposal_id, target_wallet, slash_percentage, zc_amount_slashed)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [moderatorId, proposalId, targetWallet, slashPercentage, zcAmountSlashed]
+  );
+
+  logger.info('[recordSlash] Slash recorded successfully', {
+    moderatorId,
+    proposalId,
+    targetWallet,
+    slashPercentage,
+    zcAmountSlashed
+  });
+}
 
 
 export default router;

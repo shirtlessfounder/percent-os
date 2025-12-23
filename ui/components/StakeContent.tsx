@@ -97,6 +97,7 @@ export function StakeContent() {
   const [rewardRate, setRewardRate] = useState<number>(0);
   const [totalAssets, setTotalAssets] = useState<number>(0);
   const [totalShares, setTotalShares] = useState<number>(0);
+  const [slashedAmount, setSlashedAmount] = useState<number>(0);
 
   const connection = useMemo(() => new Connection(process.env.NEXT_PUBLIC_RPC_URL || "https://api.mainnet-beta.solana.com"), []);
 
@@ -426,6 +427,29 @@ export function StakeContent() {
       setStakersLoading(false);
     }
   }, [timeFilter]);
+
+  // Fetch slashed amount for current user
+  const fetchSlashedAmount = useCallback(async () => {
+    if (!walletAddress) {
+      setSlashedAmount(0);
+      return;
+    }
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/stakers/slashed/${walletAddress}`);
+      const data = await response.json();
+      setSlashedAmount(data.totalSlashed || 0);
+    } catch (error) {
+      console.error("Failed to fetch slashed amount:", error);
+      setSlashedAmount(0);
+    }
+  }, [walletAddress]);
+
+  // Fetch slashed amount when wallet connects
+  useEffect(() => {
+    if (walletAddress) {
+      fetchSlashedAmount();
+    }
+  }, [walletAddress, fetchSlashedAmount]);
 
   // Fetch data when tab is selected
   useEffect(() => {
@@ -1301,12 +1325,12 @@ export function StakeContent() {
                         {/* Staked Box */}
                         <div className="flex-1 flex flex-col">
                           <div
-                            className="flex-1 border border-[#191919] rounded-[30px] px-4 flex flex-col items-center justify-center"
+                            className="flex-1 border border-[#191919] rounded-[30px] px-4 flex flex-col items-center justify-center cursor-pointer"
                             onMouseEnter={() => setIsHoveringStaked(true)}
                             onMouseLeave={() => setIsHoveringStaked(false)}
                           >
                             <p className="text-4xl font-semibold font-ibm-plex-mono" style={{ color: isHoveringStaked ? '#FF6F94' : '#DDDDD7', fontFamily: 'IBM Plex Mono, monospace', letterSpacing: '0em' }}>
-                              {wallet ? formatCompactNumber(userShareValue) : '0'}
+                              {wallet ? formatCompactNumber(isHoveringStaked ? slashedAmount : userShareValue) : '0'}
                             </p>
                           </div>
                           <p className="text-sm text-center mt-2" style={{ color: '#6B6E71', fontFamily: 'IBM Plex Mono, monospace' }}>

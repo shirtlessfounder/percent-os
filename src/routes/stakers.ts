@@ -380,4 +380,32 @@ router.get('/list', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/stakers/slashed/:walletAddress
+ * Returns total ZC amount slashed for a specific wallet
+ */
+router.get('/slashed/:walletAddress', async (req, res) => {
+  try {
+    const { walletAddress } = req.params;
+
+    if (!walletAddress || walletAddress.length < 32 || walletAddress.length > 44) {
+      return res.status(400).json({ error: 'Invalid wallet address' });
+    }
+
+    const pool = getPool();
+    const result = await pool.query(`
+      SELECT COALESCE(SUM(zc_amount_slashed), 0) as total_slashed
+      FROM qm_slashed
+      WHERE target_wallet = $1
+    `, [walletAddress]);
+
+    const totalSlashed = parseFloat(result.rows[0]?.total_slashed || '0');
+
+    res.json({ totalSlashed });
+  } catch (error) {
+    console.error('Failed to fetch slashed amount:', error);
+    res.status(500).json({ error: 'Failed to fetch slashed amount' });
+  }
+});
+
 export default router;
