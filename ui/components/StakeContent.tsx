@@ -1277,22 +1277,36 @@ export function StakeContent() {
                 {/* Right Column: How It Works + Your Position + Stake/Redeem stacked (1/3 width) */}
                 <div className="contents md:flex md:col-span-1 md:flex-col md:gap-4 md:pb-12">
                   {/* How It Works Card */}
-                  <div className="bg-[#121212] border border-[#191919] rounded-[9px] pt-4 pb-5 px-5 order-first md:order-none">
-                    <h1 className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] mb-4 uppercase text-center" style={{ color: '#DDDDD7' }}>
-                      How It Works
-                    </h1>
-                    <div className="text-sm" style={{ color: '#DDDDD7' }}>
-                      Staked $ZC acts as a license to earn protocol fees, conditional on you trading and proposing QMs. The community polices this obligation. If you passively collect rewards without contributing, a{' '}
-                      <a
-                        href="/zc/create?reportStaker=true"
-                        className="underline hover:text-white transition-colors"
-                        style={{ color: '#BEE8FC' }}
-                      >
-                        QM is initiated to slash
-                      </a>
-                      {' '}and redistribute your stake.
+                  <a
+                    href="https://docs.combinator.trade/staking"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="order-first md:order-none"
+                  >
+                    <div className="bg-[#121212] border border-[#191919] rounded-[9px] pt-4 pb-5 px-5 hover:border-[#2A2A2A] transition-all duration-300 cursor-pointer h-full">
+                      <h1 className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] mb-4 uppercase flex items-center justify-between" style={{ color: '#DDDDD7' }}>
+                        How It Works
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="1">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                        </svg>
+                      </h1>
+                      <div className="text-sm" style={{ color: '#DDDDD7' }}>
+                        Staked $ZC acts as a license to earn protocol fees, conditional on you trading and proposing QMs. The community polices this obligation. If you passively collect rewards without contributing, a{' '}
+                        <span
+                          className="underline"
+                          style={{ color: '#BEE8FC' }}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            window.location.href = '/zc/create?reportStaker=true';
+                          }}
+                        >
+                          QM is initiated to slash
+                        </span>
+                        {' '}and redistribute your stake.
+                      </div>
                     </div>
-                  </div>
+                  </a>
 
                   {/* Your Position Card */}
                   <div className="bg-[#121212] border border-[#191919] rounded-[9px] py-4 px-5 flex flex-col min-h-[280px]">
