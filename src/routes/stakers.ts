@@ -28,7 +28,7 @@ import { POOL_METADATA } from '../config/pools';
 const router = Router();
 
 // Vault program ID and ZC token mint
-const PROGRAM_ID = new PublicKey("6CETAFdgoMZgNHCcjnnQLN2pu5pJgUz8QQd7JzcynHmD");
+const PROGRAM_ID = new PublicKey("47rZ1jgK7zU6XAgffAfXkDX1JkiiRi4HRPBytossWR12");
 const ZC_TOKEN_MINT = new PublicKey("GVvPZpC6ymCoiHzYJ7CWZ8LhVn9tL2AUpRjSAsLh6jZC");
 
 // Cache for staker volume data (30 second TTL)

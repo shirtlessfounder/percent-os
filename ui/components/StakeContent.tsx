@@ -10,10 +10,13 @@ import { useTokenContext } from '@/providers/TokenContext';
 import { useSolanaWallets } from '@privy-io/react-auth/solana';
 import toast from 'react-hot-toast';
 import Header from '@/components/Header';
-import VaultIDL from '@/lib/vault-idl.json';
+import StakingVaultIDL from '@/lib/staking-vault-idl.json';
 
 const ZC_TOKEN_MINT = new PublicKey("GVvPZpC6ymCoiHzYJ7CWZ8LhVn9tL2AUpRjSAsLh6jZC");
-const PROGRAM_ID = new PublicKey("6CETAFdgoMZgNHCcjnnQLN2pu5pJgUz8QQd7JzcynHmD");
+const PROGRAM_ID = new PublicKey("47rZ1jgK7zU6XAgffAfXkDX1JkiiRi4HRPBytossWR12");
+
+// Hardcoded exit mode target date - January 15, 2026
+const EXIT_MODE_TARGET_DATE = new Date('2026-01-15T00:00:00Z').getTime() / 1000;
 
 interface SolanaWalletProvider {
   signAndSendTransaction: (transaction: Transaction) => Promise<{ signature: string }>;
@@ -82,6 +85,19 @@ export function StakeContent() {
   const [stakersSort, setStakersSort] = useState<{ column: 'balance' | 'volume'; direction: 'asc' | 'desc' }>({ column: 'balance', direction: 'desc' });
   const [isHoveringStaked, setIsHoveringStaked] = useState(false);
 
+  // New staking vault state
+  const [isFrozen, setIsFrozen] = useState<boolean>(false);
+  const [userShares, setUserShares] = useState<number>(0);
+  const [unbondingShares, setUnbondingShares] = useState<number>(0);
+  const [unbondingAssets, setUnbondingAssets] = useState<number>(0);
+  const [expectedUnlockTime, setExpectedUnlockTime] = useState<number>(0);
+  const [isHoveringRedeem, setIsHoveringRedeem] = useState<boolean>(false);
+  const [exitModeCountdown, setExitModeCountdown] = useState<string>("");
+  const [unbondingCountdown, setUnbondingCountdown] = useState<string>("");
+  const [rewardRate, setRewardRate] = useState<number>(0);
+  const [totalAssets, setTotalAssets] = useState<number>(0);
+  const [totalShares, setTotalShares] = useState<number>(0);
+
   const connection = useMemo(() => new Connection(process.env.NEXT_PUBLIC_RPC_URL || "https://api.mainnet-beta.solana.com"), []);
 
   const wallet = useMemo(() => {
@@ -111,59 +127,78 @@ export function StakeContent() {
   const getProgram = useCallback((): Program | null => {
     const provider = getProvider();
     if (!provider) return null;
-    return new Program(VaultIDL as unknown as Program['idl'], provider);
+    return new Program(StakingVaultIDL as unknown as Program['idl'], provider);
   }, [getProvider]);
 
   const program = useMemo(() => getProgram(), [getProgram]);
 
   const calculateAPY = useCallback((): number => {
-    if (vaultBalance === 0) return 0;
-    const REWARD_TOKENS = 0;
-    const rewardPerToken = REWARD_TOKENS / vaultBalance;
-    const compoundingPeriodsPerYear = 52;
-    return 100 * (Math.pow(1 + rewardPerToken, compoundingPeriodsPerYear) - 1);
-  }, [vaultBalance]);
+    if (totalAssets === 0 || rewardRate === 0) return 0;
+    // reward_rate is tokens per second (in raw units)
+    // Annual rewards = reward_rate * seconds_per_year
+    const SECONDS_PER_YEAR = 31536000;
+    const annualRewards = rewardRate * SECONDS_PER_YEAR;
+    // APY = (annual_rewards / total_assets) * 100
+    return (annualRewards / totalAssets) * 100;
+  }, [totalAssets, rewardRate]);
 
-  // Fetch public vault data (TVL, exchange rate) - doesn't require wallet
+  // Fetch public vault data (TVL, exchange rate, is_frozen) - doesn't require wallet
   const fetchPublicVaultData = useCallback(async () => {
     try {
+      const [vaultState] = PublicKey.findProgramAddressSync(
+        [Buffer.from("vault_state")],
+        PROGRAM_ID
+      );
       const [vaultTokenAccount] = PublicKey.findProgramAddressSync(
         [Buffer.from("token_vault"), ZC_TOKEN_MINT.toBuffer()],
         PROGRAM_ID
       );
-      const [shareMint] = PublicKey.findProgramAddressSync(
-        [Buffer.from("share_mint")],
-        PROGRAM_ID
-      );
 
-      // Fetch TVL directly from vault token account
+      // Fetch VaultState to get is_frozen, total_assets, total_shares, reward_rate
       try {
-        const vaultTokenAccountInfo = await getAccount(connection, vaultTokenAccount);
-        setVaultBalance(Number(vaultTokenAccountInfo.amount) / 1_000_000);
-      } catch (error) {
-        console.error("Failed to fetch vault balance:", error);
-        setVaultBalance(0);
-      }
+        const vaultStateAccountInfo = await connection.getAccountInfo(vaultState);
+        if (vaultStateAccountInfo && vaultStateAccountInfo.data && program) {
+          const vaultStateAccount = program.coder.accounts.decode("vaultState", vaultStateAccountInfo.data);
+          setIsFrozen(vaultStateAccount.isFrozen);
+          setWithdrawalsEnabled(vaultStateAccount.operationsEnabled);
 
-      // Fetch exchange rate by comparing share supply to vault balance
-      try {
-        const shareMintInfo = await connection.getParsedAccountInfo(shareMint);
-        const vaultTokenAccountInfo = await getAccount(connection, vaultTokenAccount);
+          // Store raw values for APY calculation
+          const totalAssetsRaw = Number(vaultStateAccount.totalAssets);
+          const totalSharesRaw = Number(vaultStateAccount.totalShares);
+          const rewardRateRaw = Number(vaultStateAccount.rewardRate);
 
-        if (shareMintInfo.value?.data && 'parsed' in shareMintInfo.value.data) {
-          const shareSupply = Number(shareMintInfo.value.data.parsed.info.supply);
-          const vaultAmount = Number(vaultTokenAccountInfo.amount);
+          setTotalAssets(totalAssetsRaw);
+          setTotalShares(totalSharesRaw);
+          setRewardRate(rewardRateRaw);
 
-          if (shareSupply > 0) {
-            // Exchange rate = vaultAmount / shareSupply (how much ZC per 1 sZC)
-            setExchangeRate(vaultAmount / shareSupply);
+          // Calculate exchange rate from total_assets / total_shares
+          if (totalSharesRaw > 0) {
+            setExchangeRate(totalAssetsRaw / totalSharesRaw);
           } else {
             setExchangeRate(1);
           }
+
+          // Set vault balance from total_assets (converted to human readable)
+          setVaultBalance(totalAssetsRaw / 1_000_000);
         }
       } catch (error) {
-        console.error("Failed to fetch exchange rate:", error);
+        console.error("Failed to fetch vault state:", error);
+        setIsFrozen(false);
         setExchangeRate(1);
+        setRewardRate(0);
+        setTotalAssets(0);
+        setTotalShares(0);
+      }
+
+      // Fallback: Fetch TVL directly from vault token account if VaultState decode fails
+      try {
+        const vaultTokenAccountInfo = await getAccount(connection, vaultTokenAccount);
+        // Only set if not already set from VaultState
+        if (vaultBalance === 0) {
+          setVaultBalance(Number(vaultTokenAccountInfo.amount) / 1_000_000);
+        }
+      } catch (error) {
+        console.error("Failed to fetch vault token account:", error);
       }
 
       // Fetch ZC total supply
@@ -192,7 +227,7 @@ export function StakeContent() {
     } catch (error) {
       console.error("Failed to fetch public vault data:", error);
     }
-  }, [connection]);
+  }, [connection, program, vaultBalance]);
 
   // Fetch user-specific data (requires wallet)
   const fetchUserData = useCallback(async (retryCount = 0, maxRetries = 3) => {
@@ -200,6 +235,10 @@ export function StakeContent() {
       setUserShareBalance(0);
       setUserShareValue(0);
       setZcBalance(0);
+      setUserShares(0);
+      setUnbondingShares(0);
+      setUnbondingAssets(0);
+      setExpectedUnlockTime(0);
       return;
     }
 
@@ -210,27 +249,28 @@ export function StakeContent() {
         [Buffer.from("vault_state")],
         PROGRAM_ID
       );
-      const [vaultTokenAccount] = PublicKey.findProgramAddressSync(
-        [Buffer.from("token_vault"), ZC_TOKEN_MINT.toBuffer()],
-        PROGRAM_ID
-      );
-      const [shareMint] = PublicKey.findProgramAddressSync(
-        [Buffer.from("share_mint")],
+
+      // Derive UserStake PDA
+      const [userStakePda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("user_stake"), vaultState.toBuffer(), wallet.toBuffer()],
         PROGRAM_ID
       );
 
-      // Fetch vault state for withdrawals enabled
+      // Fetch vault state for withdrawals enabled and is_frozen
       try {
         const vaultStateAccountInfo = await connection.getAccountInfo(vaultState);
         if (vaultStateAccountInfo && vaultStateAccountInfo.data) {
           const vaultStateAccount = program.coder.accounts.decode("vaultState", vaultStateAccountInfo.data);
           setWithdrawalsEnabled(vaultStateAccount.operationsEnabled);
+          setIsFrozen(vaultStateAccount.isFrozen);
         } else {
           setWithdrawalsEnabled(false);
+          setIsFrozen(false);
         }
       } catch (error) {
         console.error("Failed to fetch vault state:", error);
         setWithdrawalsEnabled(false);
+        setIsFrozen(false);
       }
 
       // Fetch user ZC balance
@@ -242,28 +282,51 @@ export function StakeContent() {
         setZcBalance(0);
       }
 
-      // Fetch user share balance and value
+      // Fetch user stake data from UserStake PDA
       try {
-        const userShareAccount = await getAssociatedTokenAddress(shareMint, wallet);
-        const userShareAccountInfo = await getAccount(connection, userShareAccount);
-        const shareBalance = Number(userShareAccountInfo.amount) / 1_000_000;
-        setUserShareBalance(shareBalance);
+        const userStakeAccountInfo = await connection.getAccountInfo(userStakePda);
+        if (userStakeAccountInfo && userStakeAccountInfo.data) {
+          const userStakeAccount = program.coder.accounts.decode("userStake", userStakeAccountInfo.data);
 
-        if (shareBalance > 0) {
-          const assets = await program.methods
-            .previewRedeem(new BN(userShareAccountInfo.amount.toString()))
-            .accounts({
-              shareMint,
-              vaultTokenAccount,
-              mintOfTokenBeingSent: ZC_TOKEN_MINT,
-            })
-            .view();
-          setUserShareValue(Number(assets) / 1_000_000);
+          const shares = Number(userStakeAccount.shares) / 1_000_000;
+          const unbondingSharesVal = Number(userStakeAccount.unbondingShares) / 1_000_000;
+          const unbondingAssetsVal = Number(userStakeAccount.unbondingAssets) / 1_000_000;
+          const unlockTime = Number(userStakeAccount.expectedUnlockTime);
+
+          setUserShares(shares);
+          setUserShareBalance(shares); // For backwards compatibility with UI
+          setUnbondingShares(unbondingSharesVal);
+          setUnbondingAssets(unbondingAssetsVal);
+          setExpectedUnlockTime(unlockTime);
+
+          // Calculate user share value using preview_unstake
+          if (shares > 0) {
+            try {
+              const assets = await program.methods
+                .previewUnstake(new BN(userStakeAccount.shares.toString()))
+                .accounts({
+                  vaultState,
+                })
+                .view();
+              setUserShareValue(Number(assets) / 1_000_000);
+            } catch {
+              // Fallback: estimate value from exchange rate
+              setUserShareValue(shares * exchangeRate);
+            }
+          } else {
+            setUserShareValue(unbondingAssetsVal); // Show unbonding assets if no active shares
+          }
         } else {
+          // User has no stake account yet
+          setUserShares(0);
+          setUserShareBalance(0);
+          setUnbondingShares(0);
+          setUnbondingAssets(0);
+          setExpectedUnlockTime(0);
           setUserShareValue(0);
         }
-      } catch {
-        console.log("User share account not found");
+      } catch (error) {
+        console.log("User stake account not found:", error);
         if (retryCount < maxRetries) {
           const delay = Math.pow(2, retryCount) * 1000;
           setTimeout(() => {
@@ -271,7 +334,11 @@ export function StakeContent() {
           }, delay);
           return;
         }
+        setUserShares(0);
         setUserShareBalance(0);
+        setUnbondingShares(0);
+        setUnbondingAssets(0);
+        setExpectedUnlockTime(0);
         setUserShareValue(0);
       }
     } catch (error) {
@@ -279,7 +346,45 @@ export function StakeContent() {
     } finally {
       setRefreshing(false);
     }
-  }, [wallet, connection, program]);
+  }, [wallet, connection, program, exchangeRate]);
+
+  // Countdown timer for exit mode and unbonding
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now() / 1000;
+
+      // Exit mode countdown (before is_frozen)
+      if (!isFrozen) {
+        const diff = EXIT_MODE_TARGET_DATE - now;
+        if (diff > 0) {
+          const days = Math.floor(diff / 86400);
+          const hours = Math.floor((diff % 86400) / 3600);
+          const mins = Math.floor((diff % 3600) / 60);
+          const secs = Math.floor(diff % 60);
+          setExitModeCountdown(`${days}D ${hours}H ${mins}M ${secs}S`);
+        } else {
+          setExitModeCountdown("AWAITING EXIT MODE");
+        }
+      }
+
+      // Unbonding countdown
+      if (unbondingShares > 0 && expectedUnlockTime > 0) {
+        const diff = expectedUnlockTime - now;
+        if (diff > 0) {
+          const hours = Math.floor(diff / 3600);
+          const mins = Math.floor((diff % 3600) / 60);
+          const secs = Math.floor(diff % 60);
+          setUnbondingCountdown(`${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`);
+        } else {
+          setUnbondingCountdown("");
+        }
+      } else {
+        setUnbondingCountdown("");
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isFrozen, unbondingShares, expectedUnlockTime]);
 
   // Fetch public data on mount (no wallet required)
   useEffect(() => {
@@ -395,52 +500,37 @@ export function StakeContent() {
         [Buffer.from("vault_state")],
         PROGRAM_ID
       );
-      const [tokenAccountOwnerPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("token_account_owner_pda")],
+      const [vaultPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("vault_pda")],
         PROGRAM_ID
       );
       const [vaultTokenAccount] = PublicKey.findProgramAddressSync(
         [Buffer.from("token_vault"), ZC_TOKEN_MINT.toBuffer()],
         PROGRAM_ID
       );
-      const [shareMint] = PublicKey.findProgramAddressSync(
-        [Buffer.from("share_mint")],
+      const [userStakePda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("user_stake"), vaultState.toBuffer(), wallet.toBuffer()],
         PROGRAM_ID
       );
 
-      const senderTokenAccount = await getAssociatedTokenAddress(ZC_TOKEN_MINT, wallet);
-      const senderShareAccount = await getAssociatedTokenAddress(shareMint, wallet);
+      const userTokenAccount = await getAssociatedTokenAddress(ZC_TOKEN_MINT, wallet);
 
-      const transaction = new Transaction();
-      try {
-        await getAccount(connection, senderShareAccount);
-      } catch {
-        const createATAIx = createAssociatedTokenAccountInstruction(
-          wallet,
-          senderShareAccount,
-          wallet,
-          shareMint,
-          TOKEN_PROGRAM_ID
-        );
-        transaction.add(createATAIx);
-      }
-
-      const depositIx = await program.methods
-        .deposit(depositAmountBN)
+      const stakeIx = await program.methods
+        .stake(depositAmountBN)
         .accounts({
           vaultState,
-          tokenAccountOwnerPda,
+          userStake: userStakePda,
+          vaultPda,
           vaultTokenAccount,
-          senderTokenAccount,
-          senderShareAccount,
-          shareMint,
-          mintOfTokenBeingSent: ZC_TOKEN_MINT,
+          userTokenAccount,
           signer: wallet,
+          systemProgram: new PublicKey("11111111111111111111111111111111"),
           tokenProgram: TOKEN_PROGRAM_ID,
         })
         .instruction();
 
-      transaction.add(depositIx);
+      const transaction = new Transaction();
+      transaction.add(stakeIx);
 
       const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
       transaction.recentBlockhash = blockhash;
@@ -469,7 +559,8 @@ export function StakeContent() {
     }
   };
 
-  const handleRedeem = async () => {
+  // Request unstake - starts 24h unbonding period
+  const handleRequestUnstake = async () => {
     const redeemPercentNum = parseFloat(redeemPercent);
     if (!redeemPercentNum || redeemPercentNum <= 0 || redeemPercentNum > 100) {
       toast.error('Please enter a valid percentage between 0 and 100');
@@ -482,68 +573,40 @@ export function StakeContent() {
       return;
     }
 
-    const toastId = toast.loading(`Redeeming ${redeemPercentNum}% of staked ZC...`);
+    const toastId = toast.loading(`Requesting unstake for ${redeemPercentNum}% of staked ZC...`);
 
     try {
       setLoading(true);
       if (!program) throw new Error("Program not available");
 
-      const [shareMint] = PublicKey.findProgramAddressSync(
-        [Buffer.from("share_mint")],
-        PROGRAM_ID
-      );
-      const userShareAccount = await getAssociatedTokenAddress(shareMint, wallet);
-      const userShareAccountInfo = await getAccount(connection, userShareAccount);
-      const totalShares = userShareAccountInfo.amount;
-      const sharesToRedeem = (totalShares * BigInt(Math.floor(redeemPercentNum * 100))) / BigInt(10000);
-
       const [vaultState] = PublicKey.findProgramAddressSync(
         [Buffer.from("vault_state")],
-        PROGRAM_ID
-      );
-      const [tokenAccountOwnerPda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("token_account_owner_pda")],
         PROGRAM_ID
       );
       const [vaultTokenAccount] = PublicKey.findProgramAddressSync(
         [Buffer.from("token_vault"), ZC_TOKEN_MINT.toBuffer()],
         PROGRAM_ID
       );
+      const [userStakePda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("user_stake"), vaultState.toBuffer(), wallet.toBuffer()],
+        PROGRAM_ID
+      );
 
-      const senderTokenAccount = await getAssociatedTokenAddress(ZC_TOKEN_MINT, wallet);
-      const senderShareAccount = userShareAccount;
+      // Calculate shares to unstake based on percentage
+      const sharesToUnstake = new BN(Math.floor(userShares * (redeemPercentNum / 100) * 1_000_000));
 
-      const transaction = new Transaction();
-
-      try {
-        await getAccount(connection, senderTokenAccount);
-      } catch {
-        const createATAIx = createAssociatedTokenAccountInstruction(
-          wallet,
-          senderTokenAccount,
-          wallet,
-          ZC_TOKEN_MINT,
-          TOKEN_PROGRAM_ID
-        );
-        transaction.add(createATAIx);
-      }
-
-      const redeemIx = await program.methods
-        .redeem(new BN(sharesToRedeem.toString()))
+      const requestUnstakeIx = await program.methods
+        .requestUnstake(sharesToUnstake)
         .accounts({
           vaultState,
-          tokenAccountOwnerPda,
+          userStake: userStakePda,
           vaultTokenAccount,
-          senderTokenAccount,
-          senderShareAccount,
-          shareMint,
-          mintOfTokenBeingSent: ZC_TOKEN_MINT,
           signer: wallet,
-          tokenProgram: TOKEN_PROGRAM_ID,
         })
         .instruction();
 
-      transaction.add(redeemIx);
+      const transaction = new Transaction();
+      transaction.add(requestUnstakeIx);
 
       const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
       transaction.recentBlockhash = blockhash;
@@ -556,7 +619,7 @@ export function StakeContent() {
         lastValidBlockHeight,
       });
 
-      toast.success(`Redeemed ${redeemPercentNum}% of your vault shares for ZC`, { id: toastId });
+      toast.success(`Unstake requested! 24h countdown started.`, { id: toastId });
       setRedeemPercent("");
 
       setPostTransactionRefreshing(true);
@@ -565,8 +628,164 @@ export function StakeContent() {
         setPostTransactionRefreshing(false);
       }, 8000);
     } catch (error) {
-      console.error("Redemption failed:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to redeem shares", { id: toastId });
+      console.error("Request unstake failed:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to request unstake", { id: toastId });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Cancel unstake - re-stakes unbonding shares (only when vault not frozen)
+  const handleCancelUnstake = async () => {
+    const walletProvider = (window as WindowWithWallets).solana || (window as WindowWithWallets).solflare;
+    if (!wallet || !walletProvider) {
+      toast.error('Please connect your wallet first');
+      return;
+    }
+
+    const toastId = toast.loading(`Cancelling unstake request...`);
+
+    try {
+      setLoading(true);
+      if (!program) throw new Error("Program not available");
+
+      const [vaultState] = PublicKey.findProgramAddressSync(
+        [Buffer.from("vault_state")],
+        PROGRAM_ID
+      );
+      const [vaultTokenAccount] = PublicKey.findProgramAddressSync(
+        [Buffer.from("token_vault"), ZC_TOKEN_MINT.toBuffer()],
+        PROGRAM_ID
+      );
+      const [userStakePda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("user_stake"), vaultState.toBuffer(), wallet.toBuffer()],
+        PROGRAM_ID
+      );
+
+      const cancelUnstakeIx = await program.methods
+        .cancelUnstake()
+        .accounts({
+          vaultState,
+          userStake: userStakePda,
+          vaultTokenAccount,
+          signer: wallet,
+        })
+        .instruction();
+
+      const transaction = new Transaction();
+      transaction.add(cancelUnstakeIx);
+
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+      transaction.recentBlockhash = blockhash;
+      transaction.feePayer = wallet;
+
+      const { signature } = await walletProvider.signAndSendTransaction(transaction);
+      await connection.confirmTransaction({
+        signature,
+        blockhash,
+        lastValidBlockHeight,
+      });
+
+      toast.success(`Unstake cancelled! Shares re-staked.`, { id: toastId });
+
+      setPostTransactionRefreshing(true);
+      setTimeout(async () => {
+        await Promise.all([fetchPublicVaultData(), fetchUserData()]);
+        setPostTransactionRefreshing(false);
+      }, 8000);
+    } catch (error) {
+      console.error("Cancel unstake failed:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to cancel unstake", { id: toastId });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Complete unstake - withdraw tokens after 24h unbonding period
+  const handleCompleteUnstake = async () => {
+    const walletProvider = (window as WindowWithWallets).solana || (window as WindowWithWallets).solflare;
+    if (!wallet || !walletProvider) {
+      toast.error('Please connect your wallet first');
+      return;
+    }
+
+    const toastId = toast.loading(`Completing unstake...`);
+
+    try {
+      setLoading(true);
+      if (!program) throw new Error("Program not available");
+
+      const [vaultState] = PublicKey.findProgramAddressSync(
+        [Buffer.from("vault_state")],
+        PROGRAM_ID
+      );
+      const [vaultPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("vault_pda")],
+        PROGRAM_ID
+      );
+      const [vaultTokenAccount] = PublicKey.findProgramAddressSync(
+        [Buffer.from("token_vault"), ZC_TOKEN_MINT.toBuffer()],
+        PROGRAM_ID
+      );
+      const [userStakePda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("user_stake"), vaultState.toBuffer(), wallet.toBuffer()],
+        PROGRAM_ID
+      );
+
+      const userTokenAccount = await getAssociatedTokenAddress(ZC_TOKEN_MINT, wallet);
+
+      const transaction = new Transaction();
+
+      // Ensure user has ZC token account
+      try {
+        await getAccount(connection, userTokenAccount);
+      } catch {
+        const createATAIx = createAssociatedTokenAccountInstruction(
+          wallet,
+          userTokenAccount,
+          wallet,
+          ZC_TOKEN_MINT,
+          TOKEN_PROGRAM_ID
+        );
+        transaction.add(createATAIx);
+      }
+
+      const completeUnstakeIx = await program.methods
+        .completeUnstake()
+        .accounts({
+          vaultState,
+          userStake: userStakePda,
+          vaultPda,
+          vaultTokenAccount,
+          userTokenAccount,
+          signer: wallet,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .instruction();
+
+      transaction.add(completeUnstakeIx);
+
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+      transaction.recentBlockhash = blockhash;
+      transaction.feePayer = wallet;
+
+      const { signature } = await walletProvider.signAndSendTransaction(transaction);
+      await connection.confirmTransaction({
+        signature,
+        blockhash,
+        lastValidBlockHeight,
+      });
+
+      toast.success(`Unstake complete! ZC transferred to your wallet.`, { id: toastId });
+
+      setPostTransactionRefreshing(true);
+      setTimeout(async () => {
+        await Promise.all([fetchPublicVaultData(), fetchUserData()]);
+        setPostTransactionRefreshing(false);
+      }, 8000);
+    } catch (error) {
+      console.error("Complete unstake failed:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to complete unstake", { id: toastId });
     } finally {
       setLoading(false);
     }
@@ -1226,34 +1445,135 @@ export function StakeContent() {
                           >
                             Connect Wallet
                           </button>
-                        ) : (
+                        ) : modalMode === "deposit" ? (
                           <button
-                            onClick={modalMode === "deposit" ? handleDeposit : handleRedeem}
+                            onClick={handleDeposit}
                             className="w-full h-[56px] rounded-full font-semibold transition cursor-pointer uppercase font-ibm-plex-mono disabled:cursor-not-allowed"
                             style={{
-                              backgroundColor: loading || (modalMode === "deposit" ? (!amount || parseFloat(amount) <= 0) : (!redeemPercent || parseFloat(redeemPercent) <= 0 || !withdrawalsEnabled || userShareBalance === 0)) ? '#414346' : '#DDDDD7',
+                              backgroundColor: loading || !amount || parseFloat(amount) <= 0 ? '#414346' : '#DDDDD7',
                               color: '#161616'
                             }}
-                            disabled={
-                              loading ||
-                              (modalMode === "deposit" ? (!amount || parseFloat(amount) <= 0) : (!redeemPercent || parseFloat(redeemPercent) <= 0 || !withdrawalsEnabled || userShareBalance === 0))
-                            }
+                            disabled={loading || !amount || parseFloat(amount) <= 0}
                           >
                             {loading ? (
                               <span className="flex items-center justify-center gap-2">
                                 <div className="animate-spin h-4 w-4 rounded-full border-2 border-[#161616] border-t-transparent"></div>
                                 Processing...
                               </span>
-                            ) : modalMode === "deposit" ? (
-                              "Stake"
-                            ) : !withdrawalsEnabled ? (
-                              "Redemptions Disabled"
-                            ) : userShareBalance === 0 ? (
-                              "No Shares to Redeem"
                             ) : (
-                              "Redeem"
+                              "Stake"
                             )}
                           </button>
+                        ) : (
+                          /* Redeem button with new unstaking flow */
+                          (() => {
+                            const now = Date.now() / 1000;
+                            const hasUnbonding = unbondingShares > 0;
+                            const unbondingComplete = hasUnbonding && expectedUnlockTime > 0 && now >= expectedUnlockTime;
+                            const hasStakedFunds = userShares > 0 || hasUnbonding;
+
+                            // No staked funds - show disabled button
+                            if (!hasStakedFunds) {
+                              return (
+                                <button
+                                  className="w-full h-[56px] rounded-full font-semibold transition uppercase font-ibm-plex-mono cursor-not-allowed"
+                                  style={{ backgroundColor: '#414346', color: '#161616' }}
+                                  disabled={true}
+                                >
+                                  No Shares to Redeem
+                                </button>
+                              );
+                            }
+
+                            // State 1: Before exit mode - show countdown (only if user has staked funds)
+                            if (!isFrozen && !hasUnbonding) {
+                              return (
+                                <button
+                                  className="w-full h-[56px] rounded-full font-semibold transition uppercase font-ibm-plex-mono cursor-not-allowed"
+                                  style={{ backgroundColor: '#414346', color: '#161616' }}
+                                  disabled={true}
+                                >
+                                  {exitModeCountdown || "AWAITING EXIT MODE"}
+                                </button>
+                              );
+                            }
+
+                            // State 4: Unbonding complete - COMPLETE UNSTAKE
+                            if (unbondingComplete) {
+                              return (
+                                <button
+                                  onClick={handleCompleteUnstake}
+                                  className="w-full h-[56px] rounded-full font-semibold transition cursor-pointer uppercase font-ibm-plex-mono disabled:cursor-not-allowed"
+                                  style={{
+                                    backgroundColor: loading ? '#414346' : '#DDDDD7',
+                                    color: '#161616'
+                                  }}
+                                  disabled={loading}
+                                >
+                                  {loading ? (
+                                    <span className="flex items-center justify-center gap-2">
+                                      <div className="animate-spin h-4 w-4 rounded-full border-2 border-[#161616] border-t-transparent"></div>
+                                      Processing...
+                                    </span>
+                                  ) : (
+                                    "COMPLETE UNSTAKE"
+                                  )}
+                                </button>
+                              );
+                            }
+
+                            // State 3: Unbonding in progress - show countdown, hover shows CANCEL
+                            if (hasUnbonding && !unbondingComplete) {
+                              return (
+                                <button
+                                  onClick={isHoveringRedeem ? handleCancelUnstake : undefined}
+                                  onMouseEnter={() => setIsHoveringRedeem(true)}
+                                  onMouseLeave={() => setIsHoveringRedeem(false)}
+                                  className="w-full h-[56px] rounded-full font-semibold transition cursor-pointer uppercase font-ibm-plex-mono disabled:cursor-not-allowed"
+                                  style={{
+                                    backgroundColor: loading ? '#414346' : isHoveringRedeem ? '#FF6F94' : '#DDDDD7',
+                                    color: '#161616'
+                                  }}
+                                  disabled={loading}
+                                >
+                                  {loading ? (
+                                    <span className="flex items-center justify-center gap-2">
+                                      <div className="animate-spin h-4 w-4 rounded-full border-2 border-[#161616] border-t-transparent"></div>
+                                      Processing...
+                                    </span>
+                                  ) : isHoveringRedeem ? (
+                                    "CANCEL UNSTAKE"
+                                  ) : (
+                                    unbondingCountdown || "UNBONDING..."
+                                  )}
+                                </button>
+                              );
+                            }
+
+                            // State 2: Exit mode active, no unbonding - REQUEST UNSTAKE
+                            return (
+                              <button
+                                onClick={handleRequestUnstake}
+                                className="w-full h-[56px] rounded-full font-semibold transition cursor-pointer uppercase font-ibm-plex-mono disabled:cursor-not-allowed"
+                                style={{
+                                  backgroundColor: loading || !redeemPercent || parseFloat(redeemPercent) <= 0 || userShares === 0 ? '#414346' : '#DDDDD7',
+                                  color: '#161616'
+                                }}
+                                disabled={loading || !redeemPercent || parseFloat(redeemPercent) <= 0 || userShares === 0}
+                              >
+                                {loading ? (
+                                  <span className="flex items-center justify-center gap-2">
+                                    <div className="animate-spin h-4 w-4 rounded-full border-2 border-[#161616] border-t-transparent"></div>
+                                    Processing...
+                                  </span>
+                                ) : userShares === 0 ? (
+                                  "No Shares to Unstake"
+                                ) : (
+                                  "REQUEST UNSTAKE"
+                                )}
+                              </button>
+                            );
+                          })()
                         )}
                       </div>
                     </div>
