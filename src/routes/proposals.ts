@@ -667,10 +667,16 @@ async function recordSlashIfApplicable(
 ): Promise<void> {
   const title = proposal.config.title;
 
-  // Check if this is a slash proposal (format: "Should we slash Staker {wallet}?")
-  const walletMatch = title.match(/Should we slash Staker ([A-Za-z0-9]{32,44})\?/);
-  if (!walletMatch) {
+  // Check if this is a slash proposal (contains "slash" and a Solana address)
+  if (!title.toLowerCase().includes('slash')) {
     return; // Not a slash proposal
+  }
+
+  // Extract Solana wallet address (32-44 base58 characters)
+  const walletMatch = title.match(/([A-Za-z0-9]{32,44})/);
+  if (!walletMatch) {
+    logger.info('[recordSlash] Slash keyword found but no wallet address in title', { proposalId, title });
+    return;
   }
 
   const targetWallet = walletMatch[1];
