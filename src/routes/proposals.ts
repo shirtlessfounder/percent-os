@@ -528,9 +528,11 @@ router.post('/', requireApiKey, requireModeratorId, async (req, res, next) => {
     );
     logger.info('[POST /] Calculated AMM price from amounts', { ammPrice, poolType });
 
-    // TEST OVERRIDE: Force TESTSURF proposals to 4 minutes for testing
-    const TESTSURF_POOL = 'EC7MUufEpZcRZyXTFt16MMNLjJVnj9Vkku4UwdZ713Hx';
-    const effectiveProposalLength = poolAddress === TESTSURF_POOL ? 4 * 60 : body.proposalLength;
+    // TEST OVERRIDE: Force test pool proposals to 4 minutes for testing
+    const TESTSURF_POOL = 'EC7MUufEpZcRZyXTFt16MMNLjJVnj9Vkku4UwdZ713Hx'; // DLMM
+    const SURFTEST_POOL = 'PS3rPSb49GnAkmh3tec1RQizgNSb1hUwPsYHGGuAy5r'; // DAMM
+    const isTestPool = poolAddress === TESTSURF_POOL || poolAddress === SURFTEST_POOL;
+    const effectiveProposalLength = isTestPool ? 4 * 60 : body.proposalLength;
 
     // Create the proposal with DAMM withdrawal data (confirmation happens in initialize())
     const proposal = await moderator.createProposal({
