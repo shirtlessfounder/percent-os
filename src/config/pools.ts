@@ -35,6 +35,7 @@ const TICKER_TO_POOL: Record<string, string> = {
   'OOGWAY': '2FCqTyvFcE4uXgRL1yh56riZ9vdjVgoP6yknZW3f8afX',
   'SURF': 'Ez1QYeC95xJRwPA9SR7YWC1H1Tj43exJr91QqKf8Puu1',
   'SURFTEST': 'PS3rPSb49GnAkmh3tec1RQizgNSb1hUwPsYHGGuAy5r',
+  'TESTSURF': 'EC7MUufEpZcRZyXTFt16MMNLjJVnj9Vkku4UwdZ713Hx', // DLMM pool
 };
 
 /**
@@ -70,6 +71,13 @@ const POOL_WHITELIST: Record<string, string[]> = {
   // SURF-SOL DAMM Pool (production)
   [TICKER_TO_POOL.SURF]: [
     '4GctbRKwsQjECaY1nL8HiqkgvEUAi8EyhU1ezNmhB3hg',
+  ],
+  // TESTSURF-SOL DLMM Pool
+  [TICKER_TO_POOL.TESTSURF]: [
+    '79TLv4oneDA1tDUSNXBxNCnemzNmLToBHYXnfZWDQNeP',
+    'BXc9g3zxbQhhfkLjxXbtSHrfd6MSFRdJo8pDQhW95QUw',
+    'FgACAue3FuWPrL7xSqXWtUdHLne52dvVsKyKxjwqPYtr',
+    'FtV94i2JvmaqsE1rBT72C9YR58wYJXt1ZjRmPb4tDvMK',
   ],
 };
 
@@ -126,6 +134,18 @@ const POOL_METADATA: Record<string, PoolMetadata> = {
     poolType: 'damm',
     icon: 'https://arweave.net/r02Vz3jHG5_ZH0BrKbkIJOkF4LDcTTdLNljefYpJYJo',
     minTokenBalance: 5_000_000, // 5M SURF required to create proposals
+  },
+  // TESTSURF DLMM pool
+  [TICKER_TO_POOL.TESTSURF]: {
+    poolAddress: TICKER_TO_POOL.TESTSURF,
+    ticker: 'testsurf',
+    baseMint: 'E7xktmaFNM6vd4GKa8FrXwX7sA7hrLzToxc64foGq3iW',
+    quoteMint: 'So11111111111111111111111111111111111111112',
+    baseDecimals: 9,
+    quoteDecimals: 9,
+    moderatorId: 6,
+    poolType: 'dlmm',
+    icon: 'https://arweave.net/r02Vz3jHG5_ZH0BrKbkIJOkF4LDcTTdLNljefYpJYJo',
   },
 };
 
