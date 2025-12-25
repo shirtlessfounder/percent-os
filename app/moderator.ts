@@ -595,8 +595,8 @@ export class Moderator implements IModerator {
     const isTokenBNativeSOL = tokenBMint.equals(NATIVE_MINT);
     const connection = this.executionService.connection;
 
-    // Reserve SOL for transaction fees (0.01 SOL)
-    const SOL_FEE_RESERVE = 10_000_000n;
+    // Reserve SOL for transaction fees + rent for new accounts (0.1 SOL)
+    const SOL_FEE_RESERVE = 100_000_000n;
 
     // Fetch actual token balances from authority wallet
     let tokenAAmount = 0n;
