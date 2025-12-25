@@ -68,16 +68,16 @@ const POOL_WHITELIST: Record<string, string[]> = {
     'FtV94i2JvmaqsE1rBT72C9YR58wYJXt1ZjRmPb4tDvMK',
     '4GctbRKwsQjECaY1nL8HiqkgvEUAi8EyhU1ezNmhB3hg',
   ],
-  // SURF-SOL DAMM Pool (production)
-  [TICKER_TO_POOL.SURF]: [
-    '4GctbRKwsQjECaY1nL8HiqkgvEUAi8EyhU1ezNmhB3hg',
-  ],
   // TESTSURF-SOL DLMM Pool
   [TICKER_TO_POOL.TESTSURF]: [
     '79TLv4oneDA1tDUSNXBxNCnemzNmLToBHYXnfZWDQNeP',
     'BXc9g3zxbQhhfkLjxXbtSHrfd6MSFRdJo8pDQhW95QUw',
     'FgACAue3FuWPrL7xSqXWtUdHLne52dvVsKyKxjwqPYtr',
     'FtV94i2JvmaqsE1rBT72C9YR58wYJXt1ZjRmPb4tDvMK',
+  ],
+  // SURF-SOL DAMM Pool (production)
+  [TICKER_TO_POOL.SURF]: [
+    '4GctbRKwsQjECaY1nL8HiqkgvEUAi8EyhU1ezNmhB3hg',
   ],
 };
 
@@ -122,19 +122,6 @@ const POOL_METADATA: Record<string, PoolMetadata> = {
     icon: 'https://arweave.net/r02Vz3jHG5_ZH0BrKbkIJOkF4LDcTTdLNljefYpJYJo',
     minTokenBalance: 5_000_000, // 5M SURF required to create proposals
   },
-  // Production SURF DAMM pool
-  [TICKER_TO_POOL.SURF]: {
-    poolAddress: TICKER_TO_POOL.SURF,
-    ticker: 'surf',
-    baseMint: 'SurfwRjQQFV6P7JdhxSptf4CjWU8sb88rUiaLCystar',
-    quoteMint: 'So11111111111111111111111111111111111111112',
-    baseDecimals: 9,
-    quoteDecimals: 9,
-    moderatorId: 5,
-    poolType: 'damm',
-    icon: 'https://arweave.net/r02Vz3jHG5_ZH0BrKbkIJOkF4LDcTTdLNljefYpJYJo',
-    minTokenBalance: 5_000_000, // 5M SURF required to create proposals
-  },
   // TESTSURF DLMM pool
   [TICKER_TO_POOL.TESTSURF]: {
     poolAddress: TICKER_TO_POOL.TESTSURF,
@@ -143,9 +130,22 @@ const POOL_METADATA: Record<string, PoolMetadata> = {
     quoteMint: 'So11111111111111111111111111111111111111112',
     baseDecimals: 9,
     quoteDecimals: 9,
-    moderatorId: 6,
+    moderatorId: 5,
     poolType: 'dlmm',
     icon: 'https://arweave.net/r02Vz3jHG5_ZH0BrKbkIJOkF4LDcTTdLNljefYpJYJo',
+  },
+  // Production SURF DAMM pool
+  [TICKER_TO_POOL.SURF]: {
+    poolAddress: TICKER_TO_POOL.SURF,
+    ticker: 'surf',
+    baseMint: 'SurfwRjQQFV6P7JdhxSptf4CjWU8sb88rUiaLCystar',
+    quoteMint: 'So11111111111111111111111111111111111111112',
+    baseDecimals: 9,
+    quoteDecimals: 9,
+    moderatorId: 6,
+    poolType: 'damm',
+    icon: 'https://arweave.net/r02Vz3jHG5_ZH0BrKbkIJOkF4LDcTTdLNljefYpJYJo',
+    minTokenBalance: 5_000_000, // 5M SURF required to create proposals
   },
 };
 
