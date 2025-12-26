@@ -22,6 +22,7 @@ export interface PoolMetadata {
   quoteDecimals: number;
   moderatorId: number;
   poolType: PoolType;
+  withdrawalPercentage: number; // Liquidity withdrawal percentage (1-50)
   icon?: string;
   minTokenBalance?: number; // Minimum base token balance required to create proposals (in whole tokens)
 }
@@ -95,6 +96,7 @@ const POOL_METADATA: Record<string, PoolMetadata> = {
     quoteDecimals: 9,
     moderatorId: 2,
     poolType: 'dlmm',
+    withdrawalPercentage: 12,
     icon: 'https://wsrv.nl/?w=128&h=128&default=1&url=https%3A%2F%2Folive-imaginative-aardvark-508.mypinata.cloud%2Fipfs%2FQmY56Yz44o1EhTJfy6b4uhKCXpNGYvmFdsRX9yuiX1X45a',
   },
   // oogway DAMM Pool (Meteora CP-AMM)
@@ -107,6 +109,7 @@ const POOL_METADATA: Record<string, PoolMetadata> = {
     quoteDecimals: 9,
     moderatorId: 3,
     poolType: 'damm',
+    withdrawalPercentage: 12,
     icon: 'https://wsrv.nl/?w=128&h=128&default=1&url=https%3A%2F%2Folive-imaginative-aardvark-508.mypinata.cloud%2Fipfs%2FQmV4rzAgYREFBpDRyM5VmboewHUwS1Xu8ey2wrs9rJKcfE',
   },
   // Test SURF DAMM pool
@@ -119,6 +122,7 @@ const POOL_METADATA: Record<string, PoolMetadata> = {
     quoteDecimals: 9,
     moderatorId: 4,
     poolType: 'damm',
+    withdrawalPercentage: 12,
     icon: 'https://arweave.net/r02Vz3jHG5_ZH0BrKbkIJOkF4LDcTTdLNljefYpJYJo',
     minTokenBalance: 5_000_000, // 5M SURF required to create proposals
   },
@@ -132,6 +136,7 @@ const POOL_METADATA: Record<string, PoolMetadata> = {
     quoteDecimals: 9,
     moderatorId: 5,
     poolType: 'dlmm',
+    withdrawalPercentage: 50,
     icon: 'https://arweave.net/r02Vz3jHG5_ZH0BrKbkIJOkF4LDcTTdLNljefYpJYJo',
   },
   // Production SURF DAMM pool
@@ -144,6 +149,7 @@ const POOL_METADATA: Record<string, PoolMetadata> = {
     quoteDecimals: 9,
     moderatorId: 6,
     poolType: 'damm',
+    withdrawalPercentage: 12,
     icon: 'https://arweave.net/r02Vz3jHG5_ZH0BrKbkIJOkF4LDcTTdLNljefYpJYJo',
     minTokenBalance: 5_000_000, // 5M SURF required to create proposals
   },

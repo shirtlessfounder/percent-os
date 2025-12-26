@@ -42,9 +42,6 @@ const rpcUrl = process.env.HELIUS_API_KEY
   : process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
 const authConnection = new Connection(rpcUrl, 'confirmed');
 
-// DAMM Configuration (default if not set per-moderator)
-const DEFAULT_DAMM_WITHDRAWAL_PERCENTAGE = 12;
-
 // Type definition for creating a proposal
 export interface CreateProposalRequest {
   title: string;
@@ -426,8 +423,8 @@ router.post('/', requireApiKey, requireModeratorId, async (req, res, next) => {
       });
     }
 
-    // Get withdrawal percentage from moderator config (with fallback to default)
-    const withdrawalPercentage = moderator.config.dammWithdrawalPercentage ?? DEFAULT_DAMM_WITHDRAWAL_PERCENTAGE;
+    // Get withdrawal percentage from pool config
+    const withdrawalPercentage = poolMetadata.withdrawalPercentage;
 
     // Step 1: Build withdrawal transaction (confirmation happens in Proposal.initialize())
     // Route to correct endpoint based on pool type (DAMM vs DLMM)
