@@ -255,14 +255,17 @@ export class ExecutionService implements IExecutionService {
     signer?: Keypair,
     additionalSigners: Keypair[] = []
   ): Promise<IExecutionResult> {
+    let signature = '';
+
     try {
+      // Get blockhash with lastValidBlockHeight for proper confirmation tracking
+      const { blockhash, lastValidBlockHeight } =
+        await this.connection.getLatestBlockhash(this.config.commitment);
+
       // Only set blockhash if not already set (for pre-signed transactions)
       if (!transaction.recentBlockhash) {
-        const { blockhash } =
-          await this.connection.getLatestBlockhash(this.config.commitment);
         transaction.recentBlockhash = blockhash;
       }
-
 
       // Only set fee payer if not already set and signer is provided
       if (!transaction.feePayer && signer) {
@@ -273,14 +276,14 @@ export class ExecutionService implements IExecutionService {
       if (signer) {
         transaction.partialSign(signer);
       }
-      
+
       // Sign with additional signers if provided
       for (const additionalSigner of additionalSigners) {
         transaction.partialSign(additionalSigner);
       }
 
       // Send the fully signed transaction
-      const signature = await this.connection.sendRawTransaction(
+      signature = await this.connection.sendRawTransaction(
         transaction.serialize(),
         {
           skipPreflight: this.config.skipPreflight ?? false,
@@ -288,8 +291,37 @@ export class ExecutionService implements IExecutionService {
         }
       );
 
-      // Wait for confirmation
-      await this.connection.confirmTransaction(signature, this.config.commitment as Commitment);
+      // Wait for confirmation using modern blockhash-based strategy
+      // This properly handles blockhash expiration instead of potentially hanging
+      const confirmationResult = await this.connection.confirmTransaction(
+        {
+          signature,
+          blockhash,
+          lastValidBlockHeight
+        },
+        this.config.commitment
+      );
+
+      // Check if transaction failed on-chain
+      if (confirmationResult.value.err) {
+        const errorMessage = JSON.stringify(confirmationResult.value.err);
+
+        const result: IExecutionResult = {
+          signature,
+          status: ExecutionStatus.Failed,
+          timestamp: Date.now(),
+          error: `Transaction failed on-chain: ${errorMessage}`
+        };
+
+        this.logExecution({
+          signature,
+          status: ExecutionStatus.Failed,
+          timestamp: result.timestamp,
+          error: result.error
+        });
+
+        return result;
+      }
 
       const result: IExecutionResult = {
         signature,
@@ -309,9 +341,9 @@ export class ExecutionService implements IExecutionService {
     } catch (error) {
       const errorMessage = error instanceof Error ?
        error.message : String(error);
-      
+
       const result: IExecutionResult = {
-        signature: '',
+        signature,
         status: ExecutionStatus.Failed,
         timestamp: Date.now(),
         error: errorMessage
@@ -319,7 +351,7 @@ export class ExecutionService implements IExecutionService {
 
       // Log failure
       this.logExecution({
-        signature: '',
+        signature: signature || '',
         status: ExecutionStatus.Failed,
         timestamp: result.timestamp,
         error: errorMessage

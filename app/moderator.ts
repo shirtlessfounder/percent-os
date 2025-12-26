@@ -17,7 +17,8 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { Keypair, PublicKey } from '@solana/web3.js';
+import { Keypair, PublicKey, Transaction, SystemProgram } from '@solana/web3.js';
+import { getAssociatedTokenAddress, createAssociatedTokenAccountIdempotentInstruction, createTransferInstruction, TOKEN_PROGRAM_ID, NATIVE_MINT, getAccount } from '@solana/spl-token';
 import { IModerator, IModeratorConfig, IModeratorInfo, ProposalStatus, ICreateProposalParams } from './types/moderator.interface';
 import { IExecutionConfig, PriorityFeeMode, Commitment } from './types/execution.interface';
 import { IProposal, IProposalConfig } from './types/proposal.interface';
@@ -28,7 +29,6 @@ import { ExecutionService } from './services/execution.service';
 import { LoggerService } from './services/logger.service';
 import { DammService } from './services/damm.service';
 import { DlmmService } from './services/dlmm.service';
-import { FeeService } from './services/fee.service';
 import { POOL_METADATA } from '../src/config/whitelist';
 import { normalizeWithdrawConfirmResponse, calculateMarketPriceFromAmounts } from './utils/pool-api.utils';
 //import { BlockEngineUrl, JitoService } from '@slateos/jito';
@@ -46,7 +46,6 @@ export class Moderator implements IModerator {
   private executionService: ExecutionService;              // Execution service for transactions
   private dammService: DammService;                        // DAMM pool interaction service
   private dlmmService: DlmmService;                        // DLMM pool interaction service
-  private feeService: FeeService;                          // Fee collection service
   private logger: LoggerService;                           // Logger service for this moderator
   //private jitoService?: JitoService;                       // Jito service @deprecated
 
@@ -89,7 +88,6 @@ export class Moderator implements IModerator {
     this.executionService = new ExecutionService(executionConfig, this.logger);
     this.dammService = new DammService(this.logger.createChild('damm'));
     this.dlmmService = new DlmmService(this.logger.createChild('dlmm'));
-    this.feeService = new FeeService(this.executionService, this.logger.createChild('fee'));
 
     /** @deprecated */
     // if (this.config.jitoUuid) {
@@ -98,23 +96,30 @@ export class Moderator implements IModerator {
   }
 
   /**
-   * Get the appropriate authority keypair for a given pool
-   * @param poolAddress - DAMM pool address (optional)
-   * @returns Authority keypair for the pool, or default if not mapped
+   * Get the authority keypair for a specific pool
+   * @param poolAddress - DAMM pool address (required)
+   * @returns Authority keypair for the pool
+   * @throws Error if poolAddress is not provided or not configured
    */
-  getAuthorityForPool(poolAddress?: string): Keypair {
-    // If no pool-specific authorities configured, use default
+  getAuthorityForPool(poolAddress: string): Keypair {
+    if (!poolAddress) {
+      throw new Error('Pool address is required - no fallback to database authority');
+    }
+
     if (!this.config.poolAuthorities) {
-      return this.config.defaultAuthority;
+      throw new Error(
+        `No pool authorities configured. Set MANAGER_PRIVATE_KEY_<TICKER> environment variable for pool ${poolAddress}`
+      );
     }
 
-    // If poolAddress not provided or not mapped, use default
-    if (!poolAddress || !this.config.poolAuthorities.has(poolAddress)) {
-      return this.config.defaultAuthority;
+    const authority = this.config.poolAuthorities.get(poolAddress);
+    if (!authority) {
+      throw new Error(
+        `No authority configured for pool ${poolAddress}. Set MANAGER_PRIVATE_KEY_<TICKER> environment variable`
+      );
     }
 
-    // Return pool-specific authority
-    return this.config.poolAuthorities.get(poolAddress)!;
+    return authority;
   }
 
   /**
@@ -122,6 +127,14 @@ export class Moderator implements IModerator {
    * @returns Object containing moderator info
    */
   async info(): Promise<IModeratorInfo> {
+    // Build pool authorities map from env vars (not from DB)
+    const poolAuthorities: Record<string, string> = {};
+    if (this.config.poolAuthorities) {
+      for (const [poolAddress, keypair] of this.config.poolAuthorities) {
+        poolAuthorities[poolAddress] = keypair.publicKey.toBase58();
+      }
+    }
+
     const info: IModeratorInfo = {
       id: this.id,
       protocolName: this.protocolName,
@@ -134,7 +147,7 @@ export class Moderator implements IModerator {
         mint: this.config.quoteMint.toBase58(),
         decimals: this.config.quoteDecimals
       },
-      authority: this.config.defaultAuthority.publicKey.toBase58(),
+      poolAuthorities,
       dammWithdrawalPercentage: this.config.dammWithdrawalPercentage,
     };
 
@@ -175,6 +188,11 @@ export class Moderator implements IModerator {
     const proposalIdCounter = await this.getProposalIdCounter() + 1;
     try {
       this.logger.info('Creating proposal');
+
+      // Require spotPoolAddress for authority lookup - no fallback to database
+      if (!params.spotPoolAddress) {
+        throw new Error('spotPoolAddress is required to determine authority keypair');
+      }
 
       // Select appropriate authority based on pool address
       const authority = this.getAuthorityForPool(params.spotPoolAddress);
@@ -431,20 +449,11 @@ export class Moderator implements IModerator {
         poolType
       });
 
-      const BASE_DECIMALS = poolMetadata.baseDecimals;
-      const QUOTE_DECIMALS = poolMetadata.quoteDecimals;
-
-      this.logger.info('Using pool-specific decimals for deposit', {
-        proposalId,
-        poolAddress: metadata.poolAddress,
-        poolType,
-        baseDecimals: BASE_DECIMALS,
-        quoteDecimals: QUOTE_DECIMALS
-      });
-
-      // Step 1: Create transaction signer from authority keypair with validation
+      // Get authority for this pool
       const authority = this.getAuthorityForPool(metadata.poolAddress);
-      const signTransaction = async (transaction: any) => {
+
+      // Create transaction signer from authority keypair with validation
+      const signTransaction = async (transaction: Transaction) => {
         // Validate fee payer matches authority wallet
         if (!transaction.feePayer?.equals(authority.publicKey)) {
           const error = `Fee payer mismatch: expected ${authority.publicKey.toBase58()}, got ${transaction.feePayer?.toBase58()}`;
@@ -452,7 +461,7 @@ export class Moderator implements IModerator {
           throw new Error(error);
         }
 
-        this.logger.info('Transaction validated, signing with authority', {
+        this.logger.debug('Transaction validated, signing with authority', {
           proposalId,
           feePayer: transaction.feePayer.toBase58(),
           authority: authority.publicKey.toBase58(),
@@ -464,165 +473,284 @@ export class Moderator implements IModerator {
         return transaction;
       };
 
-      // Step 2: Execute deposit with retry logic
-      const MAX_RETRIES = 3;
-      const RETRY_DELAY_MS = 2000;
-      let lastError: Error | null = null;
+      // Step 1: Get LP owner address from pool config
+      let lpOwnerAddress: string;
+      if (poolType === 'dlmm') {
+        const poolConfig = await this.dlmmService.getPoolConfig(metadata.poolAddress);
+        lpOwnerAddress = poolConfig.lpOwnerAddress;
+      } else {
+        const poolConfig = await this.dammService.getPoolConfig(metadata.poolAddress);
+        lpOwnerAddress = poolConfig.lpOwnerAddress;
+      }
 
-      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-        try {
-          this.logger.info(`Attempting deposit-back (${attempt}/${MAX_RETRIES})`, {
-            proposalId,
-            rawTokenA: metadata.tokenA,
-            rawTokenB: metadata.tokenB,
-            poolAddress: metadata.poolAddress,
-            poolType
-          });
+      this.logger.info('Fetched LP owner address', {
+        proposalId,
+        lpOwnerAddress,
+        poolAddress: metadata.poolAddress
+      });
 
-          let depositSignature: string;
-          let confirmedAmounts: { tokenA: string; tokenB: string };
+      // Step 2: Transfer tokens from authority to LP owner
+      const lpOwnerPubkey = new PublicKey(lpOwnerAddress);
+      const tokenAMint = new PublicKey(poolMetadata.baseMint);
+      const tokenBMint = new PublicKey(poolMetadata.quoteMint);
 
-          if (poolType === 'dlmm') {
-            // DLMM uses raw amounts (strings)
-            const depositResult = await this.dlmmService.depositToDlmmPool(
-              String(metadata.tokenA),  // Raw token X amount
-              String(metadata.tokenB),  // Raw token Y amount
-              signTransaction,
-              metadata.poolAddress
-            );
-            depositSignature = depositResult.signature;
-            // Normalize DLMM response (tokenX/Y) to internal format (tokenA/B)
-            confirmedAmounts = {
-              tokenA: depositResult.amounts.tokenX,
-              tokenB: depositResult.amounts.tokenY
-            };
-          } else {
-            // DAMM uses UI amounts (numbers)
-            const tokenAAmountUI = metadata.tokenA / Math.pow(10, BASE_DECIMALS);
-            const tokenBAmountUI = metadata.tokenB / Math.pow(10, QUOTE_DECIMALS);
+      await this.transferTokensToLpOwner(
+        authority,
+        lpOwnerPubkey,
+        tokenAMint,
+        tokenBMint,
+        proposalId
+      );
 
-            this.logger.info('Converting to UI amounts for DAMM deposit', {
-              proposalId,
-              tokenAUI: tokenAAmountUI,
-              tokenBUI: tokenBAmountUI
-            });
+      // Step 3: Call cleanup swap and deposit (swap → deposit 0,0)
+      this.logger.info('Attempting cleanup swap and deposit', {
+        proposalId,
+        poolAddress: metadata.poolAddress,
+        poolType
+      });
 
-            const depositResult = await this.dammService.depositToDammPool(
-              tokenAAmountUI,
-              tokenBAmountUI,
-              signTransaction,
-              metadata.poolAddress
-            );
-            depositSignature = depositResult.signature;
-            confirmedAmounts = depositResult.amounts;
-          }
+      let confirmedAmounts: { tokenA: string; tokenB: string };
+      let depositSignature: string;
 
-          // Mark as deposited in database with actual amounts from API response
-          await this.persistenceService.markWithdrawalDeposited(
-            proposalId,
-            depositSignature,
-            confirmedAmounts.tokenA,
-            confirmedAmounts.tokenB
-          );
-
-          this.logger.info('Deposit-back completed successfully', {
-            proposalId,
-            attempt,
-            depositSignature,
-            poolType,
-            confirmedDeposit: confirmedAmounts
-          });
-
-          // Collect fees after successful deposit-back (non-blocking)
-          // Fee = withdrawn - deposited (what remains after deposit-back)
-          try {
-            if (this.feeService.isEnabled) {
-              const { feeTokenA, feeTokenB } = this.feeService.calculateFees(
-                String(metadata.tokenA),
-                String(metadata.tokenB),
-                confirmedAmounts.tokenA,
-                confirmedAmounts.tokenB
-              );
-
-              if (feeTokenA > 0n || feeTokenB > 0n) {
-                this.logger.info('Collecting fees from decision market', {
-                  proposalId,
-                  feeTokenA: feeTokenA.toString(),
-                  feeTokenB: feeTokenB.toString(),
-                  originalWithdrawn: { tokenA: metadata.tokenA, tokenB: metadata.tokenB },
-                  deposited: confirmedAmounts
-                });
-
-                const feeResult = await this.feeService.transferFees(
-                  authority,
-                  new PublicKey(poolMetadata.baseMint),
-                  new PublicKey(poolMetadata.quoteMint),
-                  feeTokenA,
-                  feeTokenB
-                );
-
-                if (feeResult.success) {
-                  this.logger.info('Fees collected successfully', {
-                    proposalId,
-                    feeTokenA: feeResult.feeTokenA,
-                    feeTokenB: feeResult.feeTokenB,
-                    signature: feeResult.signature
-                  });
-                } else {
-                  this.logger.warn('Fee collection failed (non-blocking)', {
-                    proposalId,
-                    error: feeResult.error,
-                    feeTokenA: feeResult.feeTokenA,
-                    feeTokenB: feeResult.feeTokenB
-                  });
-                }
-              } else {
-                this.logger.info('No fees to collect (deposited amount equals or exceeds withdrawn)', {
-                  proposalId
-                });
-              }
-            }
-          } catch (feeError) {
-            // Fee collection is non-blocking - log error but don't fail
-            this.logger.warn('Fee collection error (non-blocking)', {
-              proposalId,
-              error: feeError instanceof Error ? feeError.message : String(feeError)
-            });
-          }
-
-          return; // Success, exit the method
-        } catch (depositError) {
-          lastError = depositError instanceof Error ? depositError : new Error(String(depositError));
-          this.logger.warn(`Deposit-back attempt ${attempt}/${MAX_RETRIES} failed`, {
-            proposalId,
-            attempt,
-            poolType,
-            error: lastError.message
-          });
-
-          if (attempt < MAX_RETRIES) {
-            // Wait before retrying
-            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
-          }
+      if (poolType === 'dlmm') {
+        const depositResult = await this.dlmmService.cleanupSwapAndDeposit(
+          metadata.poolAddress,
+          signTransaction
+        );
+        if (depositResult) {
+          confirmedAmounts = {
+            tokenA: depositResult.deposited.tokenX,
+            tokenB: depositResult.deposited.tokenY
+          };
+          depositSignature = depositResult.signature;
+        } else {
+          confirmedAmounts = { tokenA: '0', tokenB: '0' };
+          depositSignature = 'no-deposit-needed';
+        }
+      } else {
+        const depositResult = await this.dammService.cleanupSwapAndDeposit(
+          metadata.poolAddress,
+          signTransaction
+        );
+        if (depositResult) {
+          confirmedAmounts = {
+            tokenA: depositResult.deposited.tokenA,
+            tokenB: depositResult.deposited.tokenB
+          };
+          depositSignature = depositResult.signature;
+        } else {
+          confirmedAmounts = { tokenA: '0', tokenB: '0' };
+          depositSignature = 'no-deposit-needed';
         }
       }
 
-      // All retries failed
-      this.logger.error('All deposit-back attempts failed', {
+      // Mark as deposited in database
+      await this.persistenceService.markWithdrawalDeposited(
         proposalId,
-        totalAttempts: MAX_RETRIES,
+        depositSignature,
+        confirmedAmounts.tokenA,
+        confirmedAmounts.tokenB
+      );
+
+      this.logger.info('Deposit-back completed successfully', {
+        proposalId,
+        depositSignature,
         poolType,
-        lastError: lastError?.message,
-        note: 'Tokens remain in authority wallet, needs_deposit_back=true for manual retry'
+        confirmedDeposit: confirmedAmounts
       });
-      // Don't throw - tokens are safe in authority wallet, can be retried manually
     } catch (error) {
       // Log error but don't fail the finalization
       this.logger.error('Failed to complete deposit-back', {
         proposalId,
         error: error instanceof Error ? error.message : String(error)
       });
-      // Don't throw - we don't want deposit-back failures to prevent finalization
     }
+  }
+
+  /**
+   * Transfers tokens from authority to LP owner wallet
+   * Fetches actual wallet balances and transfers the full amount
+   * Creates ATAs if needed and handles native SOL transfers properly
+   *
+   * IMPORTANT: When tokenA or tokenB is native SOL (NATIVE_MINT), the withdrawal
+   * process transfers native SOL (not WSOL) to the manager. The deposit cleanup
+   * mode also expects native SOL in the LP owner's wallet. So we must transfer
+   * native SOL via SystemProgram.transfer, not SPL token transfer.
+   */
+  private async transferTokensToLpOwner(
+    authority: Keypair,
+    lpOwner: PublicKey,
+    tokenAMint: PublicKey,
+    tokenBMint: PublicKey,
+    proposalId: number
+  ): Promise<void> {
+    // Skip transfer if authority and LP owner are the same address
+    // This happens when the pool's LP owner and manager wallet are configured to be the same
+    if (authority.publicKey.equals(lpOwner)) {
+      this.logger.info('Authority and LP owner are same address, skipping transfer', { proposalId });
+      return;
+    }
+
+    const isTokenANativeSOL = tokenAMint.equals(NATIVE_MINT);
+    const isTokenBNativeSOL = tokenBMint.equals(NATIVE_MINT);
+    const connection = this.executionService.connection;
+
+    // Reserve SOL for transaction fees + rent for new accounts (0.1 SOL)
+    const SOL_FEE_RESERVE = 100_000_000n;
+
+    // Fetch actual token balances from authority wallet
+    let tokenAAmount = 0n;
+    let tokenBAmount = 0n;
+
+    // Get tokenA balance
+    if (isTokenANativeSOL) {
+      const solBalance = await connection.getBalance(authority.publicKey);
+      tokenAAmount = BigInt(Math.max(0, solBalance)) - SOL_FEE_RESERVE;
+      if (tokenAAmount < 0n) tokenAAmount = 0n;
+    } else {
+      try {
+        const authorityTokenA = await getAssociatedTokenAddress(tokenAMint, authority.publicKey);
+        const tokenAAccount = await getAccount(connection, authorityTokenA);
+        tokenAAmount = tokenAAccount.amount;
+      } catch {
+        // Account doesn't exist or has 0 balance
+        tokenAAmount = 0n;
+      }
+    }
+
+    // Get tokenB balance
+    if (isTokenBNativeSOL) {
+      const solBalance = await connection.getBalance(authority.publicKey);
+      // If tokenA is also SOL, we already accounted for the balance above
+      // This case shouldn't happen (both tokens being SOL), but handle it
+      if (!isTokenANativeSOL) {
+        tokenBAmount = BigInt(Math.max(0, solBalance)) - SOL_FEE_RESERVE;
+        if (tokenBAmount < 0n) tokenBAmount = 0n;
+      }
+    } else {
+      try {
+        const authorityTokenB = await getAssociatedTokenAddress(tokenBMint, authority.publicKey);
+        const tokenBAccount = await getAccount(connection, authorityTokenB);
+        tokenBAmount = tokenBAccount.amount;
+      } catch {
+        // Account doesn't exist or has 0 balance
+        tokenBAmount = 0n;
+      }
+    }
+
+    this.logger.info('Transferring tokens to LP owner (actual balances)', {
+      proposalId,
+      lpOwner: lpOwner.toBase58(),
+      tokenAMint: tokenAMint.toBase58(),
+      tokenBMint: tokenBMint.toBase58(),
+      tokenAAmount: tokenAAmount.toString(),
+      tokenBAmount: tokenBAmount.toString(),
+      isTokenANativeSOL,
+      isTokenBNativeSOL
+    });
+
+    // Check if there's anything to transfer
+    if (tokenAAmount === 0n && tokenBAmount === 0n) {
+      this.logger.info('No tokens to transfer from authority wallet', { proposalId });
+      return;
+    }
+
+    const transaction = new Transaction();
+
+    // Transfer tokenA
+    if (tokenAAmount > 0n) {
+      if (isTokenANativeSOL) {
+        // TokenA is native SOL - transfer via SystemProgram
+        transaction.add(
+          SystemProgram.transfer({
+            fromPubkey: authority.publicKey,
+            toPubkey: lpOwner,
+            lamports: tokenAAmount
+          })
+        );
+      } else {
+        // TokenA is a regular SPL token
+        const authorityTokenA = await getAssociatedTokenAddress(tokenAMint, authority.publicKey);
+        const lpOwnerTokenA = await getAssociatedTokenAddress(tokenAMint, lpOwner);
+
+        // Create LP owner's ATA if needed
+        transaction.add(
+          createAssociatedTokenAccountIdempotentInstruction(
+            authority.publicKey,
+            lpOwnerTokenA,
+            lpOwner,
+            tokenAMint
+          )
+        );
+
+        // Transfer tokenA
+        transaction.add(
+          createTransferInstruction(
+            authorityTokenA,
+            lpOwnerTokenA,
+            authority.publicKey,
+            tokenAAmount,
+            [],
+            TOKEN_PROGRAM_ID
+          )
+        );
+      }
+    }
+
+    // Transfer tokenB
+    if (tokenBAmount > 0n) {
+      if (isTokenBNativeSOL) {
+        // TokenB is native SOL - transfer via SystemProgram
+        transaction.add(
+          SystemProgram.transfer({
+            fromPubkey: authority.publicKey,
+            toPubkey: lpOwner,
+            lamports: tokenBAmount
+          })
+        );
+      } else {
+        // TokenB is a regular SPL token
+        const authorityTokenB = await getAssociatedTokenAddress(tokenBMint, authority.publicKey);
+        const lpOwnerTokenB = await getAssociatedTokenAddress(tokenBMint, lpOwner);
+
+        // Create LP owner's ATA if needed
+        transaction.add(
+          createAssociatedTokenAccountIdempotentInstruction(
+            authority.publicKey,
+            lpOwnerTokenB,
+            lpOwner,
+            tokenBMint
+          )
+        );
+
+        // Transfer tokenB
+        transaction.add(
+          createTransferInstruction(
+            authorityTokenB,
+            lpOwnerTokenB,
+            authority.publicKey,
+            tokenBAmount,
+            [],
+            TOKEN_PROGRAM_ID
+          )
+        );
+      }
+    }
+
+    // Execute the transfer transaction
+    const result = await this.executionService.executeTx(transaction, authority);
+
+    if (result.status === 'failed') {
+      throw new Error(`Transfer transaction failed: ${result.error}`);
+    }
+
+    this.logger.info('Tokens transferred to LP owner successfully', {
+      proposalId,
+      signature: result.signature,
+      tokenAAmount: tokenAAmount.toString(),
+      tokenBAmount: tokenBAmount.toString(),
+      isTokenANativeSOL,
+      isTokenBNativeSOL
+    });
   }
 }

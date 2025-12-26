@@ -386,6 +386,7 @@ export default function CreatePage() {
           tokenSymbol={tokenSymbol}
           tokenIcon={icon}
           poolAddress={poolAddress}
+          baseMint={baseMint}
           isCreateAuthorized={tokenSlug !== 'zc' || isAuthorized}
         />
 

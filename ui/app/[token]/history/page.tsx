@@ -110,6 +110,7 @@ export default function HistoryPage() {
           tokenSymbol={tokenSymbol}
           tokenIcon={icon}
           poolAddress={poolAddress}
+          baseMint={baseMint}
         />
 
         <div className="flex-1 flex justify-center overflow-y-auto">

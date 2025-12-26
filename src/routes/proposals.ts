@@ -64,6 +64,7 @@ try {
 // DAMM Configuration (default if not set per-moderator)
 const DEFAULT_DAMM_WITHDRAWAL_PERCENTAGE = 12;
 
+
 // Type definition for creating a proposal
 export interface CreateProposalRequest {
   title: string;
@@ -445,8 +446,8 @@ router.post('/', requireApiKey, requireModeratorId, async (req, res, next) => {
       });
     }
 
-    // Get withdrawal percentage from moderator config (with fallback to default)
-    const withdrawalPercentage = moderator.config.dammWithdrawalPercentage ?? DEFAULT_DAMM_WITHDRAWAL_PERCENTAGE;
+    // Get withdrawal percentage from pool config
+    const withdrawalPercentage = poolMetadata.withdrawalPercentage;
 
     // Step 1: Build withdrawal transaction (confirmation happens in Proposal.initialize())
     // Route to correct endpoint based on pool type (DAMM vs DLMM)
@@ -547,7 +548,11 @@ router.post('/', requireApiKey, requireModeratorId, async (req, res, next) => {
     );
     logger.info('[POST /] Calculated AMM price from amounts', { ammPrice, poolType });
 
-    const effectiveProposalLength = body.proposalLength;
+    // TEST OVERRIDE: Force test pool proposals to 1 minute for testing
+    const TESTSURF_POOL = 'EC7MUufEpZcRZyXTFt16MMNLjJVnj9Vkku4UwdZ713Hx'; // DLMM
+    const SURFTEST_POOL = 'PS3rPSb49GnAkmh3tec1RQizgNSb1hUwPsYHGGuAy5r'; // DAMM
+    const isTestPool = poolAddress === TESTSURF_POOL || poolAddress === SURFTEST_POOL;
+    const effectiveProposalLength = isTestPool ? 60 : body.proposalLength;
 
     // Create the proposal with DAMM withdrawal data (confirmation happens in initialize())
     const proposal = await moderator.createProposal({

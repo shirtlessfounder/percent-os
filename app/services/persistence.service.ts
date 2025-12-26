@@ -28,6 +28,7 @@ import { ExecutionService } from './execution.service';
 import { LoggerService } from './logger.service';
 import { Commitment } from '@app/types/execution.interface';
 import { decryptKeypair, encryptKeypair } from '../utils/crypto';
+import { loadPoolAuthorities } from './router.service';
 
 /**
  * Service for persisting and loading state from PostgreSQL database
@@ -261,6 +262,9 @@ export class PersistenceService implements IPersistenceService {
       const configData = row.config as any;
       const authorityData = configData.defaultAuthority || configData.authority;
 
+      // Load pool authorities from environment variables
+      const poolAuthorities = loadPoolAuthorities(this.logger);
+
       const config: IModeratorConfig = {
         baseMint: new PublicKey(row.config.baseMint),
         quoteMint: new PublicKey(row.config.quoteMint),
@@ -269,7 +273,7 @@ export class PersistenceService implements IPersistenceService {
         defaultAuthority: decryptKeypair(authorityData, encryptionKey),
         rpcEndpoint: row.config.rpcUrl,
         dammWithdrawalPercentage: row.config.dammWithdrawalPercentage,
-        // poolAuthorities loaded from env vars in router.service.ts
+        poolAuthorities,
       };
 
       return {
@@ -299,13 +303,22 @@ export class PersistenceService implements IPersistenceService {
         throw new Error('Moderator state not found');
       }
 
-      // Determine which authority to use based on proposal's spot pool address
-      let authority = moderatorState.config.defaultAuthority;
-      if (row.spot_pool_address && moderatorState.config.poolAuthorities) {
-        const poolAuthority = moderatorState.config.poolAuthorities.get(row.spot_pool_address);
-        if (poolAuthority) {
-          authority = poolAuthority;
-        }
+      // Get authority from environment variable - no fallback to database
+      if (!row.spot_pool_address) {
+        throw new Error(`Proposal ${row.proposal_id} has no spot_pool_address - cannot determine authority`);
+      }
+
+      if (!moderatorState.config.poolAuthorities) {
+        throw new Error(
+          `No pool authorities configured. Set MANAGER_PRIVATE_KEY_<TICKER> environment variable for pool ${row.spot_pool_address}`
+        );
+      }
+
+      const authority = moderatorState.config.poolAuthorities.get(row.spot_pool_address);
+      if (!authority) {
+        throw new Error(
+          `No authority configured for pool ${row.spot_pool_address}. Set MANAGER_PRIVATE_KEY_<TICKER> environment variable`
+        );
       }
 
       // Create logger first

@@ -104,16 +104,16 @@ async function dammDepositManual() {
       poolAddress: result.poolAddress,
       tokenAMint: result.tokenAMint,
       tokenBMint: result.tokenBMint,
-      amounts: result.amounts
+      deposited: result.deposited
     });
 
     console.log('\n✅ DAMM deposit successful!');
     console.log(`   Signature: ${result.signature}`);
     console.log(`   Solscan: https://solscan.io/tx/${result.signature}`);
     console.log('\n   Amounts deposited:');
-    console.log(`   Token A: ${result.amounts.tokenA}`);
-    console.log(`   Token B: ${result.amounts.tokenB}`);
-    console.log(`   Liquidity Delta: ${result.amounts.liquidityDelta}`);
+    console.log(`   Token A: ${result.deposited.tokenA}`);
+    console.log(`   Token B: ${result.deposited.tokenB}`);
+    console.log(`   Liquidity Delta: ${result.deposited.liquidityDelta}`);
 
   } catch (error) {
     logger.error('DAMM deposit failed', {

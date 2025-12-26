@@ -22,6 +22,7 @@ export interface PoolMetadata {
   quoteDecimals: number;
   moderatorId: number;
   poolType: PoolType;
+  withdrawalPercentage: number; // Liquidity withdrawal percentage (1-50)
   icon?: string;
   minTokenBalance?: number; // Minimum base token balance required to create proposals (in whole tokens)
 }
@@ -35,6 +36,7 @@ const TICKER_TO_POOL: Record<string, string> = {
   'OOGWAY': '2FCqTyvFcE4uXgRL1yh56riZ9vdjVgoP6yknZW3f8afX',
   'SURF': 'Ez1QYeC95xJRwPA9SR7YWC1H1Tj43exJr91QqKf8Puu1',
   'SURFTEST': 'PS3rPSb49GnAkmh3tec1RQizgNSb1hUwPsYHGGuAy5r',
+  'TESTSURF': 'EC7MUufEpZcRZyXTFt16MMNLjJVnj9Vkku4UwdZ713Hx', // DLMM pool
 };
 
 /**
@@ -67,6 +69,13 @@ const POOL_WHITELIST: Record<string, string[]> = {
     'FtV94i2JvmaqsE1rBT72C9YR58wYJXt1ZjRmPb4tDvMK',
     '4GctbRKwsQjECaY1nL8HiqkgvEUAi8EyhU1ezNmhB3hg',
   ],
+  // TESTSURF-SOL DLMM Pool
+  [TICKER_TO_POOL.TESTSURF]: [
+    '79TLv4oneDA1tDUSNXBxNCnemzNmLToBHYXnfZWDQNeP',
+    'BXc9g3zxbQhhfkLjxXbtSHrfd6MSFRdJo8pDQhW95QUw',
+    'FgACAue3FuWPrL7xSqXWtUdHLne52dvVsKyKxjwqPYtr',
+    'FtV94i2JvmaqsE1rBT72C9YR58wYJXt1ZjRmPb4tDvMK',
+  ],
   // SURF-SOL DAMM Pool (production)
   [TICKER_TO_POOL.SURF]: [
     '4GctbRKwsQjECaY1nL8HiqkgvEUAi8EyhU1ezNmhB3hg',
@@ -87,6 +96,7 @@ const POOL_METADATA: Record<string, PoolMetadata> = {
     quoteDecimals: 9,
     moderatorId: 2,
     poolType: 'dlmm',
+    withdrawalPercentage: 50,
     icon: 'https://wsrv.nl/?w=128&h=128&default=1&url=https%3A%2F%2Folive-imaginative-aardvark-508.mypinata.cloud%2Fipfs%2FQmY56Yz44o1EhTJfy6b4uhKCXpNGYvmFdsRX9yuiX1X45a',
   },
   // oogway DAMM Pool (Meteora CP-AMM)
@@ -99,6 +109,7 @@ const POOL_METADATA: Record<string, PoolMetadata> = {
     quoteDecimals: 9,
     moderatorId: 3,
     poolType: 'damm',
+    withdrawalPercentage: 12,
     icon: 'https://wsrv.nl/?w=128&h=128&default=1&url=https%3A%2F%2Folive-imaginative-aardvark-508.mypinata.cloud%2Fipfs%2FQmV4rzAgYREFBpDRyM5VmboewHUwS1Xu8ey2wrs9rJKcfE',
   },
   // Test SURF DAMM pool
@@ -111,8 +122,22 @@ const POOL_METADATA: Record<string, PoolMetadata> = {
     quoteDecimals: 9,
     moderatorId: 4,
     poolType: 'damm',
+    withdrawalPercentage: 12,
     icon: 'https://arweave.net/r02Vz3jHG5_ZH0BrKbkIJOkF4LDcTTdLNljefYpJYJo',
     minTokenBalance: 5_000_000, // 5M SURF required to create proposals
+  },
+  // TESTSURF DLMM pool
+  [TICKER_TO_POOL.TESTSURF]: {
+    poolAddress: TICKER_TO_POOL.TESTSURF,
+    ticker: 'testsurf',
+    baseMint: 'E7xktmaFNM6vd4GKa8FrXwX7sA7hrLzToxc64foGq3iW',
+    quoteMint: 'So11111111111111111111111111111111111111112',
+    baseDecimals: 9,
+    quoteDecimals: 9,
+    moderatorId: 5,
+    poolType: 'dlmm',
+    withdrawalPercentage: 50,
+    icon: 'https://arweave.net/r02Vz3jHG5_ZH0BrKbkIJOkF4LDcTTdLNljefYpJYJo',
   },
   // Production SURF DAMM pool
   [TICKER_TO_POOL.SURF]: {
@@ -122,8 +147,9 @@ const POOL_METADATA: Record<string, PoolMetadata> = {
     quoteMint: 'So11111111111111111111111111111111111111112',
     baseDecimals: 9,
     quoteDecimals: 9,
-    moderatorId: 5,
+    moderatorId: 6,
     poolType: 'damm',
+    withdrawalPercentage: 12,
     icon: 'https://arweave.net/r02Vz3jHG5_ZH0BrKbkIJOkF4LDcTTdLNljefYpJYJo',
     minTokenBalance: 5_000_000, // 5M SURF required to create proposals
   },
