@@ -36,10 +36,10 @@ interface HeaderProps {
   tokenSlug?: string; // NEW: Dynamic token routing
   tokenSymbol?: string; // NEW: Display symbol (ZC, OOGWAY, etc.)
   tokenIcon?: string | null; // NEW: Dynamic token icon URL
-  poolAddress?: string | null; // NEW: Pool address for Axiom.trade links
+  baseMint?: string | null; // NEW: Token mint address for Jupiter links
 }
 
-export default function Header({ walletAddress, authenticated, solBalance, baseTokenBalance, login, isPassMode = true, tokenSlug = 'zc', tokenSymbol = 'ZC', tokenIcon = null, poolAddress = null }: HeaderProps) {
+export default function Header({ walletAddress, authenticated, solBalance, baseTokenBalance, login, isPassMode = true, tokenSlug = 'zc', tokenSymbol = 'ZC', tokenIcon = null, baseMint = null }: HeaderProps) {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -153,9 +153,9 @@ export default function Header({ walletAddress, authenticated, solBalance, baseT
       {/* Right side: Links */}
       <nav className="hidden md:flex items-center gap-3 sm:gap-6">
         {/* Current token link (for non-ZC tokens) */}
-        {tokenSlug !== 'zc' && poolAddress && (
+        {tokenSlug !== 'zc' && baseMint && (
           <a
-            href={`https://axiom.trade/meme/${poolAddress}`}
+            href={`https://jup.ag/tokens/${baseMint}`}
             target="_blank"
             rel="noopener noreferrer"
             className="transition-colors"

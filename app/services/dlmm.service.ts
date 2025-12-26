@@ -13,7 +13,8 @@ export interface DlmmPoolConfigResponse {
 
 export interface DlmmDepositBuildResponse {
   success: boolean;
-  transaction: string;
+  transactions: string[];  // Array for chunked deposits (wide bin ranges)
+  transactionCount: number;
   requestId: string;
   poolAddress: string;
   tokenXMint: string;
@@ -42,7 +43,7 @@ export interface DlmmDepositBuildResponse {
 
 export interface DlmmDepositConfirmResponse {
   success: boolean;
-  signature: string;
+  signatures: string[];  // Array for chunked deposits
   poolAddress: string;
   tokenXMint: string;
   tokenYMint: string;
@@ -174,13 +175,13 @@ export class DlmmService {
   }
 
   /**
-   * Step 2: Confirm DLMM deposit transaction
-   * @param signedTransaction - Base58 encoded signed transaction
+   * Step 2: Confirm DLMM deposit transactions
+   * @param signedTransactions - Array of base58 encoded signed transactions
    * @param requestId - Request ID from build step
-   * @returns Transaction signature and amounts
+   * @returns Transaction signatures and amounts
    */
   async confirmDlmmDeposit(
-    signedTransaction: string,
+    signedTransactions: string[],
     requestId: string
   ): Promise<DlmmDepositConfirmResponse> {
     try {
@@ -190,7 +191,7 @@ export class DlmmService {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          signedTransaction,
+          signedTransactions,
           requestId,
         }),
       });
@@ -201,9 +202,9 @@ export class DlmmService {
       }
 
       const data = await response.json() as DlmmDepositConfirmResponse;
-      this.logger.info('Confirmed DLMM deposit transaction', {
+      this.logger.info('Confirmed DLMM deposit transactions', {
         requestId,
-        signature: data.signature
+        signatureCount: data.signatures.length
       });
 
       return data;
@@ -217,7 +218,7 @@ export class DlmmService {
   }
 
   /**
-   * Complete deposit flow: build → sign → confirm
+   * Complete deposit flow: build → sign all → confirm
    * @param tokenXAmount - Token X amount in raw units (base token)
    * @param tokenYAmount - Token Y amount in raw units (quote token)
    * @param signTransaction - Function to sign transaction (from wallet/keypair)
@@ -231,28 +232,36 @@ export class DlmmService {
     poolAddress: string
   ): Promise<DlmmDepositConfirmResponse> {
     try {
-      // Step 1: Build unsigned transaction
+      // Step 1: Build unsigned transactions (may be multiple for wide bin ranges)
       const buildData = await this.buildDlmmDeposit(tokenXAmount, tokenYAmount, poolAddress);
 
-      // Step 2: Deserialize and sign transaction
-      const transactionBuffer = bs58.decode(buildData.transaction);
-      const transaction = Transaction.from(transactionBuffer);
+      this.logger.info('Built DLMM deposit transactions', {
+        poolAddress,
+        transactionCount: buildData.transactions.length
+      });
 
-      const signedTransaction = await signTransaction(transaction);
+      // Step 2: Deserialize and sign all transactions
+      const signedTransactionsBase58: string[] = [];
+      for (let i = 0; i < buildData.transactions.length; i++) {
+        const transactionBuffer = bs58.decode(buildData.transactions[i]);
+        const transaction = Transaction.from(transactionBuffer);
 
-      // Step 3: Serialize signed transaction
-      const signedTransactionBase58 = bs58.encode(
-        signedTransaction.serialize({ requireAllSignatures: false })
-      );
+        const signedTransaction = await signTransaction(transaction);
 
-      // Step 4: Confirm deposit
-      const confirmData = await this.confirmDlmmDeposit(signedTransactionBase58, buildData.requestId);
+        const signedTxBase58 = bs58.encode(
+          signedTransaction.serialize({ requireAllSignatures: false })
+        );
+        signedTransactionsBase58.push(signedTxBase58);
+      }
+
+      // Step 3: Confirm deposit (sends all transactions)
+      const confirmData = await this.confirmDlmmDeposit(signedTransactionsBase58, buildData.requestId);
 
       this.logger.info('Completed DLMM deposit', {
         tokenXAmount,
         tokenYAmount,
         poolAddress,
-        signature: confirmData.signature
+        signatureCount: confirmData.signatures.length
       });
 
       return confirmData;
@@ -481,19 +490,22 @@ export class DlmmService {
         return null;
       }
 
-      // Sign and confirm deposit
-      const depositTxBuffer = bs58.decode(depositBuildData.transaction);
-      const depositTransaction = Transaction.from(depositTxBuffer);
-      const signedDepositTx = await signTransaction(depositTransaction);
-      const signedDepositTxBase58 = bs58.encode(
-        signedDepositTx.serialize({ requireAllSignatures: false })
-      );
+      // Sign all deposit transactions
+      const signedDepositTxsBase58: string[] = [];
+      for (const txBase58 of depositBuildData.transactions) {
+        const depositTxBuffer = bs58.decode(txBase58);
+        const depositTransaction = Transaction.from(depositTxBuffer);
+        const signedDepositTx = await signTransaction(depositTransaction);
+        signedDepositTxsBase58.push(
+          bs58.encode(signedDepositTx.serialize({ requireAllSignatures: false }))
+        );
+      }
 
-      const confirmData = await this.confirmDlmmDeposit(signedDepositTxBase58, depositBuildData.requestId);
+      const confirmData = await this.confirmDlmmDeposit(signedDepositTxsBase58, depositBuildData.requestId);
 
       this.logger.info('DLMM cleanup flow completed', {
         poolAddress,
-        signature: confirmData.signature,
+        signatureCount: confirmData.signatures.length,
         depositedTokenX: confirmData.deposited.tokenX,
         depositedTokenY: confirmData.deposited.tokenY
       });
