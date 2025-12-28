@@ -53,7 +53,7 @@ interface Staker {
 export function StakeContent() {
   const { ready, authenticated, walletAddress, login } = usePrivyWallet();
   const { wallets } = useSolanaWallets();
-  const { tokenSlug, poolAddress, baseMint, baseDecimals, tokenSymbol, icon } = useTokenContext();
+  const { tokenSlug, baseMint, baseDecimals, tokenSymbol, icon } = useTokenContext();
   const { sol: solBalance, baseToken: baseTokenBalance } = useWalletBalances({
     walletAddress,
     baseMint,
@@ -834,7 +834,6 @@ export function StakeContent() {
           tokenSlug={tokenSlug}
           tokenSymbol={tokenSymbol}
           tokenIcon={icon}
-          poolAddress={poolAddress}
         />
 
         {/* Content Area */}

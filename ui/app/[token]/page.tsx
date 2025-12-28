@@ -218,7 +218,6 @@ export default function HomePage() {
             tokenSlug={tokenSlug}
             tokenSymbol={tokenSymbol}
             tokenIcon={icon}
-            poolAddress={poolAddress}
             baseMint={baseMint}
           />
 
@@ -250,7 +249,6 @@ export default function HomePage() {
           tokenSlug={tokenSlug}
           tokenSymbol={tokenSymbol}
           tokenIcon={icon}
-          poolAddress={poolAddress}
           baseMint={baseMint}
         />
 

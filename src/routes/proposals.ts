@@ -61,10 +61,6 @@ try {
   });
 }
 
-// DAMM Configuration (default if not set per-moderator)
-const DEFAULT_DAMM_WITHDRAWAL_PERCENTAGE = 12;
-
-
 // Type definition for creating a proposal
 export interface CreateProposalRequest {
   title: string;
