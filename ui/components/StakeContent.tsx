@@ -16,8 +16,8 @@ import StakingVaultIDL from '@/lib/staking-vault-idl.json';
 const ZC_TOKEN_MINT = new PublicKey("GVvPZpC6ymCoiHzYJ7CWZ8LhVn9tL2AUpRjSAsLh6jZC");
 const PROGRAM_ID = new PublicKey("47rZ1jgK7zU6XAgffAfXkDX1JkiiRi4HRPBytossWR12");
 
-// Hardcoded exit mode target date - January 15, 2026
-const EXIT_MODE_TARGET_DATE = new Date('2026-01-15T00:00:00Z').getTime() / 1000;
+// Hardcoded exit mode target date - January 12, 2026 at 12:30 PM EST (17:30 UTC)
+const EXIT_MODE_TARGET_DATE = new Date('2026-01-12T17:30:00Z').getTime() / 1000;
 
 interface StakerTrade {
   id: number;
@@ -97,24 +97,24 @@ export function StakeContent() {
     return new PublicKey(walletAddress);
   }, [walletAddress]);
 
-  // Create Anchor provider using Privy's signTransaction
+  // Create Anchor provider for read-only operations (decoding account data, building instructions)
+  // Note: signTransaction is NOT a dependency to avoid infinite re-renders
+  // Actual signing happens in handlers using signTransaction directly
   const provider = useMemo(() => {
     if (!wallet) return null;
 
-    // Create a wallet adapter compatible with Anchor
+    // Create a wallet adapter compatible with Anchor (signing not used for read ops)
     const walletAdapter: Wallet = {
       publicKey: wallet,
-      signTransaction: signTransaction as Wallet['signTransaction'],
-      signAllTransactions: ((txs: Transaction[]) =>
-        Promise.all(txs.map(tx => signTransaction(tx)))
-      ) as Wallet['signAllTransactions'],
+      signTransaction: async () => { throw new Error('Use signTransaction from hook'); },
+      signAllTransactions: async () => { throw new Error('Use signTransaction from hook'); },
       payer: undefined as any,
     };
 
     return new AnchorProvider(connection, walletAdapter, {
       commitment: 'confirmed',
     });
-  }, [wallet, connection, signTransaction]);
+  }, [wallet, connection]);
 
   const program = useMemo(() => {
     if (!provider) return null;
