@@ -11,6 +11,7 @@ import { useClaimablePositions } from '@/hooks/useClaimablePositions';
 import { formatNumber } from '@/lib/formatters';
 import toast from 'react-hot-toast';
 import { getProposalContent } from '@/lib/proposalContent';
+import { getOverriddenLabel } from '@/lib/proposal-overrides';
 import { MarkdownText } from '@/lib/renderMarkdown';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { CheckCircle2 } from 'lucide-react';
@@ -186,7 +187,7 @@ export default function HistoryPage() {
                           <div className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em]" style={{ color: '#DDDDD7' }}>{tokenSlug.toUpperCase()}-{proposal.id}</div>
                           {proposal.winningMarketLabel && (
                             <span className="flex items-center gap-1 px-2 py-0.5 text-xs font-normal rounded-full" style={{ backgroundColor: '#BEE8FC33', color: '#BEE8FC' }}>
-                              {proposal.winningMarketLabel}
+                              {getOverriddenLabel(proposal.winningMarketLabel, moderatorId, proposal.id, proposal.winningMarketIndex)}
                               <CheckCircle2 className="w-3 h-3" />
                             </span>
                           )}
@@ -321,7 +322,7 @@ export default function HistoryPage() {
                             <div className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em]" style={{ color: '#DDDDD7' }}>{tokenSlug.toUpperCase()}-{proposal.id}</div>
                             {proposal.winningMarketLabel && (
                               <span className="flex items-center gap-1 px-2 py-0.5 text-xs font-normal rounded-full" style={{ backgroundColor: '#BEE8FC33', color: '#BEE8FC' }}>
-                                {proposal.winningMarketLabel}
+                                {getOverriddenLabel(proposal.winningMarketLabel, moderatorId, proposal.id, proposal.winningMarketIndex)}
                                 <CheckCircle2 className="w-3 h-3" />
                               </span>
                             )}

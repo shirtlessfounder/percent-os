@@ -33,6 +33,20 @@ export const PROPOSAL_MARKET_OVERRIDES: Record<string, Record<number, number>> =
 };
 
 /**
+ * Market Label Overrides
+ *
+ * Override display labels for specific markets on specific proposals.
+ * Useful when a proposal was created with a default label that needs
+ * a more descriptive display name.
+ *
+ * Structure: { moderatorId: { proposalId: { marketIndex: newLabel } } }
+ */
+export const MARKET_LABEL_OVERRIDES: Record<string, Record<number, Record<number, string>>> = {
+  // Proposal 9 on SURF (moderatorId 6): Override "No" to show full description
+  '6': { 9: { 0: '0% - Full growth reinvestment (default)' } },
+};
+
+/**
  * Get the effective market count for a proposal, applying any overrides
  */
 export function getEffectiveMarketCount(
@@ -60,4 +74,47 @@ export function filterMarketData<T>(
 ): T[] {
   const effectiveCount = getEffectiveMarketCount(moderatorId, proposalId, data.length);
   return data.slice(0, effectiveCount);
+}
+
+/**
+ * Apply label overrides to market labels for a specific proposal
+ */
+export function applyMarketLabelOverrides(
+  labels: string[],
+  moderatorId: number | string | null | undefined,
+  proposalId: number
+): string[] {
+  const modIdStr = moderatorId?.toString();
+  if (!modIdStr) return labels;
+
+  const modOverrides = MARKET_LABEL_OVERRIDES[modIdStr];
+  if (!modOverrides) return labels;
+
+  const proposalOverrides = modOverrides[proposalId];
+  if (!proposalOverrides) return labels;
+
+  return labels.map((label, index) => proposalOverrides[index] ?? label);
+}
+
+/**
+ * Get the overridden label for a single market index, or return the original label
+ */
+export function getOverriddenLabel(
+  originalLabel: string | null | undefined,
+  moderatorId: number | string | null | undefined,
+  proposalId: number,
+  marketIndex: number | null | undefined
+): string | null | undefined {
+  if (!originalLabel || marketIndex === null || marketIndex === undefined) return originalLabel;
+
+  const modIdStr = moderatorId?.toString();
+  if (!modIdStr) return originalLabel;
+
+  const modOverrides = MARKET_LABEL_OVERRIDES[modIdStr];
+  if (!modOverrides) return originalLabel;
+
+  const proposalOverrides = modOverrides[proposalId];
+  if (!proposalOverrides) return originalLabel;
+
+  return proposalOverrides[marketIndex] ?? originalLabel;
 }

@@ -17,7 +17,7 @@ import { useTradeHistory } from '@/hooks/useTradeHistory';
 import { useUserBalances } from '@/hooks/useUserBalances';
 import { formatNumber, formatCurrency } from '@/lib/formatters';
 import { getProposalContent } from '@/lib/proposalContent';
-import { getEffectiveMarketCount, filterMarketData } from '@/lib/proposal-overrides';
+import { getEffectiveMarketCount, filterMarketData, applyMarketLabelOverrides } from '@/lib/proposal-overrides';
 import { MarkdownText } from '@/lib/renderMarkdown';
 import { useTokenContext } from '@/providers/TokenContext';
 
@@ -94,10 +94,10 @@ export default function HomePage() {
     [proposal, moderatorId]
   );
 
-  const effectiveMarketLabels = useMemo(() =>
-    proposal?.marketLabels ? filterMarketData(proposal.marketLabels, moderatorId, proposal.id) : ['No', 'Yes'],
-    [proposal, moderatorId]
-  );
+  const effectiveMarketLabels = useMemo(() => {
+    const filtered = proposal?.marketLabels ? filterMarketData(proposal.marketLabels, moderatorId, proposal.id) : ['No', 'Yes'];
+    return proposal ? applyMarketLabelOverrides(filtered, moderatorId, proposal.id) : filtered;
+  }, [proposal, moderatorId]);
 
   // Fetch user balances for the selected proposal (uses client-side SDK)
   const { data: userBalances, refetch: refetchBalances } = useUserBalances(
