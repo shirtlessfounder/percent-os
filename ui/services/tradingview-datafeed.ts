@@ -35,16 +35,18 @@ export class ProposalMarketDatafeed implements IBasicDataFeed {
   private tokenAddress: string | null = null;
   private poolAddress: string | null = null;
   private spotPoolAddress: string | null = null;
+  private tokenSymbol: string;  // Token symbol for spot market overlay
   private subscribers: Map<string, { callback: SubscribeBarsCallback; aggregator: BarAggregator; isSpotMarket: boolean }> = new Map();
   // NOTE: solPrice and totalSupply no longer needed - backend calculates market cap USD
   // All prices (pass, fail, spot) and trade prices are pre-calculated as market cap USD
 
-  constructor(proposalId: number, market: number, spotPoolAddress?: string, moderatorId?: number, marketLabel?: string) {
+  constructor(proposalId: number, market: number, spotPoolAddress?: string, moderatorId?: number, marketLabel?: string, tokenSymbol?: string) {
     this.proposalId = proposalId;
     this.market = market;
     this.marketLabel = marketLabel || `Coin ${market + 1}`;
     this.spotPoolAddress = spotPoolAddress || null;
     this.moderatorId = moderatorId;
+    this.tokenSymbol = tokenSymbol || 'TOKEN';
   }
 
   /**
@@ -88,7 +90,7 @@ export class ProposalMarketDatafeed implements IBasicDataFeed {
     const isSpotMarket = symbolName === 'SPOT-MARKET';
 
     const displayName = isSpotMarket
-      ? 'ZC'
+      ? this.tokenSymbol.toUpperCase()
       : this.marketLabel.toUpperCase();
 
     const symbolInfo: LibrarySymbolInfo = {
