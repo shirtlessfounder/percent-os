@@ -1,5 +1,5 @@
 import React from 'react';
-import { formatDescription } from './formatDescription';
+import { MarkdownText } from './renderMarkdown';
 
 interface ProposalContent {
   id: number;
@@ -454,7 +454,7 @@ export function getProposalContent(
     title: title,
     content: description ? (
       <div className="space-y-4 text-gray-300 whitespace-pre-wrap">
-        {formatDescription(description)}
+        <MarkdownText>{description}</MarkdownText>
       </div>
     ) : null
   };
