@@ -19,9 +19,10 @@ interface MarketChartProps {
   marketLabel?: string;  // Display label for the market (e.g., "Yes", "No", option name)
   height?: number | string;
   moderatorId?: number;
+  tokenSymbol?: string;  // Token symbol for spot market overlay (e.g., "ZC", "SURF")
 }
 
-export default function MarketChart({ proposalId, market, marketLabel, height = 256, moderatorId }: MarketChartProps) {
+export default function MarketChart({ proposalId, market, marketLabel, height = 256, moderatorId, tokenSymbol }: MarketChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetRef = useRef<any>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -88,7 +89,7 @@ export default function MarketChart({ proposalId, market, marketLabel, height = 
         }
 
         // Create datafeed with spot pool address for overlay support
-        const datafeed = new ProposalMarketDatafeed(proposalId, market, proposal.spotPoolAddress, moderatorId, marketLabel);
+        const datafeed = new ProposalMarketDatafeed(proposalId, market, proposal.spotPoolAddress, moderatorId, marketLabel, tokenSymbol);
         datafeed.setAddresses(tokenAddress, poolAddress);
 
         // Clear any existing widget

@@ -357,6 +357,7 @@ export default function HomePage() {
                         calculateVolume={calculateVolume}
                         moderatorId={moderatorId ?? undefined}
                         userWalletAddress={walletAddress}
+                        tokenSymbol={tokenSymbol}
                       />
                     </div>
                   </div>

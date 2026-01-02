@@ -16,6 +16,7 @@ interface ChartBoxProps {
   moderatorId?: number;
   className?: string;
   userWalletAddress?: string | null;
+  tokenSymbol?: string;  // Token symbol for spot market overlay (e.g., "ZC", "SURF")
 }
 
 export function ChartBox({
@@ -29,7 +30,8 @@ export function ChartBox({
   calculateVolume,
   moderatorId,
   className,
-  userWalletAddress
+  userWalletAddress,
+  tokenSymbol
 }: ChartBoxProps) {
   // Get display label for the selected market (strip URLs and trim)
   const selectedLabel = marketLabels?.[selectedMarketIndex]?.replace(/(https?:\/\/[^\s]+)/gi, '').trim() || `Coin ${selectedMarketIndex + 1}`;
@@ -117,11 +119,11 @@ export function ChartBox({
         <div className="bg-[#121212] border border-[#191919] overflow-hidden rounded-[6px] flex-1 flex flex-col">
           {/* Mobile: 400px */}
           <div className="md:hidden">
-            <MarketChart proposalId={proposalId} market={selectedMarketIndex} marketLabel={selectedLabel} height={480} moderatorId={moderatorId} />
+            <MarketChart proposalId={proposalId} market={selectedMarketIndex} marketLabel={selectedLabel} height={480} moderatorId={moderatorId} tokenSymbol={tokenSymbol} />
           </div>
           {/* Desktop: fills available height */}
           <div className="hidden md:flex md:flex-1">
-            <MarketChart proposalId={proposalId} market={selectedMarketIndex} marketLabel={selectedLabel} height="100%" moderatorId={moderatorId} />
+            <MarketChart proposalId={proposalId} market={selectedMarketIndex} marketLabel={selectedLabel} height="100%" moderatorId={moderatorId} tokenSymbol={tokenSymbol} />
           </div>
         </div>
       ) : (
