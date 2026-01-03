@@ -148,8 +148,13 @@ body {
 
 /* Description link styling */
 .description-links a {
-  color: inherit !important;
+  color: #BEE8FC !important;
   text-decoration: none !important;
+  word-break: break-all;
+}
+
+.description-links a:hover {
+  text-decoration: underline !important;
 }
 
 /* Editable Flip Card - 5x larger (200px × 280px) */

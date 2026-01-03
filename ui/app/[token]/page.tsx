@@ -310,7 +310,7 @@ export default function HomePage() {
                                 <h1 className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] mb-6 uppercase" style={{ color: '#DDDDD7' }}>
                                   QM {tokenSlug.toUpperCase()}-{proposal.id}
                                 </h1>
-                                <div className="text-lg font-normal mb-2 line-clamp-1" style={{ color: '#E9E9E3' }}>
+                                <div className="text-lg font-normal mb-2 line-clamp-1 description-links" style={{ color: '#E9E9E3' }}>
                                   <MarkdownText>{content.title}</MarkdownText>
                                 </div>
                                 <div className="text-sm description-links break-all line-clamp-1" style={{ color: '#DDDDD7' }}>
@@ -348,7 +348,7 @@ export default function HomePage() {
 
                                   {/* Scrollable Content */}
                                   <div className="flex-1 overflow-y-auto scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                                    <div className="text-lg font-normal mb-2" style={{ color: '#E9E9E3' }}>
+                                    <div className="text-lg font-normal mb-2 description-links" style={{ color: '#E9E9E3' }}>
                                       <MarkdownText>{content.title}</MarkdownText>
                                     </div>
                                     <div className="text-sm description-links break-all leading-relaxed" style={{ color: '#DDDDD7' }}>
