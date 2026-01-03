@@ -2,12 +2,49 @@
 /**
  * Conditional vs Spot Arbitrage Script
  *
- * Arbitrages conditional markets against spot pools by exploiting the
- * 1:1 split/merge property: 1 spot token = 1 pass conditional + 1 fail conditional.
+ * ============================================================================
+ * HOW CONDITIONAL MARKETS WORK
+ * ============================================================================
  *
- * Arbitrage exists when:
- * - ALL conditionals > spot price: Split spot, sell all conditionals
- * - ALL conditionals < spot price: Buy all conditionals, merge to spot
+ * This protocol has TWO types of tokens and TWO types of pools:
+ *
+ * REAL TOKENS (trade on spot pool):
+ *   - real SOL: Native SOL
+ *   - real TOKEN: The base token (e.g., SURF)
+ *   - Spot pool: real TOKEN / real SOL
+ *
+ * CONDITIONAL TOKENS (trade on conditional pools):
+ *   - cond_SOL₀, cond_SOL₁, ..., cond_SOLₙ: Conditional SOL for each outcome
+ *   - cond_TOKEN₀, cond_TOKEN₁, ..., cond_TOKENₙ: Conditional base tokens
+ *   - Conditional pool i: cond_TOKENᵢ / cond_SOLᵢ
+ *
+ * THE VAULT (split/merge operations):
+ *   - Base vault split:  1 real TOKEN → 1 cond_TOKEN₀ + 1 cond_TOKEN₁ + ... + 1 cond_TOKENₙ
+ *   - Quote vault split: 1 real SOL   → 1 cond_SOL₀   + 1 cond_SOL₁   + ... + 1 cond_SOLₙ
+ *   - Merge (either):    1 of EACH conditional → 1 real token
+ *
+ * KEY INSIGHT: You can only merge MIN(cond₀, cond₁, ..., condₙ) real tokens
+ * because you need equal amounts of each conditional to merge.
+ *
+ * ============================================================================
+ * ARBITRAGE OPPORTUNITIES
+ * ============================================================================
+ *
+ * ABOVE (all conditionals priced above spot):
+ *   1. Buy real TOKEN with real SOL (spot pool)
+ *   2. Split real TOKEN → cond_TOKEN in each market (base vault)
+ *   3. Sell cond_TOKEN for cond_SOL in each conditional pool
+ *   4. Merge cond_SOL → real SOL (quote vault)
+ *   Profit if: MIN(cond_SOL received) > real SOL spent
+ *
+ * BELOW (all conditionals priced below spot):
+ *   1. Split real SOL → cond_SOL in each market (quote vault)
+ *   2. Buy cond_TOKEN with cond_SOL in each conditional pool
+ *   3. Merge cond_TOKEN → real TOKEN (base vault)
+ *   4. Sell real TOKEN for real SOL (spot pool)
+ *   Profit if: real SOL received > real SOL spent
+ *
+ * ============================================================================
  */
 
 import { Connection, Keypair, PublicKey, Transaction, sendAndConfirmTransaction } from '@solana/web3.js';
@@ -26,7 +63,7 @@ dotenv.config();
 // ============================================================================
 const MODERATOR_ID = 6;
 const PROPOSAL_ID = 9;
-const MIN_PROFIT_BPS = 500;      // 5% minimum profit threshold
+const MIN_PROFIT_BPS = 0;      // 0% minimum profit threshold
 const MAX_SLIPPAGE_BPS = 500;    // 5% max slippage
 const DRY_RUN = true;            // Simulate only by default
 const MAX_TRADE_SOL = 10;        // Maximum SOL to use (safety cap)
@@ -164,21 +201,69 @@ function formatPremium(premium: number): string {
  * Calculate optimal trade size for arbitrage.
  * Uses binary search to find the largest trade where post-trade prices
  * still maintain the arbitrage (all above or all below spot).
+ *
+ * ============================================================================
+ * CONDITIONAL MARKET TOKEN MODEL
+ * ============================================================================
+ *
+ * Each conditional pool trades CONDITIONAL tokens, not real tokens:
+ *   - Conditional pools: cond_TOKEN / cond_SOL (both are conditional!)
+ *   - Spot pool: real TOKEN / real SOL
+ *
+ * The vault provides split/merge operations:
+ *   - Base vault split:  1 real TOKEN → 1 cond_TOKEN₀ + 1 cond_TOKEN₁ + ... + 1 cond_TOKENₙ
+ *   - Quote vault split: 1 real SOL   → 1 cond_SOL₀   + 1 cond_SOL₁   + ... + 1 cond_SOLₙ
+ *   - Merge (either vault): Need 1 of EACH conditional to get 1 real token back
+ *
+ * Key insight: You can only withdraw MIN(cond₀, cond₁, ..., condₙ) real tokens
+ * because you need equal amounts of each conditional to merge.
+ *
+ * ============================================================================
+ * ABOVE ARBITRAGE (all conditionals priced above spot)
+ * ============================================================================
+ *
+ * Flow:
+ *   1. Buy spot tokens with real SOL (spot pool)
+ *   2. Split spot tokens via base vault → get cond_TOKEN in each market
+ *   3. Sell cond_TOKEN for cond_SOL in each conditional pool
+ *   4. Merge cond_SOL via quote vault → get real SOL back
+ *
+ * Profit = MIN(cond_SOL received across all markets) - real SOL spent
+ *
+ * The MIN is critical: if you receive 10, 12, 11, 10.5 cond_SOL from 4 markets,
+ * you can only merge 10 real SOL (the minimum).
+ *
+ * ============================================================================
+ * BELOW ARBITRAGE (all conditionals priced below spot)
+ * ============================================================================
+ *
+ * Flow:
+ *   1. Split real SOL via quote vault → get cond_SOL in each market
+ *   2. Buy cond_TOKEN with cond_SOL in each conditional pool
+ *   3. Merge cond_TOKEN via base vault → get real spot tokens back
+ *   4. Sell spot tokens for real SOL (spot pool)
+ *
+ * Profit = real SOL from selling spot - initial real SOL spent
+ *
+ * Again, you can only merge MIN(cond_TOKEN) across all markets.
  */
 async function calculateOptimalTradeSize(
   cpAmm: CpAmm,
   connection: Connection,
   proposal: ProposalData,
-  spotPrice: Decimal,
+  _spotPrice: Decimal,  // Used for reference, actual profit calculated from quotes
   opportunityType: 'ABOVE' | 'BELOW',
   maxTradeLamports: BN
 ): Promise<{ optimalAmount: BN; expectedProfitLamports: BN }> {
   const quoteMint = new PublicKey(proposal.quoteMint);
+  const baseMint = new PublicKey(proposal.baseMint);
 
-  // Binary search for optimal trade size
-  let low = new BN(1_000_000);  // Min 0.001 SOL
-  let high = maxTradeLamports;
-  let optimalAmount = low;
+  // Search for optimal trade size by sampling across the range
+  // We can't use simple binary search because profit isn't monotonic with size:
+  // - Small trades: high ROI but low absolute profit
+  // - Medium trades: sweet spot with best absolute profit
+  // - Large trades: slippage eats into profits, eventually goes negative
+  let optimalAmount = new BN(1_000_000);
   let bestProfit = new BN(0);
 
   // Get current slot/blocktime once
@@ -186,21 +271,30 @@ async function calculateOptimalTradeSize(
   const blockTime = await connection.getBlockTime(currentSlot);
   if (!blockTime) throw new Error('Failed to get block time');
 
-  while (low.lte(high)) {
-    const mid = low.add(high).div(new BN(2));
+  // Pre-fetch spot pool state (used in both directions)
+  const spotPool = new PublicKey(proposal.spotPoolAddress!);
+  const spotPoolState = await cpAmm.fetchPoolState(spotPool);
 
+  // Generate trade sizes: 0.5, 1.0, 1.5, 2.0, ... up to maxTradeLamports (in 0.5 SOL increments)
+  const tradeSizesToTry: BN[] = [];
+  const incrementLamports = new BN(0.5 * 1e9);  // 0.5 SOL
+  let currentSize = incrementLamports;
+  while (currentSize.lte(maxTradeLamports)) {
+    tradeSizesToTry.push(currentSize);
+    currentSize = currentSize.add(incrementLamports);
+  }
+
+  for (const mid of tradeSizesToTry) {
     try {
       let totalOut = new BN(0);
-      let totalIn = mid;
-      let stillProfitable = true;
+      const totalIn = mid;
 
       if (opportunityType === 'ABOVE') {
-        // ABOVE: We spend SOL to buy spot, split, sell conditionals for SOL
-        // Check: after selling conditionals, do we get more SOL back?
+        // ================================================================
+        // ABOVE: Buy spot → split → sell conditionals → merge cond_SOL
+        // ================================================================
 
-        // First, simulate buying spot tokens
-        const spotPool = new PublicKey(proposal.spotPoolAddress!);
-        const spotPoolState = await cpAmm.fetchPoolState(spotPool);
+        // Step 1: Buy spot tokens with real SOL
         const spotQuote = cpAmm.getQuote({
           inAmount: mid,
           inputTokenMint: quoteMint,
@@ -213,17 +307,22 @@ async function calculateOptimalTradeSize(
         });
         const spotTokensReceived = spotQuote.swapOutAmount;
 
-        // Then simulate selling each conditional
+        // Step 2: Split spot tokens (1:1 ratio - get spotTokensReceived of EACH conditional)
+        // Step 3: Sell each conditional for conditional SOL
+        // Track MINIMUM cond_SOL received - that's what we can merge back to real SOL
+        let minConditionalSolReceived = new BN(Number.MAX_SAFE_INTEGER);
+
         for (const amm of proposal.ammData) {
           if (!amm.pool || amm.state !== 'Trading') continue;
 
           const poolAddress = new PublicKey(amm.pool);
-          const conditionalMint = new PublicKey(amm.baseMint);
+          const conditionalBaseMint = new PublicKey(amm.baseMint);
           const poolState = await cpAmm.fetchPoolState(poolAddress);
 
+          // Sell cond_TOKEN for cond_SOL
           const quote = cpAmm.getQuote({
-            inAmount: spotTokensReceived,  // Sell same amount we split
-            inputTokenMint: conditionalMint,
+            inAmount: spotTokensReceived,  // We have this many of each conditional
+            inputTokenMint: conditionalBaseMint,
             slippage: MAX_SLIPPAGE_BPS / 10000,
             poolState,
             currentTime: blockTime,
@@ -232,30 +331,39 @@ async function calculateOptimalTradeSize(
             tokenBDecimal: amm.quoteDecimals,
           });
 
-          totalOut = totalOut.add(quote.swapOutAmount);
-
-          // Check if post-trade price still above spot
-          const postTradePrice = new Decimal(quote.swapOutAmount.toString())
-            .div(new Decimal(spotTokensReceived.toString()));
-          if (postTradePrice.lte(spotPrice)) {
-            stillProfitable = false;
+          // Track minimum - this is our merge bottleneck
+          if (quote.swapOutAmount.lt(minConditionalSolReceived)) {
+            minConditionalSolReceived = quote.swapOutAmount;
           }
         }
+
+        // Step 4: Merge cond_SOL to real SOL - limited by minimum received
+        totalOut = minConditionalSolReceived;
+
       } else {
-        // BELOW: We spend SOL to buy conditionals, merge to spot
-        const solPerMarket = mid.div(new BN(proposal.markets));
-        let minConditionalReceived = new BN(Number.MAX_SAFE_INTEGER);
+        // ================================================================
+        // BELOW: Split real SOL → buy conditionals → merge → sell spot
+        // ================================================================
+
+        // Step 1: Split real SOL into conditional SOL (1:1 ratio)
+        // We get 'mid' amount of cond_SOL in EACH market
+        const conditionalSolPerMarket = mid;
+
+        // Step 2: Buy conditional tokens with conditional SOL in each market
+        // Track MINIMUM cond_TOKEN received - that's what we can merge
+        let minConditionalTokensReceived = new BN(Number.MAX_SAFE_INTEGER);
 
         for (const amm of proposal.ammData) {
           if (!amm.pool || amm.state !== 'Trading') continue;
 
           const poolAddress = new PublicKey(amm.pool);
-          const conditionalMint = new PublicKey(amm.baseMint);
+          const conditionalQuoteMint = new PublicKey(amm.quoteMint);
           const poolState = await cpAmm.fetchPoolState(poolAddress);
 
+          // Buy cond_TOKEN with cond_SOL
           const quote = cpAmm.getQuote({
-            inAmount: solPerMarket,
-            inputTokenMint: quoteMint,
+            inAmount: conditionalSolPerMarket,
+            inputTokenMint: conditionalQuoteMint,  // cond_SOL
             slippage: MAX_SLIPPAGE_BPS / 10000,
             poolState,
             currentTime: blockTime,
@@ -264,42 +372,48 @@ async function calculateOptimalTradeSize(
             tokenBDecimal: amm.quoteDecimals,
           });
 
-          if (quote.swapOutAmount.lt(minConditionalReceived)) {
-            minConditionalReceived = quote.swapOutAmount;
-          }
-
-          // Check if post-trade price still below spot
-          const postTradePrice = new Decimal(solPerMarket.toString())
-            .div(new Decimal(quote.swapOutAmount.toString()));
-          if (postTradePrice.gte(spotPrice)) {
-            stillProfitable = false;
+          // Track minimum - this is our merge bottleneck
+          if (quote.swapOutAmount.lt(minConditionalTokensReceived)) {
+            minConditionalTokensReceived = quote.swapOutAmount;
           }
         }
 
-        // After merge, we have minConditionalReceived spot tokens
-        // Value in SOL = minConditionalReceived * spotPrice
-        totalOut = new BN(
-          new Decimal(minConditionalReceived.toString())
-            .mul(spotPrice)
-            .floor()
-            .toString()
-        );
+        // Step 3: Merge conditional tokens to spot tokens
+        const spotTokensFromMerge = minConditionalTokensReceived;
+
+        // Step 4: Sell spot tokens for real SOL
+        const sellSpotQuote = cpAmm.getQuote({
+          inAmount: spotTokensFromMerge,
+          inputTokenMint: baseMint,
+          slippage: MAX_SLIPPAGE_BPS / 10000,
+          poolState: spotPoolState,
+          currentTime: blockTime,
+          currentSlot,
+          tokenADecimal: proposal.baseDecimals,
+          tokenBDecimal: proposal.quoteDecimals,
+        });
+
+        totalOut = sellSpotQuote.swapOutAmount;
       }
 
       const profit = totalOut.sub(totalIn);
+      const roi = totalIn.gt(new BN(0))
+        ? new Decimal(profit.toString()).div(new Decimal(totalIn.toString())).mul(100).toNumber()
+        : 0;
 
-      if (stillProfitable && profit.gt(new BN(0))) {
-        if (profit.gt(bestProfit)) {
-          bestProfit = profit;
-          optimalAmount = mid;
-        }
-        low = mid.add(new BN(1));
-      } else {
-        high = mid.sub(new BN(1));
+      // Track the trade size with the best absolute profit
+      if (profit.gt(bestProfit)) {
+        bestProfit = profit;
+        optimalAmount = mid;
       }
+
+      // Log each sample for debugging
+      const solIn = new Decimal(mid.toString()).div(1e9).toFixed(2);
+      const profitSol = new Decimal(profit.toString()).div(1e9).toFixed(6);
+      console.log(`  ${solIn} SOL → profit: ${profitSol} SOL (${roi.toFixed(2)}%)`);
     } catch {
-      // If simulation fails at this size, try smaller
-      high = mid.sub(new BN(1));
+      // If simulation fails at this size, skip it
+      continue;
     }
   }
 
@@ -362,6 +476,33 @@ async function getQuoteAndBuildSwap(
   return { tx, expectedOut: quote.swapOutAmount };
 }
 
+/**
+ * Execute ABOVE arbitrage: conditionals are priced above spot.
+ *
+ * Flow:
+ *   1. Buy spot tokens with real SOL (spot pool)
+ *   2. Split spot tokens via base vault → get cond_TOKEN in each market
+ *   3. Sell cond_TOKEN for cond_SOL in each conditional pool
+ *   4. Merge cond_SOL via quote vault → get real SOL back
+ *
+ * Profit = real SOL withdrawn - real SOL spent
+ *
+ * Example (3 markets, conditionals at ~10% premium to spot):
+ *   - Spot price: 0.08 SOL per TOKEN
+ *   - Conditional price: ~0.088 cond_SOL per cond_TOKEN (10% above spot)
+ *
+ *   Step 1: Spend 8 real SOL → buy 100 SPOT tokens
+ *   Step 2: Split 100 SPOT → 100 cond_SPOT₀ + 100 cond_SPOT₁ + 100 cond_SPOT₂
+ *   Step 3: Sell each conditional for cond_SOL (at the premium price):
+ *           - 100 cond_SPOT₀ × 0.088 → 8.8 cond_SOL₀
+ *           - 100 cond_SPOT₁ × 0.086 → 8.6 cond_SOL₁
+ *           - 100 cond_SPOT₂ × 0.090 → 9.0 cond_SOL₂
+ *   Step 4: Merge MIN(8.8, 8.6, 9.0) = 8.6 of each → 8.6 real SOL
+ *   Profit: 8.6 - 8.0 = 0.6 SOL (7.5%)
+ *
+ * The key: when conditionals trade at a premium to spot, selling gives you
+ * more cond_SOL per token than you paid in real SOL per token.
+ */
 async function executeAboveArbitrage(
   connection: Connection,
   cpAmm: CpAmm,
@@ -377,15 +518,17 @@ async function executeAboveArbitrage(
   const quoteMint = new PublicKey(proposal.quoteMint);
 
   try {
-    // Step 1: Swap SOL -> spot tokens on spot pool
-    console.log('\n  Step 1: Swapping SOL -> spot tokens on spot pool...');
+    // ========================================================================
+    // Step 1: Buy spot tokens with real SOL (spot pool)
+    // ========================================================================
+    console.log('\n  Step 1: Buying spot tokens with real SOL...');
     const { tx: buySpotTx, expectedOut: spotTokensOut } = await getQuoteAndBuildSwap(
       cpAmm,
       connection,
       spotPoolAddress,
       signer.publicKey,
-      quoteMint,  // SOL is quote
-      baseMint,   // Base token is what we want
+      quoteMint,  // real SOL
+      baseMint,   // real SPOT token
       tradeAmountLamports,
       MAX_SLIPPAGE_BPS,
       proposal.baseDecimals,
@@ -398,10 +541,14 @@ async function executeAboveArbitrage(
     });
     signatures.push(sig1);
     console.log(`    Tx: ${sig1}`);
-    console.log(`    Received ~${spotTokensOut.toString()} spot tokens`);
+    console.log(`    Spent ${new Decimal(tradeAmountLamports.toString()).div(1e9).toFixed(4)} real SOL`);
+    console.log(`    Received ${spotTokensOut.toString()} spot tokens`);
 
-    // Step 2: Split spot tokens into conditionals via vault deposit
-    console.log('\n  Step 2: Splitting spot tokens into conditionals...');
+    // ========================================================================
+    // Step 2: Split spot tokens into conditionals via base vault
+    // Result: spotTokensOut of EACH conditional token type
+    // ========================================================================
+    console.log('\n  Step 2: Splitting spot tokens into conditionals (base vault deposit)...');
     const depositBuilder = await vaultClient.deposit(
       signer.publicKey,
       vaultPDA,
@@ -411,35 +558,45 @@ async function executeAboveArbitrage(
     const sig2 = await depositBuilder.rpc();
     signatures.push(sig2);
     console.log(`    Tx: ${sig2}`);
-    console.log(`    Split into ${proposal.markets} conditional tokens`);
+    console.log(`    Split ${spotTokensOut.toString()} SPOT → ${spotTokensOut.toString()} of EACH conditional token`);
 
-    // Step 3: Sell each conditional token for SOL
-    console.log('\n  Step 3: Selling conditional tokens for SOL...');
+    // ========================================================================
+    // Step 3: Sell each conditional token for conditional SOL
+    // Each pool trades cond_TOKEN / cond_SOL
+    // Track the minimum cond_SOL received (merge bottleneck)
+    // ========================================================================
+    console.log('\n  Step 3: Selling conditional tokens for conditional SOL...');
+    const conditionalSolAmounts: BN[] = [];
+
     for (let i = 0; i < proposal.ammData.length; i++) {
       const amm = proposal.ammData[i];
       const label = proposal.marketLabels?.[i] || `Market ${i}`;
 
       if (!amm.pool || amm.state !== 'Trading') {
         console.log(`    ${label}: Skipping (not trading)`);
+        conditionalSolAmounts.push(new BN(0));
         continue;
       }
 
-      const conditionalMint = new PublicKey(amm.baseMint);
+      const conditionalBaseMint = new PublicKey(amm.baseMint);
+      const conditionalQuoteMint = new PublicKey(amm.quoteMint);
       const poolAddress = new PublicKey(amm.pool);
 
-      console.log(`    ${label}: Selling conditional -> SOL...`);
-      const { tx: sellCondTx } = await getQuoteAndBuildSwap(
+      console.log(`    ${label}: Selling cond_TOKEN → cond_SOL...`);
+      const { tx: sellCondTx, expectedOut } = await getQuoteAndBuildSwap(
         cpAmm,
         connection,
         poolAddress,
         signer.publicKey,
-        conditionalMint,  // Conditional token
-        quoteMint,        // SOL
-        spotTokensOut,    // Same amount we split
+        conditionalBaseMint,   // cond_TOKEN (selling)
+        conditionalQuoteMint,  // cond_SOL (receiving)
+        spotTokensOut,         // Same amount we split (1:1 ratio)
         MAX_SLIPPAGE_BPS,
         amm.baseDecimals,
         amm.quoteDecimals
       );
+
+      conditionalSolAmounts.push(expectedOut);
 
       sellCondTx.sign(signer);
       const sig = await sendAndConfirmTransaction(connection, sellCondTx, [signer], {
@@ -447,7 +604,40 @@ async function executeAboveArbitrage(
       });
       signatures.push(sig);
       console.log(`      Tx: ${sig}`);
+      console.log(`      Received ${expectedOut.toString()} cond_SOL_${i}`);
     }
+
+    // ========================================================================
+    // Step 4: Merge conditional SOL into real SOL via quote vault
+    // Can only merge MIN across all markets
+    // ========================================================================
+    const minCondSol = conditionalSolAmounts
+      .filter(amt => amt.gt(new BN(0)))
+      .reduce((min, amt) => BN.min(min, amt), conditionalSolAmounts[0]);
+
+    console.log('\n  Step 4: Merging conditional SOL into real SOL (quote vault withdraw)...');
+    console.log(`    cond_SOL amounts: [${conditionalSolAmounts.map(a => a.toString()).join(', ')}]`);
+    console.log(`    Merging MIN = ${minCondSol.toString()} of each → ${minCondSol.toString()} real SOL`);
+
+    const withdrawBuilder = await vaultClient.withdraw(
+      signer.publicKey,
+      vaultPDA,
+      VaultType.Quote,  // Quote vault for SOL
+      minCondSol
+    );
+    const sig4 = await withdrawBuilder.rpc();
+    signatures.push(sig4);
+    console.log(`    Tx: ${sig4}`);
+
+    // Calculate profit
+    const profitLamports = minCondSol.sub(tradeAmountLamports);
+    const profitSol = new Decimal(profitLamports.toString()).div(1e9);
+    const profitPercent = profitSol.div(new Decimal(tradeAmountLamports.toString()).div(1e9)).mul(100);
+
+    console.log('\n  Summary:');
+    console.log(`    Spent: ${new Decimal(tradeAmountLamports.toString()).div(1e9).toFixed(6)} real SOL`);
+    console.log(`    Received: ${new Decimal(minCondSol.toString()).div(1e9).toFixed(6)} real SOL`);
+    console.log(`    Profit: ${profitSol.toFixed(6)} SOL (${profitPercent.toFixed(2)}%)`);
 
     return { success: true, signatures };
   } catch (error) {
@@ -459,6 +649,30 @@ async function executeAboveArbitrage(
   }
 }
 
+/**
+ * Execute BELOW arbitrage: conditionals are priced below spot.
+ *
+ * Flow:
+ *   1. Split real SOL via quote vault → get cond_SOL in each market
+ *   2. Buy cond_TOKEN with cond_SOL in each conditional pool
+ *   3. Merge cond_TOKEN via base vault → get real SPOT tokens back
+ *   4. Sell real SPOT tokens for real SOL (spot pool)
+ *
+ * Profit = real SOL from selling spot - initial real SOL spent
+ *
+ * Example with 3 markets (conditionals trading at 10% discount):
+ *   - Deposit 10 real SOL into quote vault
+ *   - Get 10 cond_SOL₀ + 10 cond_SOL₁ + 10 cond_SOL₂
+ *   - Buy with 10 cond_SOL₀ → 110 cond_TOKEN₀ (10% more tokens due to discount)
+ *   - Buy with 10 cond_SOL₁ → 108 cond_TOKEN₁
+ *   - Buy with 10 cond_SOL₂ → 112 cond_TOKEN₂
+ *   - Merge MIN(110, 108, 112) = 108 of each → 108 real SPOT tokens
+ *   - Sell 108 SPOT on spot pool → 10.8 real SOL (if spot price = 0.1 SOL/token)
+ *   - Profit: 10.8 - 10 = 0.8 real SOL (8%)
+ *
+ * The key is: when conditionals trade at a DISCOUNT to spot, buying them
+ * with cond_SOL yields more tokens than the equivalent real SOL would buy.
+ */
 async function executeBelowArbitrage(
   connection: Connection,
   cpAmm: CpAmm,
@@ -469,16 +683,36 @@ async function executeBelowArbitrage(
 ): Promise<ExecutionResult> {
   const signatures: string[] = [];
   const vaultPDA = new PublicKey(proposal.vaultPDA);
+  const spotPoolAddress = new PublicKey(proposal.spotPoolAddress!);
+  const baseMint = new PublicKey(proposal.baseMint);
   const quoteMint = new PublicKey(proposal.quoteMint);
 
   try {
-    // Calculate SOL per market (divide among all conditional purchases)
-    const solPerMarket = tradeAmountLamports.div(new BN(proposal.markets));
-    let minConditionalReceived = new BN(Number.MAX_SAFE_INTEGER);
+    // ========================================================================
+    // Step 1: Split real SOL into conditional SOL via quote vault
+    // Result: tradeAmountLamports of cond_SOL in EACH market
+    // ========================================================================
+    console.log('\n  Step 1: Splitting real SOL into conditional SOL (quote vault deposit)...');
+    console.log(`    Depositing ${new Decimal(tradeAmountLamports.toString()).div(1e9).toFixed(4)} real SOL`);
 
-    // Step 1: Buy each conditional token with SOL
-    console.log('\n  Step 1: Buying conditional tokens with SOL...');
-    const conditionalAmounts: BN[] = [];
+    const depositBuilder = await vaultClient.deposit(
+      signer.publicKey,
+      vaultPDA,
+      VaultType.Quote,  // Quote vault for SOL
+      tradeAmountLamports
+    );
+    const sig1 = await depositBuilder.rpc();
+    signatures.push(sig1);
+    console.log(`    Tx: ${sig1}`);
+    console.log(`    Split into ${tradeAmountLamports.toString()} cond_SOL in EACH market`);
+
+    // ========================================================================
+    // Step 2: Buy conditional tokens with conditional SOL in each market
+    // Each pool trades cond_TOKEN / cond_SOL
+    // Track minimum cond_TOKEN received (merge bottleneck)
+    // ========================================================================
+    console.log('\n  Step 2: Buying conditional tokens with conditional SOL...');
+    const conditionalTokenAmounts: BN[] = [];
 
     for (let i = 0; i < proposal.ammData.length; i++) {
       const amm = proposal.ammData[i];
@@ -486,31 +720,29 @@ async function executeBelowArbitrage(
 
       if (!amm.pool || amm.state !== 'Trading') {
         console.log(`    ${label}: Skipping (not trading)`);
-        conditionalAmounts.push(new BN(0));
+        conditionalTokenAmounts.push(new BN(0));
         continue;
       }
 
-      const conditionalMint = new PublicKey(amm.baseMint);
+      const conditionalBaseMint = new PublicKey(amm.baseMint);
+      const conditionalQuoteMint = new PublicKey(amm.quoteMint);
       const poolAddress = new PublicKey(amm.pool);
 
-      console.log(`    ${label}: Buying conditional with ${solPerMarket.toString()} lamports...`);
+      console.log(`    ${label}: Buying cond_TOKEN with cond_SOL...`);
       const { tx: buyCondTx, expectedOut } = await getQuoteAndBuildSwap(
         cpAmm,
         connection,
         poolAddress,
         signer.publicKey,
-        quoteMint,        // SOL
-        conditionalMint,  // Conditional token
-        solPerMarket,
+        conditionalQuoteMint,  // cond_SOL (spending)
+        conditionalBaseMint,   // cond_TOKEN (receiving)
+        tradeAmountLamports,   // Same amount we split (1:1 ratio per market)
         MAX_SLIPPAGE_BPS,
         amm.baseDecimals,
         amm.quoteDecimals
       );
 
-      conditionalAmounts.push(expectedOut);
-      if (expectedOut.lt(minConditionalReceived)) {
-        minConditionalReceived = expectedOut;
-      }
+      conditionalTokenAmounts.push(expectedOut);
 
       buyCondTx.sign(signer);
       const sig = await sendAndConfirmTransaction(connection, buyCondTx, [signer], {
@@ -518,26 +750,65 @@ async function executeBelowArbitrage(
       });
       signatures.push(sig);
       console.log(`      Tx: ${sig}`);
-      console.log(`      Received ~${expectedOut.toString()} conditional tokens`);
+      console.log(`      Received ${expectedOut.toString()} cond_TOKEN_${i}`);
     }
 
-    // Step 2: Merge conditionals into spot via vault withdraw
-    // We can only merge the minimum amount we have of all conditionals
-    console.log('\n  Step 2: Merging conditionals into spot tokens...');
-    console.log(`    Merging ${minConditionalReceived.toString()} of each conditional`);
+    // ========================================================================
+    // Step 3: Merge conditional tokens into real SPOT tokens via base vault
+    // Can only merge MIN across all markets
+    // ========================================================================
+    const minCondTokens = conditionalTokenAmounts
+      .filter(amt => amt.gt(new BN(0)))
+      .reduce((min, amt) => BN.min(min, amt), conditionalTokenAmounts[0]);
+
+    console.log('\n  Step 3: Merging conditional tokens into real SPOT tokens (base vault withdraw)...');
+    console.log(`    cond_TOKEN amounts: [${conditionalTokenAmounts.map(a => a.toString()).join(', ')}]`);
+    console.log(`    Merging MIN = ${minCondTokens.toString()} of each → ${minCondTokens.toString()} real SPOT`);
 
     const withdrawBuilder = await vaultClient.withdraw(
       signer.publicKey,
       vaultPDA,
-      VaultType.Base,
-      minConditionalReceived
+      VaultType.Base,  // Base vault for SPOT tokens
+      minCondTokens
     );
-    const sig2 = await withdrawBuilder.rpc();
-    signatures.push(sig2);
-    console.log(`    Tx: ${sig2}`);
+    const sig3 = await withdrawBuilder.rpc();
+    signatures.push(sig3);
+    console.log(`    Tx: ${sig3}`);
 
-    // Step 3: (Optional) Could sell spot for SOL here, or just hold
-    console.log('\n  Step 3: Holding spot tokens (not selling back to SOL)');
+    // ========================================================================
+    // Step 4: Sell real SPOT tokens for real SOL (spot pool)
+    // ========================================================================
+    console.log('\n  Step 4: Selling real SPOT tokens for real SOL...');
+    const { tx: sellSpotTx, expectedOut: solReceived } = await getQuoteAndBuildSwap(
+      cpAmm,
+      connection,
+      spotPoolAddress,
+      signer.publicKey,
+      baseMint,   // real SPOT (selling)
+      quoteMint,  // real SOL (receiving)
+      minCondTokens,
+      MAX_SLIPPAGE_BPS,
+      proposal.baseDecimals,
+      proposal.quoteDecimals
+    );
+
+    sellSpotTx.sign(signer);
+    const sig4 = await sendAndConfirmTransaction(connection, sellSpotTx, [signer], {
+      commitment: 'confirmed',
+    });
+    signatures.push(sig4);
+    console.log(`    Tx: ${sig4}`);
+    console.log(`    Received ${new Decimal(solReceived.toString()).div(1e9).toFixed(6)} real SOL`);
+
+    // Calculate profit
+    const profitLamports = solReceived.sub(tradeAmountLamports);
+    const profitSol = new Decimal(profitLamports.toString()).div(1e9);
+    const profitPercent = profitSol.div(new Decimal(tradeAmountLamports.toString()).div(1e9)).mul(100);
+
+    console.log('\n  Summary:');
+    console.log(`    Spent: ${new Decimal(tradeAmountLamports.toString()).div(1e9).toFixed(6)} real SOL`);
+    console.log(`    Received: ${new Decimal(solReceived.toString()).div(1e9).toFixed(6)} real SOL`);
+    console.log(`    Profit: ${profitSol.toFixed(6)} SOL (${profitPercent.toFixed(2)}%)`);
 
     return { success: true, signatures };
   } catch (error) {
@@ -690,9 +961,13 @@ async function main() {
     process.exit(0);
   }
 
-  // Calculate optimal trade size
+  // Calculate optimal trade size based on wallet balance
   console.log('\n--- Calculating Optimal Trade Size ---');
-  const maxTradeLamports = new BN(MAX_TRADE_SOL * 1e9);
+  const walletBalance = await connection.getBalance(wallet_keypair.publicKey);
+  const maxWalletUsage = new BN(walletBalance).mul(new BN(95)).div(new BN(100));  // 95% of balance
+  const maxTradeLamports = BN.min(maxWalletUsage, new BN(MAX_TRADE_SOL * 1e9));   // Cap at MAX_TRADE_SOL
+  console.log(`Wallet Balance: ${new Decimal(walletBalance.toString()).div(1e9).toFixed(4)} SOL`);
+  console.log(`Max Trade (95% of balance, capped at ${MAX_TRADE_SOL} SOL): ${new Decimal(maxTradeLamports.toString()).div(1e9).toFixed(4)} SOL`);
 
   const { optimalAmount, expectedProfitLamports } = await calculateOptimalTradeSize(
     cpAmm,
@@ -723,7 +998,7 @@ async function main() {
 
   // Execute arbitrage
   console.log('\n--- Trade Execution ---');
-  const tradeAmountLamports = optimalAmount;
+  console.log(`Trade Amount: ${optimalSol.toFixed(4)} SOL`);
 
   let result: ExecutionResult;
   if (opportunity.type === 'ABOVE') {
@@ -734,7 +1009,7 @@ async function main() {
       vaultClient,
       wallet_keypair,
       proposal,
-      tradeAmountLamports
+      optimalAmount
     );
   } else {
     console.log('Executing BELOW arbitrage (buy conditionals, merge to spot)...');
@@ -744,7 +1019,7 @@ async function main() {
       vaultClient,
       wallet_keypair,
       proposal,
-      tradeAmountLamports
+      optimalAmount
     );
   }
 
