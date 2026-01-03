@@ -120,6 +120,9 @@ function MarqueeText({ children, isSelected, className, style }: {
 }
 
 export function ModeToggle({ marketLabels, marketCaps, livePrices, timeElapsedPercent, selectedIndex, onSelect, solPrice }: ModeToggleProps) {
+  // Check if TWAP data has loaded (at least one non-null value)
+  const hasTwapData = marketCaps.some(cap => cap != null);
+
   // Convert current TWAPs from SOL to USD (for display)
   const marketCapsUsd = marketCaps.map(cap =>
     cap != null && solPrice ? cap * solPrice : null
@@ -144,13 +147,17 @@ export function ModeToggle({ marketLabels, marketCaps, livePrices, timeElapsedPe
   const maxSigDigits = Math.min(getMaxSigDigits(marketCapsUsd), 4);
 
   // Sort indices by expected final TWAP (highest first) for ranking display
-  const sortedIndices = marketLabels
-    .map((_, index) => index)
-    .sort((a, b) => {
-      const aVal = expectedFinalTwapsUsd[a] ?? -Infinity;
-      const bVal = expectedFinalTwapsUsd[b] ?? -Infinity;
-      return bVal - aVal; // Descending order
-    });
+  // Falls back to current TWAP when live prices aren't loaded yet to avoid reordering flicker
+  // Don't sort at all until TWAP data exists - prevents index→sorted flicker
+  const sortedIndices = hasTwapData
+    ? marketLabels
+        .map((_, index) => index)
+        .sort((a, b) => {
+          const aVal = expectedFinalTwapsUsd[a] ?? marketCapsUsd[a] ?? -Infinity;
+          const bVal = expectedFinalTwapsUsd[b] ?? marketCapsUsd[b] ?? -Infinity;
+          return bVal - aVal; // Descending order
+        })
+    : marketLabels.map((_, index) => index);
 
   return (
     <div className="bg-[#121212] border border-[#191919] rounded-[9px] py-4 px-5 transition-all duration-300">
@@ -159,7 +166,15 @@ export function ModeToggle({ marketLabels, marketCaps, livePrices, timeElapsedPe
           II. Select Coin (TWAP)
         </span>
         <div className="border border-[#191919] rounded-[6px] py-4 px-6 flex flex-col gap-3 w-full">
-          {sortedIndices.map((originalIndex, rank) => {
+          {!hasTwapData ? (
+            // Loading skeleton - show placeholder rows until TWAP data loads
+            marketLabels.map((_, index) => (
+              <div key={index} className="flex items-center justify-between select-none">
+                <div className="h-6 bg-[#2a2a2a] rounded animate-pulse flex-1 mr-3" style={{ maxWidth: '200px' }} />
+                <div className="w-5 h-5 rounded-full border-2 border-[#2a2a2a]" />
+              </div>
+            ))
+          ) : sortedIndices.map((originalIndex, rank) => {
             const label = marketLabels[originalIndex];
             const isSelected = selectedIndex === originalIndex;
             const marketCapUsd = marketCapsUsd[originalIndex];
