@@ -122,8 +122,9 @@ function MarqueeText({ children, isSelected, className, style }: {
 export function ModeToggle({ marketLabels, marketCaps, livePrices, timeElapsedPercent, selectedIndex, onSelect, solPrice }: ModeToggleProps) {
   // Check if all data has loaded (need TWAP, live prices, and SOL price to compute expected TWAP in USD)
   // Show skeleton until all are ready to avoid reordering flicker
+  // Use .every() for livePrices because WebSocket sends prices one market at a time
   const hasTwapData = marketCaps.some(cap => cap != null);
-  const hasLivePrices = livePrices.some(price => price != null);
+  const hasLivePrices = livePrices.length > 0 && livePrices.every(price => price != null);
   const hasSolPrice = solPrice != null;
   const hasAllData = hasTwapData && hasLivePrices && hasSolPrice;
 
