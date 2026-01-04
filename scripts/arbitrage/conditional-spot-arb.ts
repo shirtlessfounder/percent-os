@@ -98,6 +98,14 @@ interface ProposalData {
     positionNft?: string;
   }>;
   vaultPDA: string;
+  createdAt: number;    // Unix timestamp
+  finalizedAt: number;  // Unix timestamp (when voting ends)
+}
+
+interface TWAPData {
+  twaps: number[];        // Current TWAP values (as decimals, e.g., 0.45 = 45%)
+  aggregations: number[]; // Cumulative aggregation values
+  timestamp: string;
 }
 
 type OpportunityType = 'ABOVE' | 'BELOW' | 'NONE';
@@ -132,6 +140,38 @@ async function fetchProposalData(moderatorId: number, proposalId: number): Promi
   }
 
   return response.json() as Promise<ProposalData>;
+}
+
+interface TWAPResponse {
+  data: Array<{
+    twaps: string[];
+    aggregations: string[];
+    timestamp: string;
+  }>;
+}
+
+async function fetchTWAPData(moderatorId: number, proposalId: number): Promise<TWAPData | null> {
+  const url = `${API_BASE_URL}/api/history/${proposalId}/twap?moderatorId=${moderatorId}`;
+
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = await response.json() as TWAPResponse;
+    if (data.data && data.data.length > 0) {
+      const latest = data.data[0];
+      return {
+        twaps: (latest.twaps || []).map((t: string) => parseFloat(t)),
+        aggregations: (latest.aggregations || []).map((a: string) => parseFloat(a)),
+        timestamp: latest.timestamp
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 async function fetchPoolPrice(
@@ -195,6 +235,27 @@ function formatPrice(price: Decimal, decimals: number = 9): string {
 function formatPremium(premium: number): string {
   const sign = premium >= 0 ? '+' : '';
   return `${sign}${premium.toFixed(2)}%`;
+}
+
+/**
+ * Calculate expected final TWAP using the same formula as the UI (ModeToggle.tsx).
+ *
+ * Formula: expectedFinal = currentTwap × elapsed% + spotPrice × remaining%
+ *
+ * This calculates what the TWAP will be at the END of the voting period,
+ * assuming the current spot price is maintained for the remaining time.
+ *
+ * @param currentTwap - The current TWAP value (in SOL)
+ * @param spotPrice - The current spot price (in SOL)
+ * @param timeElapsedPercent - How much of the voting period has elapsed (0.0 to 1.0)
+ */
+function calculateExpectedFinalTWAP(
+  currentTwap: number,
+  spotPrice: Decimal,
+  timeElapsedPercent: number
+): number {
+  const remainingPercent = 1 - timeElapsedPercent;
+  return currentTwap * timeElapsedPercent + spotPrice.toNumber() * remainingPercent;
 }
 
 /**
@@ -903,6 +964,7 @@ async function main() {
   }
 
   // Fetch conditional AMM prices
+  console.log('\nConditional Market Prices (raw SOL):');
   const conditionalPrices: Decimal[] = [];
   for (let i = 0; i < proposal.ammData.length; i++) {
     const amm = proposal.ammData[i];
@@ -937,6 +999,41 @@ async function main() {
   if (conditionalPrices.length !== proposal.markets) {
     console.error(`\nCould not fetch prices for all ${proposal.markets} markets. Got ${conditionalPrices.length}.`);
     process.exit(1);
+  }
+
+  // Calculate time elapsed percentage
+  const now = Date.now();
+  const createdAt = proposal.createdAt;
+  const finalizedAt = proposal.finalizedAt;
+  const totalDuration = finalizedAt - createdAt;
+  const elapsed = now - createdAt;
+  const timeElapsedPercent = Math.min(1, Math.max(0, elapsed / totalDuration));
+  const remainingMs = Math.max(0, finalizedAt - now);
+  const remainingHours = (remainingMs / (1000 * 60 * 60)).toFixed(1);
+
+  console.log(`\n--- Voting Period ---`);
+  console.log(`Time Elapsed: ${(timeElapsedPercent * 100).toFixed(1)}%`);
+  console.log(`Time Remaining: ${remainingHours} hours`);
+
+  // Fetch TWAP data (displayed right after prices for context)
+  console.log('\n--- Current TWAP Values (in SOL) ---');
+  const twapData = await fetchTWAPData(MODERATOR_ID, PROPOSAL_ID);
+  if (twapData) {
+    console.log(`Last Updated: ${twapData.timestamp}`);
+    for (let i = 0; i < twapData.twaps.length; i++) {
+      const label = proposal.marketLabels?.[i] || `Market ${i}`;
+      const currentTwap = twapData.twaps[i];
+      const currentPrice = conditionalPrices[i];
+
+      // Calculate expected final TWAP if current price holds
+      const expectedFinal = calculateExpectedFinalTWAP(currentTwap, currentPrice, timeElapsedPercent);
+
+      console.log(`  ${label}:`);
+      console.log(`    Current TWAP:       ${formatPrice(new Decimal(currentTwap), 12)} SOL`);
+      console.log(`    Expected Final:     ${formatPrice(new Decimal(expectedFinal), 12)} SOL (if price holds)`);
+    }
+  } else {
+    console.log('  No TWAP data available yet');
   }
 
   // Detect opportunity
