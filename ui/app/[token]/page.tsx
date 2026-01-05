@@ -83,6 +83,7 @@ export default function HomePage() {
 
   const [selectedProposalId, setSelectedProposalId] = useState<number | null>(null);
   const [selectedMarketIndex, setSelectedMarketIndex] = useState<number>(1); // Default to index 1 (first choice)
+  const [isProposalModalOpen, setIsProposalModalOpen] = useState(false);
 
   // Reset selected proposal when token changes to prevent stale data display
   useEffect(() => {
@@ -343,8 +344,6 @@ export default function HomePage() {
                                 </div>
                               </div>
                             </div>
-                          </div>
-                        );
 
                             {/* Modal Popup */}
                             {isProposalModalOpen && (
