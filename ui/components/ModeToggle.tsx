@@ -50,7 +50,9 @@ const getMaxSigDigits = (values: (number | null)[]): number => {
 
 interface ModeToggleProps {
   marketLabels: string[];
-  marketCaps: (number | null)[];
+  marketCaps: (number | null)[];       // Current TWAP values
+  livePrices: (number | null)[];       // Current spot prices
+  timeElapsedPercent: number;          // 0-1 representing market progress
   selectedIndex: number;
   onSelect: (index: number) => void;
   solPrice?: number | null;
@@ -117,23 +119,49 @@ function MarqueeText({ children, isSelected, className, style }: {
   );
 }
 
-export function ModeToggle({ marketLabels, marketCaps, selectedIndex, onSelect, solPrice }: ModeToggleProps) {
-  // Convert TWAPs from SOL to USD
+export function ModeToggle({ marketLabels, marketCaps, livePrices, timeElapsedPercent, selectedIndex, onSelect, solPrice }: ModeToggleProps) {
+  // Check if all data has loaded (need TWAP, live prices, and SOL price to compute expected TWAP in USD)
+  // Show skeleton until all are ready to avoid reordering flicker
+  // Use .every() for livePrices because WebSocket sends prices one market at a time
+  const hasTwapData = marketCaps.some(cap => cap != null);
+  const hasLivePrices = livePrices.length > 0 && livePrices.every(price => price != null);
+  const hasSolPrice = solPrice != null;
+  const hasAllData = hasTwapData && hasLivePrices && hasSolPrice;
+
+  // Convert current TWAPs from SOL to USD (for display)
   const marketCapsUsd = marketCaps.map(cap =>
     cap != null && solPrice ? cap * solPrice : null
+  );
+
+  // Calculate expected final TWAP for each market (for sorting)
+  // Formula: expectedFinal = currentTwap × elapsed% + spotPrice × remaining%
+  const expectedFinalTwaps = marketCaps.map((twap, i) => {
+    const spotPrice = livePrices[i];
+    if (twap == null || spotPrice == null) return null;
+
+    const remainingPercent = 1 - timeElapsedPercent;
+    return twap * timeElapsedPercent + spotPrice * remainingPercent;
+  });
+
+  // Convert expected final TWAPs from SOL to USD (for sorting)
+  const expectedFinalTwapsUsd = expectedFinalTwaps.map(twap =>
+    twap != null && solPrice ? twap * solPrice : null
   );
 
   // Calculate max significant digits across all values for consistent formatting (capped at 4)
   const maxSigDigits = Math.min(getMaxSigDigits(marketCapsUsd), 4);
 
-  // Sort indices by TWAP (highest first) for ranking display
-  const sortedIndices = marketLabels
-    .map((_, index) => index)
-    .sort((a, b) => {
-      const aVal = marketCapsUsd[a] ?? -Infinity;
-      const bVal = marketCapsUsd[b] ?? -Infinity;
-      return bVal - aVal; // Descending order
-    });
+  // Sort indices by expected final TWAP (highest first) for ranking display
+  // Only sort once we have all data to avoid reordering flicker
+  const sortedIndices = hasAllData
+    ? marketLabels
+        .map((_, index) => index)
+        .sort((a, b) => {
+          const aVal = expectedFinalTwapsUsd[a] ?? -Infinity;
+          const bVal = expectedFinalTwapsUsd[b] ?? -Infinity;
+          return bVal - aVal; // Descending order
+        })
+    : marketLabels.map((_, index) => index);
 
   return (
     <div className="bg-[#121212] border border-[#191919] rounded-[9px] py-4 px-5 transition-all duration-300">
@@ -142,7 +170,15 @@ export function ModeToggle({ marketLabels, marketCaps, selectedIndex, onSelect, 
           II. Select Coin (TWAP)
         </span>
         <div className="border border-[#191919] rounded-[6px] py-4 px-6 flex flex-col gap-3 w-full">
-          {sortedIndices.map((originalIndex, rank) => {
+          {!hasAllData ? (
+            // Loading skeleton - show placeholder rows until all data loads
+            marketLabels.map((_, index) => (
+              <div key={index} className="flex items-center justify-between select-none">
+                <div className="h-6 bg-[#2a2a2a] rounded animate-pulse flex-1 mr-3" style={{ maxWidth: '200px' }} />
+                <div className="w-5 h-5 rounded-full border-2 border-[#2a2a2a]" />
+              </div>
+            ))
+          ) : sortedIndices.map((originalIndex, rank) => {
             const label = marketLabels[originalIndex];
             const isSelected = selectedIndex === originalIndex;
             const marketCapUsd = marketCapsUsd[originalIndex];

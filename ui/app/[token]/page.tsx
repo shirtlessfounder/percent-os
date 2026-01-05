@@ -62,20 +62,8 @@ export default function HomePage() {
   );
   const [livePrices, setLivePrices] = useState<(number | null)[]>([]);
   const [twapData, setTwapData] = useState<(number | null)[]>([]);
-  const [isProposalModalOpen, setIsProposalModalOpen] = useState(false);
+  const [isLiveProposalHovered, setIsLiveProposalHovered] = useState(false);
   const [isPassMode, setIsPassMode] = useState(true);
-
-  // Handle ESC key to close modal
-  useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isProposalModalOpen) {
-        setIsProposalModalOpen(false);
-      }
-    };
-
-    document.addEventListener('keydown', handleEsc);
-    return () => document.removeEventListener('keydown', handleEsc);
-  }, [isProposalModalOpen]);
 
   // Fetch wallet balances for current token
   const { sol: solBalance, baseToken: baseTokenBalance, refetch: refetchWalletBalances } = useWalletBalances({
@@ -215,6 +203,31 @@ export default function HomePage() {
     return null;
   }, [twapData]);
 
+  // Calculate time elapsed percentage for expected final TWAP projection
+  // Updates every 10 seconds to keep projection current
+  const [timeElapsedPercent, setTimeElapsedPercent] = useState(0);
+
+  useEffect(() => {
+    const calculateElapsed = () => {
+      if (!proposal) return 0;
+      const now = Date.now();
+      const start = proposal.createdAt;
+      const end = proposal.finalizedAt;
+      const elapsed = now - start;
+      const total = end - start;
+      if (total <= 0) return 1;
+      return Math.min(1, Math.max(0, elapsed / total));
+    };
+
+    setTimeElapsedPercent(calculateElapsed());
+
+    const interval = setInterval(() => {
+      setTimeElapsedPercent(calculateElapsed());
+    }, 10000); // Update every 10 seconds
+
+    return () => clearInterval(interval);
+  }, [proposal]);
+
   // Show loading state while TokenContext or proposals are loading
   if (tokenContextLoading || loading) {
     return (
@@ -331,6 +344,8 @@ export default function HomePage() {
                                 </div>
                               </div>
                             </div>
+                          </div>
+                        );
 
                             {/* Modal Popup */}
                             {isProposalModalOpen && (
@@ -448,6 +463,8 @@ export default function HomePage() {
                       <ModeToggle
                         marketLabels={effectiveMarketLabels}
                         marketCaps={twapData}
+                        livePrices={livePrices}
+                        timeElapsedPercent={timeElapsedPercent}
                         selectedIndex={selectedMarketIndex}
                         onSelect={handleMarketIndexSelect}
                         solPrice={solPrice}
