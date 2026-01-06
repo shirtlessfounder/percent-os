@@ -15,9 +15,39 @@ This is opposed to another server, currently in `./src/*` and yet to be revamped
 6. *Log* failures for future analysis / manual resolution.
 
 ## Endpoints (Key-gated)
-`/status`: Prints basic stats, i.e., what proposals are currently being managed & failures
-`/logs`: Fetch JSON logs
-`/clean`: Clears logs & persistance. 
+
+### `GET /status`
+Returns monitor status and tracked proposals.
+
+```json
+{
+  "monitored": 2,
+  "proposals": [
+    {
+      "pda": "ABC123...",
+      "id": 1,
+      "endsAt": "2025-01-15T12:00:00.000Z",
+      "timeRemaining": 3600000
+    }
+  ]
+}
+```
+
+### `GET /logs?file={lifecycle|server|twap}&limit=50`
+Fetch error logs (newest first, default limit 50, max 500).
+
+```json
+{
+  "file": "lifecycle",
+  "count": 2,
+  "entries": [
+    { "timestamp": "...", "proposalPda": "...", "error": "..." }
+  ]
+}
+```
+
+### `POST /clean?file={lifecycle|server|twap}`
+Clear error logs. Omit `file` param to clear all. 
 
 ## Usage
 For development, run
