@@ -29,7 +29,8 @@ import { requireAdminKey } from './middleware';
 import { Monitor } from './monitor';
 import { LifecycleService } from './services/lifecycle.service';
 import { TWAPService } from './services/twap.service';
-import { logError } from './logger';
+import { PriceService } from './services/price.service';
+import { logError, readErrors, clearErrors, LogFile } from './logger';
 
 // Parse CLI args: --port 4000 --dev
 const args = process.argv.slice(2).reduce((acc, arg, i, arr) => {
@@ -55,6 +56,7 @@ if (!NO_AUTH) app.use(requireAdminKey);
 let monitor: Monitor;
 let lifecycle: LifecycleService;
 let twap: TWAPService;
+let price: PriceService;
 
 // Status endpoint
 app.get('/status', (_req, res) => {
@@ -89,6 +91,11 @@ const startServer = async () => {
     twap = new TWAPService();
     twap.start(monitor);
 
+    // Start price SSE service
+    price = new PriceService();
+    price.mount(app); // GET /events
+    price.start(monitor);
+
     app.listen(PORT, () => {
       const flags = [DEV && 'dev', NO_AUTH && 'no-auth'].filter(Boolean);
       const suffix = flags.length ? ` (${flags.join(', ')})` : '';
@@ -103,6 +110,7 @@ const startServer = async () => {
 // Graceful shutdown
 process.on('SIGINT', async () => {
   console.log('\nShutting down...');
+  price?.stop();
   twap?.stop();
   lifecycle?.stop();
   await monitor?.stop();
