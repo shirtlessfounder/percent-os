@@ -18,12 +18,26 @@
  */
 
 import { Monitor, MonitoredProposal } from './monitor';
+import { logError } from './logger';
 
 const API_URL = 'https://api.zcombinator.io';
+
+interface StepResult {
+  success: boolean;
+  data?: any;
+  error?: string;
+}
+
+interface FlowResult {
+  finalize: StepResult;
+  redeem: StepResult;
+  depositBack: StepResult;
+}
 
 /**
  * Schedules and executes proposal finalization when proposals expire.
  * Calls the DAO API to finalize, redeem liquidity, and deposit back.
+ * Logs errors to errors.jsonl for debugging.
  */
 export class LifecycleService {
   private timers = new Map<string, NodeJS.Timeout>();
@@ -83,27 +97,58 @@ export class LifecycleService {
     const { proposalPda } = proposal;
     console.log(`Starting finalization flow for ${proposalPda}`);
 
+    const results: FlowResult = {
+      finalize: { success: false },
+      redeem: { success: false },
+      depositBack: { success: false },
+    };
+
+    // Step 1: Finalize proposal (continue regardless of result)
     try {
-      // Step 1: Finalize proposal
-      const finalizeRes = await this.callApi('/dao/finalize-proposal', { proposal_pda: proposalPda });
-      console.log(`Finalized: ${proposalPda} (winner: ${finalizeRes.winning_option})`);
+      const data = await this.callApi('/dao/finalize-proposal', { proposal_pda: proposalPda });
+      results.finalize = { success: true, data };
+      console.log(`Finalized: ${proposalPda} (winner: ${data.winning_option})`);
+    } catch (e) {
+      results.finalize = { success: false, error: String(e) };
+      console.error(`Finalize failed: ${proposalPda}`, e);
+    }
 
-      // Step 2: Redeem liquidity
-      const redeemRes = await this.callApi('/dao/redeem-liquidity', { proposal_pda: proposalPda });
-      console.log(`Redeemed liquidity: ${proposalPda} (tx: ${redeemRes.transaction})`);
+    // Step 2: Redeem liquidity (continue regardless of result)
+    try {
+      const data = await this.callApi('/dao/redeem-liquidity', { proposal_pda: proposalPda });
+      results.redeem = { success: true, data };
+      console.log(`Redeemed: ${proposalPda} (tx: ${data.transaction})`);
+    } catch (e) {
+      results.redeem = { success: false, error: String(e) };
+      console.error(`Redeem failed: ${proposalPda}`, e);
+    }
 
-      // Step 3: Deposit back
-      const depositRes = await this.callApi('/dao/deposit-back', { proposal_pda: proposalPda });
-      if (depositRes.skipped) {
-        console.log(`Deposit-back skipped: ${proposalPda} (${depositRes.reason})`);
+    // Step 3: Deposit back (continue regardless of result)
+    try {
+      const data = await this.callApi('/dao/deposit-back', { proposal_pda: proposalPda });
+      results.depositBack = { success: true, data };
+      if (data.skipped) {
+        console.log(`Deposit-back skipped: ${proposalPda} (${data.reason})`);
       } else {
         console.log(`Deposit-back complete: ${proposalPda}`);
       }
-
-      console.log(`Finalization flow complete for ${proposalPda}`);
-    } catch (error) {
-      console.error(`Finalization flow failed for ${proposalPda}:`, error);
+    } catch (e) {
+      results.depositBack = { success: false, error: String(e) };
+      console.error(`Deposit-back failed: ${proposalPda}`, e);
     }
+
+    // Log errors if any step failed
+    const hasErrors = !results.finalize.success || !results.redeem.success || !results.depositBack.success;
+    if (hasErrors) {
+      logError('lifecycle', {
+        proposalPda: proposal.proposalPda,
+        proposalId: proposal.proposalId,
+        moderatorPda: proposal.moderatorPda,
+        results,
+      });
+    }
+
+    console.log(`Finalization flow ${hasErrors ? 'completed with errors' : 'complete'} for ${proposalPda}`);
   }
 
   private async callApi(endpoint: string, body: Record<string, string>): Promise<any> {

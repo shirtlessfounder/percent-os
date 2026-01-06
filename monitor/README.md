@@ -9,7 +9,7 @@ This is opposed to another server, currently in `./src/*` and yet to be revamped
 
 1. *Listen* for new proposal creation "ProposalLaunched" on-chain. Only monitor proposals created via Combinator's API. 
 2. *Crank* TWAP ~ every minute for managed proposals.
-3. *Finalize* & *Redeem Liquidity* for managed proposals.
+3. *Finalize* & *Redeem Liquidity* & *Redeposit* for managed proposals.
 4. *Broadcast* trade-events & price-updates for spot & cond. markets using SSE. ! Replacing the current WS `./server/*`
 5. *Persist* on restart
 6. *Log* failures for future analysis / manual resolution.
