@@ -17,45 +17,55 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { PublicKey } from '@solana/web3.js';
-import { PoolState, TwapOracle, parsePoolState } from '@zcomb/programs-sdk';
 import { Monitor, MonitoredProposal } from '../monitor';
 import { logError } from '../lib/logger';
+import { callApi } from '../lib/api';
 
 const CRANK_INTERVAL_MS = 60_000; // 60 seconds
 
-interface PoolTimers {
-  warmupTimeout?: NodeJS.Timeout;
-  crankInterval?: NodeJS.Timeout;
+interface CrankResult {
+  pool: string;
+  signature?: string;
+  skipped?: boolean;
+  reason?: string;
+}
+
+interface CrankResponse {
+  message: string;
+  proposal_pda: string;
+  dao_pda: string;
+  num_options: number;
+  pools_cranked: number;
+  results: CrankResult[];
 }
 
 /**
  * Cranks TWAP oracles every ~60 seconds for all pools of monitored proposals.
- * Waits for warmup period to end before starting to crank.
+ * Uses the DAO API to execute cranks (API handles warmup and rate limiting).
  */
 export class TWAPService {
   private monitor: Monitor | null = null;
-  private poolTimers = new Map<string, PoolTimers>();
+  private proposalTimers = new Map<string, NodeJS.Timeout>();
 
   /**
-   * Subscribe to monitor events and schedule TWAP cranking for all pools
+   * Subscribe to monitor events and schedule TWAP cranking for all proposals
    */
   start(monitor: Monitor) {
     this.monitor = monitor;
 
     // Schedule cranking for existing proposals
     for (const proposal of monitor.getMonitored()) {
-      this.scheduleProposalPools(proposal);
+      this.scheduleCranking(proposal);
     }
 
     // Listen for new proposals
     monitor.on('proposal:added', (proposal) => {
-      this.scheduleProposalPools(proposal);
+      this.scheduleCranking(proposal);
     });
 
     // Stop cranking when proposal is removed
     monitor.on('proposal:removed', (proposal) => {
-      this.stopProposalPools(proposal);
+      this.stopCranking(proposal.proposalPda);
     });
 
     console.log('TWAP service started');
@@ -65,140 +75,74 @@ export class TWAPService {
    * Stop all TWAP cranking
    */
   stop() {
-    for (const [poolPda, timers] of this.poolTimers.entries()) {
-      if (timers.warmupTimeout) clearTimeout(timers.warmupTimeout);
-      if (timers.crankInterval) clearInterval(timers.crankInterval);
+    for (const timer of this.proposalTimers.values()) {
+      clearInterval(timer);
     }
-    this.poolTimers.clear();
+    this.proposalTimers.clear();
     this.monitor = null;
     console.log('TWAP service stopped');
   }
 
-  private scheduleProposalPools(proposal: MonitoredProposal) {
-    for (const poolPdaStr of proposal.pools) {
-      this.schedulePoolCranking(poolPdaStr, proposal.proposalPda);
-    }
-  }
-
-  private stopProposalPools(proposal: MonitoredProposal) {
-    for (const poolPdaStr of proposal.pools) {
-      this.stopPoolCranking(poolPdaStr);
-    }
-  }
-
-  private async schedulePoolCranking(poolPdaStr: string, proposalPdaStr: string) {
-    if (!this.monitor) return;
-    if (this.poolTimers.has(poolPdaStr)) return; // Already scheduled
-
-    try {
-      const poolPda = new PublicKey(poolPdaStr);
-      const pool = await this.monitor.client.amm.fetchPool(poolPda);
-
-      // Check if pool is already finalized
-      if (parsePoolState(pool.state) === PoolState.Finalized) {
-        console.log(`Pool ${poolPdaStr} already finalized, skipping TWAP cranking`);
-        return;
-      }
-
-      const delayMs = this.getWarmupDelayMs(pool.oracle);
-
-      if (delayMs > 0) {
-        // Still in warmup - schedule timeout then start interval
-        console.log(`Pool ${poolPdaStr} in warmup, cranking starts in ${Math.round(delayMs / 1000)}s`);
-
-        const timers: PoolTimers = {};
-        timers.warmupTimeout = setTimeout(() => {
-          this.startCrankInterval(poolPdaStr, proposalPdaStr);
-        }, delayMs);
-
-        this.poolTimers.set(poolPdaStr, timers);
-      } else {
-        // Warmup ended - start cranking immediately
-        this.startCrankInterval(poolPdaStr, proposalPdaStr);
-      }
-    } catch (error) {
-      const errMsg = error instanceof Error ? error.message : String(error);
-      const name = this.monitor.monitored.get(proposalPdaStr)?.name;
-      console.error(`Failed to schedule TWAP cranking for pool ${poolPdaStr}:`, errMsg);
-      logError('twap', {
-        action: 'schedule',
-        name,
-        pool: poolPdaStr,
-        proposal: proposalPdaStr,
-        error: errMsg,
-      });
-    }
-  }
-
-  private getWarmupDelayMs(oracle: TwapOracle): number {
-    const warmupEndSec = oracle.createdAtUnixTime.toNumber() + oracle.warmupDuration;
-    const warmupEndMs = warmupEndSec * 1000;
-    return Math.max(0, warmupEndMs - Date.now());
-  }
-
-  private startCrankInterval(poolPdaStr: string, proposalPdaStr: string) {
-    if (!this.monitor) return;
-
-    // Get or create timers entry
-    let timers = this.poolTimers.get(poolPdaStr);
-    if (!timers) {
-      timers = {};
-      this.poolTimers.set(poolPdaStr, timers);
-    }
-
-    // Clear warmup timeout if it exists
-    if (timers.warmupTimeout) {
-      clearTimeout(timers.warmupTimeout);
-      timers.warmupTimeout = undefined;
-    }
+  private scheduleCranking(proposal: MonitoredProposal) {
+    if (this.proposalTimers.has(proposal.proposalPda)) return; // Already scheduled
 
     // Crank immediately, then every interval
-    this.crankPool(poolPdaStr, proposalPdaStr);
+    this.crankProposal(proposal);
 
-    timers.crankInterval = setInterval(() => {
-      this.crankPool(poolPdaStr, proposalPdaStr);
+    const timer = setInterval(() => {
+      this.crankProposal(proposal);
     }, CRANK_INTERVAL_MS);
 
-    console.log(`Started TWAP cranking for pool ${poolPdaStr} (every ${CRANK_INTERVAL_MS / 1000}s)`);
+    this.proposalTimers.set(proposal.proposalPda, timer);
+    console.log(`Started TWAP cranking for proposal ${proposal.proposalPda} (every ${CRANK_INTERVAL_MS / 1000}s)`);
   }
 
-  private async crankPool(poolPdaStr: string, proposalPdaStr: string) {
+  private async crankProposal(proposal: MonitoredProposal) {
     if (!this.monitor) return;
 
     try {
-      const poolPda = new PublicKey(poolPdaStr);
-      // ! TODO: USE ACTUAL FUNDED WALLET OR CREATE COMBINATOR API
-      const builder = await this.monitor.client.amm.crankTwap(poolPda);
-      await builder.rpc();
-      console.log(`Cranked TWAP for pool ${poolPdaStr} (proposal: ${proposalPdaStr})`);
+      const data = await callApi('/dao/crank-twap', { proposal_pda: proposal.proposalPda });
+      const response = data as CrankResponse;
+
+      // Log results
+      const cranked = response.results.filter((r) => r.signature).length;
+      const skipped = response.results.filter((r) => r.skipped).length;
+      const failed = response.results.filter((r) => !r.signature && !r.skipped).length;
+
+      console.log(
+        `Cranked TWAP for proposal ${proposal.proposalPda}: ${cranked} cranked, ${skipped} skipped, ${failed} failed`
+      );
+
+      // Log individual failures
+      for (const result of response.results) {
+        if (!result.signature && !result.skipped) {
+          console.error(`  Pool ${result.pool} failed: ${result.reason}`);
+        }
+      }
     } catch (error) {
-      // Log but don't crash - TWAP crank can fail if pool is finalized or other transient issues
       const errMsg = error instanceof Error ? error.message : String(error);
-      const name = this.monitor.monitored.get(proposalPdaStr)?.name;
-      console.error(`Failed to crank TWAP for pool ${poolPdaStr}:`, errMsg);
+      console.error(`Failed to crank TWAP for proposal ${proposal.proposalPda}:`, errMsg);
       logError('twap', {
         action: 'crank',
-        name,
-        pool: poolPdaStr,
-        proposal: proposalPdaStr,
+        name: proposal.name,
+        proposal: proposal.proposalPda,
         error: errMsg,
       });
 
-      // If pool is finalized, stop cranking
-      if (errMsg.includes('InvalidState') || errMsg.includes('finalized')) {
-        console.log(`Pool ${poolPdaStr} appears finalized, stopping TWAP cranking`);
-        this.stopPoolCranking(poolPdaStr);
+      // If proposal not found or finalized, stop cranking
+      if (errMsg.includes('not found') || errMsg.includes('finalized')) {
+        console.log(`Proposal ${proposal.proposalPda} not found or finalized, stopping TWAP cranking`);
+        this.stopCranking(proposal.proposalPda);
       }
     }
   }
 
-  private stopPoolCranking(poolPdaStr: string) {
-    const timers = this.poolTimers.get(poolPdaStr);
-    if (timers) {
-      if (timers.warmupTimeout) clearTimeout(timers.warmupTimeout);
-      if (timers.crankInterval) clearInterval(timers.crankInterval);
-      this.poolTimers.delete(poolPdaStr);
-      console.log(`Stopped TWAP cranking for pool ${poolPdaStr}`);
+  private stopCranking(proposalPda: string) {
+    const timer = this.proposalTimers.get(proposalPda);
+    if (timer) {
+      clearInterval(timer);
+      this.proposalTimers.delete(proposalPda);
+      console.log(`Stopped TWAP cranking for proposal ${proposalPda}`);
     }
   }
 }

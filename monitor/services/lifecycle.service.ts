@@ -19,8 +19,7 @@
 
 import { Monitor, MonitoredProposal } from '../monitor';
 import { logError } from '../lib/logger';
-
-const API_URL = 'https://api.zcombinator.io';
+import { callApi } from '../lib/api';
 
 interface StepResult {
   success: boolean;
@@ -105,7 +104,9 @@ export class LifecycleService {
 
     // Step 1: Finalize proposal (continue regardless of result)
     try {
-      const data = await this.callApi('/dao/finalize-proposal', { proposal_pda: proposalPda });
+      const data = (await callApi('/dao/finalize-proposal', { proposal_pda: proposalPda })) as {
+        winning_option: string;
+      };
       results.finalize = { success: true, data };
       console.log(`Finalized: ${proposalPda} (winner: ${data.winning_option})`);
     } catch (e) {
@@ -115,7 +116,9 @@ export class LifecycleService {
 
     // Step 2: Redeem liquidity (continue regardless of result)
     try {
-      const data = await this.callApi('/dao/redeem-liquidity', { proposal_pda: proposalPda });
+      const data = (await callApi('/dao/redeem-liquidity', { proposal_pda: proposalPda })) as {
+        transaction: string;
+      };
       results.redeem = { success: true, data };
       console.log(`Redeemed: ${proposalPda} (tx: ${data.transaction})`);
     } catch (e) {
@@ -125,7 +128,10 @@ export class LifecycleService {
 
     // Step 3: Deposit back (continue regardless of result)
     try {
-      const data = await this.callApi('/dao/deposit-back', { proposal_pda: proposalPda });
+      const data = (await callApi('/dao/deposit-back', { proposal_pda: proposalPda })) as {
+        skipped?: boolean;
+        reason?: string;
+      };
       results.depositBack = { success: true, data };
       if (data.skipped) {
         console.log(`Deposit-back skipped: ${proposalPda} (${data.reason})`);
@@ -150,21 +156,5 @@ export class LifecycleService {
     }
 
     console.log(`Finalization flow ${hasErrors ? 'completed with errors' : 'complete'} for ${proposalPda}`);
-  }
-
-  private async callApi(endpoint: string, body: Record<string, string>): Promise<any> {
-    const res = await fetch(`${API_URL}${endpoint}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-
-    const data = (await res.json()) as { error?: string; [key: string]: any };
-
-    if (!res.ok) {
-      throw new Error(data.error || `API error: ${res.status}`);
-    }
-
-    return data;
   }
 }
