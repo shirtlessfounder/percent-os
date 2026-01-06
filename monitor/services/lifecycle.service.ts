@@ -141,6 +141,7 @@ export class LifecycleService {
     const hasErrors = !results.finalize.success || !results.redeem.success || !results.depositBack.success;
     if (hasErrors) {
       logError('lifecycle', {
+        name: proposal.name,
         proposalPda: proposal.proposalPda,
         proposalId: proposal.proposalId,
         moderatorPda: proposal.moderatorPda,

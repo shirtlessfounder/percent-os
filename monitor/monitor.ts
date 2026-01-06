@@ -25,19 +25,31 @@ import {
   FUTARCHY_PROGRAM_ID,
   ProposalLaunchedEvent,
   ProposalFinalizedEvent,
+  PoolType,
 } from '@zcomb/programs-sdk';
 import { FutarchyIDL } from '@zcomb/programs-sdk/dist/generated/idls';
 import { getPool } from '@app/utils/database';
 import { logError } from './logger';
 
 export interface MonitoredProposal {
+  // Proposal
   proposalPda: string;
-  moderatorPda: string;
   proposalId: number;
   numOptions: number;
-  pools: string[];
+  pools: string[]; // Conditional market pools
   endTime: number;
   createdAt: number;
+
+  // Moderator
+  moderatorPda: string;
+  name: string;
+  baseMint: string;
+  quoteMint: string;
+
+  // DAO (optional)
+  daoPda?: string;
+  spotPool?: string;
+  spotPoolType?: PoolType;
 }
 
 export interface MonitorEvents {
@@ -114,35 +126,95 @@ export class Monitor extends EventEmitter {
     const proposalPdaStr = data.proposal.toBase58();
 
     try {
+      // Fetch proposal account
       const proposal = await this.client.fetchProposal(data.proposal);
-      const moderatorPda = proposal.moderator.toBase58();
+      const moderatorPdaStr = proposal.moderator.toBase58();
 
-      if (!(await this.isTrackedModerator(moderatorPda))) {
+      // Check if moderator is tracked in our database
+      if (!(await this.isTrackedModerator(moderatorPdaStr))) {
         console.log(`Ignoring proposal ${proposalPdaStr} - moderator not tracked`);
         return;
       }
 
+      // Fetch moderator account to get name and mints
+      const moderator = await this.client.fetchModerator(proposal.moderator);
+      const name = moderator.name;
+      const baseMint = moderator.baseMint.toBase58();
+      const quoteMint = moderator.quoteMint.toBase58();
+
+      // Try to fetch DAO account (may not exist)
+      const [daoPda] = this.client.deriveDAOPDA(name);
+      let daoInfo: { daoPda: string; spotPool: string; spotPoolType: PoolType } | undefined;
+
+      try {
+        const dao = await this.client.fetchDAO(daoPda);
+
+        // Child DAOs are not supported
+        if (!('parent' in dao.daoType) || !dao.daoType.parent) {
+          logError('server', {
+            type: 'proposal_launched_handler',
+            name,
+            proposalPda: proposalPdaStr,
+            error: `DAO is a child DAO - not supported`,
+          });
+          return;
+        }
+
+        const { moderator: daoModerator, pool, poolType } = dao.daoType.parent;
+
+        // Moderator mismatch is a critical error
+        if (daoModerator.toBase58() !== moderatorPdaStr) {
+          logError('server', {
+            type: 'proposal_launched_handler',
+            name,
+            proposalPda: proposalPdaStr,
+            error: `Moderator mismatch: DAO has ${daoModerator.toBase58()}, proposal has ${moderatorPdaStr}`,
+          });
+          return;
+        }
+
+        daoInfo = {
+          daoPda: daoPda.toBase58(),
+          spotPool: pool.toBase58(),
+          spotPoolType: poolType,
+        };
+      } catch {
+        // DAO doesn't exist yet - continue without spot pool info
+        console.log(`DAO ${name} not found - continuing without spot pool info`);
+      }
+
+      // Calculate timing
       const createdAtMs = Number(data.createdAt) * 1000;
       const timeRemaining = this.client.getTimeRemaining(proposal);
       const endTime = Date.now() + timeRemaining * 1000;
 
+      // Filter out uninitialized pool slots
       const pools = proposal.pools
         .map((p: PublicKey) => p.toBase58())
-        .filter((p: string) => p !== '11111111111111111111111111111111'); // remove uninitialized pools
+        .filter((p: string) => p !== '11111111111111111111111111111111');
 
       const info: MonitoredProposal = {
+        // Proposal
         proposalPda: proposalPdaStr,
-        moderatorPda,
         proposalId: data.proposalId,
         numOptions: data.numOptions,
         pools,
         endTime,
         createdAt: createdAtMs,
+
+        // Moderator
+        moderatorPda: moderatorPdaStr,
+        name,
+        baseMint,
+        quoteMint,
+
+        // DAO (optional)
+        ...daoInfo,
       };
 
       this.monitored.set(proposalPdaStr, info);
       this.emit('proposal:added', info);
-      console.log(`Monitoring proposal ${proposalPdaStr} (ends: ${new Date(endTime).toISOString()})`);
+      console.log(`Monitoring proposal ${proposalPdaStr} [${name}] (ends: ${new Date(endTime).toISOString()})`);
     } catch (e) {
       console.error(`Failed to handle ProposalLaunched: ${proposalPdaStr}`, e);
       logError('server', {

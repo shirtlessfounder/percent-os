@@ -118,9 +118,11 @@ export class TWAPService {
       }
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
+      const name = this.monitor.monitored.get(proposalPdaStr)?.name;
       console.error(`Failed to schedule TWAP cranking for pool ${poolPdaStr}:`, errMsg);
       logError('twap', {
         action: 'schedule',
+        name,
         pool: poolPdaStr,
         proposal: proposalPdaStr,
         error: errMsg,
@@ -172,9 +174,11 @@ export class TWAPService {
     } catch (error) {
       // Log but don't crash - TWAP crank can fail if pool is finalized or other transient issues
       const errMsg = error instanceof Error ? error.message : String(error);
+      const name = this.monitor.monitored.get(proposalPdaStr)?.name;
       console.error(`Failed to crank TWAP for pool ${poolPdaStr}:`, errMsg);
       logError('twap', {
         action: 'crank',
+        name,
         pool: poolPdaStr,
         proposal: proposalPdaStr,
         error: errMsg,
