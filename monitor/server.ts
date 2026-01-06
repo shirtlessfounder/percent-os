@@ -26,6 +26,7 @@ dotenv.config();
 import express from 'express';
 import cors from 'cors';
 import { requireAdminKey } from './middleware';
+import { ListenerService } from './listener.service';
 
 // Parse CLI args: --port 4000 --dev
 const args = process.argv.slice(2).reduce((acc, arg, i, arr) => {
@@ -47,15 +48,32 @@ app.use(express.json());
 // Apply auth middleware unless --dev
 if (!DEV) app.use(requireAdminKey);
 
+let listener: ListenerService;
+
+// Status endpoint
+app.get('/status', (_req, res) => {
+  const proposals = listener.getMonitored();
+  res.json({
+    monitored: proposals.length,
+    proposals: proposals.map((p) => ({
+      pda: p.proposalPda,
+      id: p.proposalId,
+      endsAt: new Date(p.endTime).toISOString(),
+      timeRemaining: Math.max(0, p.endTime - Date.now()),
+    })),
+  });
+});
+
 const startServer = async () => {
   try {
     // ENV validation
-    if (!process.env.DB_URL) {
-      throw Error('Missing DB_URL');
-    }
-    if (!DEV && !process.env.ADMIN_API_KEY) {
-      throw Error('Missing ADMIN_API_KEY');
-    }
+    if (!process.env.DB_URL) throw Error('Missing DB_URL');
+    if (!process.env.SOLANA_RPC_URL) throw Error('Missing SOLANA_RPC_URL');
+    if (!DEV && !process.env.ADMIN_API_KEY) throw Error('Missing ADMIN_API_KEY');
+
+    // Start event listener
+    listener = new ListenerService(process.env.SOLANA_RPC_URL);
+    await listener.start();
 
     app.listen(PORT, () => {
       console.log(`Monitor running on port ${PORT}${DEV ? ' (developer mode)' : ''}`);
@@ -65,5 +83,12 @@ const startServer = async () => {
     process.exit(1);
   }
 };
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('\nShutting down...');
+  await listener?.stop();
+  process.exit(0);
+});
 
 startServer();

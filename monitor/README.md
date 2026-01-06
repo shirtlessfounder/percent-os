@@ -30,9 +30,11 @@ For production, run
 ```
 npm run build && npm run monitor
 ```
-
 * Default port is 4000. Custom port can be specified via `--port <number>` 
 * The `--dev` CLI arg starts the server in development mode.
+
+## Architecture
+
 
 
 
