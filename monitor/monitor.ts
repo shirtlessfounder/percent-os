@@ -39,7 +39,7 @@ export interface MonitoredProposal {
   createdAt: number;
 }
 
-export interface ListenerEvents {
+export interface MonitorEvents {
   'proposal:added': (proposal: MonitoredProposal) => void;
   'proposal:removed': (proposal: MonitoredProposal) => void;
 }
@@ -49,7 +49,7 @@ export interface ListenerEvents {
  * proposals from moderators registered in our database (cmb_daos table).
  * Emits 'proposal:added' and 'proposal:removed' events for other services.
  */
-export class ListenerService extends EventEmitter {
+export class Monitor extends EventEmitter {
   readonly monitored = new Map<string, MonitoredProposal>();
   readonly client: FutarchyClient;
 

@@ -26,7 +26,8 @@ dotenv.config();
 import express from 'express';
 import cors from 'cors';
 import { requireAdminKey } from './middleware';
-import { ListenerService } from './listener.service';
+import { Monitor } from './monitor';
+import { LifecycleService } from './lifecycle.service';
 
 // Parse CLI args: --port 4000 --dev
 const args = process.argv.slice(2).reduce((acc, arg, i, arr) => {
@@ -48,11 +49,12 @@ app.use(express.json());
 // Apply auth middleware unless --dev
 if (!DEV) app.use(requireAdminKey);
 
-let listener: ListenerService;
+let monitor: Monitor;
+let lifecycle: LifecycleService;
 
 // Status endpoint
 app.get('/status', (_req, res) => {
-  const proposals = listener.getMonitored();
+  const proposals = monitor.getMonitored();
   res.json({
     monitored: proposals.length,
     proposals: proposals.map((p) => ({
@@ -71,9 +73,13 @@ const startServer = async () => {
     if (!process.env.SOLANA_RPC_URL) throw Error('Missing SOLANA_RPC_URL');
     if (!DEV && !process.env.ADMIN_API_KEY) throw Error('Missing ADMIN_API_KEY');
 
-    // Start event listener
-    listener = new ListenerService(process.env.SOLANA_RPC_URL);
-    await listener.start();
+    // Start monitor
+    monitor = new Monitor(process.env.SOLANA_RPC_URL);
+    await monitor.start();
+
+    // Start lifecycle service
+    lifecycle = new LifecycleService();
+    lifecycle.start(monitor);
 
     app.listen(PORT, () => {
       console.log(`Monitor running on port ${PORT}${DEV ? ' (developer mode)' : ''}`);
@@ -87,7 +93,8 @@ const startServer = async () => {
 // Graceful shutdown
 process.on('SIGINT', async () => {
   console.log('\nShutting down...');
-  await listener?.stop();
+  lifecycle?.stop();
+  await monitor?.stop();
   process.exit(0);
 });
 
