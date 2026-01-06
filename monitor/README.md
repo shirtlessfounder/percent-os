@@ -19,5 +19,20 @@ This is opposed to another server, currently in `./src/*` and yet to be revamped
 `/logs`: Fetch JSON logs
 `/clean`: Clears logs & persistance. 
 
+## Usage
+For development, run 
+```
+npm run monitor:dev`
+```
+which uses `tsx` & disables api key auth for the endpoints. 
+
+For production, run 
+```
+npm run build && npm run monitor
+```
+
+* Default port is 4000. Custom port can be specified via `--port <number>` 
+* The `--dev` CLI arg starts the server in development mode.
+
 
 
