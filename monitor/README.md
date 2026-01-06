@@ -71,40 +71,41 @@ npm run build && npm run monitor
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         MONITOR                                 │
-│                                                                 │
-│   ┌─────────────┐                                               │
-│   │   Monitor   │◄──── On-chain Events                          │
-│   │             │      (ProposalLaunched / ProposalFinalized)   │
-│   └──────┬──────┘                                               │
-│          │                                                      │
-│          │ subscribes                                           │
-│          ▼                                                      │
-│   ┌──────────────────────────────────────────────────────┐      │
-│   │                     SERVER                           │      │
-│   │                                                      │      │
-│   │  ┌────────────────┐  ┌────────────┐  ┌────────────┐  │      │
-│   │  │   Lifecycle    │  │    TWAP    │  │   Price    │  │      │
-│   │  │    Service     │  │   Service  │  │  Service   │  │      │
-│   │  └───────┬────────┘  └─────┬──────┘  └─────┬──────┘  │      │
-│   │          │                 │               │         │      │
-│   └──────────┼─────────────────┼───────────────┼─────────┘      │
-│              │                 │               │                │
-└──────────────┼─────────────────┼───────────────┼────────────────┘
-               │                 │               │
-               ▼                 ▼               ▼
-        ┌────────────┐    ┌────────────┐   ┌────────────┐
-        │ Combinator │    │  On-chain  │   │    SSE     │
-        │    API     │    │   TWAP     │   │  Clients   │
-        └────────────┘    └────────────┘   └────────────┘
+┌───────────────────────────────────────────────────────────────────────┐
+│                              MONITOR                                  │
+│                                                                       │
+│   ┌─────────────┐                                                     │
+│   │   Monitor   │◄──── On-chain Events                                │
+│   │             │      (ProposalLaunched / ProposalFinalized)         │
+│   └──────┬──────┘                                                     │
+│          │                                                            │
+│          │ subscribes                                                 │
+│          ▼                                                            │
+│   ┌────────────────────────────────────────────────────────────┐      │
+│   │                        SERVER                              │      │
+│   │                                                            │      │
+│   │  ┌────────────────┐  ┌──────────────┐  ┌────────────────┐  │      │
+│   │  │   Lifecycle    │  │     TWAP     │  │     Price      │  │      │
+│   │  │    Service     │  │    Service   │  │    Service     │  │      │
+│   │  └───────┬────────┘  └──────┬───────┘  └───────┬────────┘  │      │
+│   │          │                  │                  │           │      │
+│   └──────────┼──────────────────┼──────────────────┼───────────┘      │
+│              │                  │                  │                  │
+└──────────────┼──────────────────┼──────────────────┼──────────────────┘
+               │                  │                  │
+               ▼                  ▼                  ▼
+        ┌────────────┐     ┌────────────┐     ┌─────────────────┐
+        │ Combinator │     │ Combinator │     │   SSE Clients   │
+        │    API     │     │    API     │     │   Database      │
+        └────────────┘     └────────────┘     │   On-chain      │
+                                              └─────────────────┘
 ```
 
 **Services**
 
-| Service   | Trigger              | Action                                        |
-|-----------|----------------------|-----------------------------------------------|
-| Lifecycle | Proposal launched    | Queues `finalize` & `redeem-liquidity` calls  |
-| TWAP      | Every minute (live)  | Cranks TWAP oracle                            |
-| Price     | Market price changes | Broadcasts spot & conditional prices via SSE  |
+| Service   | Trigger              | Action                                              |
+|-----------|----------------------|-----------------------------------------------------|
+| Lifecycle | Proposal launched    | Queues `finalize`, `redeem-liquidity`, & `deposit`  |
+| TWAP      | Every minute (live)  | Cranks TWAP oracle via API                          |
+| Price     | Market price changes | Broadcasts prices & trades via SSE                  |
 
