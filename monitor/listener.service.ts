@@ -17,12 +17,14 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import { EventEmitter } from 'events';
 import { Connection, PublicKey, Keypair, Logs } from '@solana/web3.js';
 import { AnchorProvider, Wallet, BorshCoder, EventParser } from '@coral-xyz/anchor';
 import {
   FutarchyClient,
   FUTARCHY_PROGRAM_ID,
   ProposalLaunchedEvent,
+  ProposalFinalizedEvent,
 } from '@zcomb/programs-sdk';
 import { FutarchyIDL } from '@zcomb/programs-sdk/dist/generated/idls';
 import { getPool } from '@app/utils/database';
@@ -37,11 +39,17 @@ export interface MonitoredProposal {
   createdAt: number;
 }
 
+export interface ListenerEvents {
+  'proposal:added': (proposal: MonitoredProposal) => void;
+  'proposal:removed': (proposal: MonitoredProposal) => void;
+}
+
 /**
- * Listens for ProposalLaunched events on-chain and tracks proposals
- * from moderators registered in our database (cmb_daos table).
+ * Listens for ProposalLaunched/ProposalFinalized events on-chain and tracks
+ * proposals from moderators registered in our database (cmb_daos table).
+ * Emits 'proposal:added' and 'proposal:removed' events for other services.
  */
-export class ListenerService {
+export class ListenerService extends EventEmitter {
   readonly monitored = new Map<string, MonitoredProposal>();
   readonly client: FutarchyClient;
 
@@ -50,6 +58,7 @@ export class ListenerService {
   private subscriptionId: number | null = null;
 
   constructor(rpcUrl: string) {
+    super();
     this.connection = new Connection(rpcUrl, 'confirmed');
     const wallet = new Wallet(Keypair.generate());
     const provider = new AnchorProvider(this.connection, wallet, { commitment: 'confirmed' });
@@ -83,6 +92,8 @@ export class ListenerService {
       for (const event of events) {
         if (event.name === 'ProposalLaunched') {
           this.handleProposalLaunched(event.data as ProposalLaunchedEvent);
+        } else if (event.name === 'ProposalFinalized') {
+          this.handleProposalFinalized(event.data as ProposalFinalizedEvent);
         }
       }
     } catch {
@@ -129,7 +140,19 @@ export class ListenerService {
     };
 
     this.monitored.set(proposalPdaStr, info);
+    this.emit('proposal:added', info);
     console.log(`Monitoring proposal ${proposalPdaStr} (ends: ${new Date(endTime).toISOString()})`);
+  }
+
+  private handleProposalFinalized(data: ProposalFinalizedEvent) {
+    const proposalPdaStr = data.proposal.toBase58();
+    const info = this.monitored.get(proposalPdaStr);
+
+    if (info) {
+      this.monitored.delete(proposalPdaStr);
+      this.emit('proposal:removed', info);
+      console.log(`Proposal finalized: ${proposalPdaStr} (winner: ${data.winningIdx})`);
+    }
   }
 
   getMonitored() {
@@ -137,6 +160,11 @@ export class ListenerService {
   }
 
   removeMonitored(pda: string) {
-    return this.monitored.delete(pda);
+    const info = this.monitored.get(pda);
+    if (info && this.monitored.delete(pda)) {
+      this.emit('proposal:removed', info);
+      return true;
+    }
+    return false;
   }
 }
