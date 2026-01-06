@@ -19,15 +19,17 @@
 
 import { EventEmitter } from 'events';
 import { Connection, PublicKey, Keypair, Logs } from '@solana/web3.js';
-import { AnchorProvider, Wallet, BorshCoder, EventParser } from '@coral-xyz/anchor';
+import { AnchorProvider, Wallet, BorshCoder, EventParser, BN } from '@coral-xyz/anchor';
 import {
   FutarchyClient,
   FUTARCHY_PROGRAM_ID,
   ProposalLaunchedEvent,
   ProposalFinalizedEvent,
   PoolType,
+  CondSwapEvent,
+  AMM_PROGRAM_ID,
 } from '@zcomb/programs-sdk';
-import { FutarchyIDL } from '@zcomb/programs-sdk/dist/generated/idls';
+import { FutarchyIDL, AmmIDL } from '@zcomb/programs-sdk/dist/generated/idls';
 import { getPool } from '@app/utils/database';
 import { logError } from './lib/logger';
 
@@ -52,9 +54,21 @@ export interface MonitoredProposal {
   spotPoolType?: PoolType;
 }
 
+export interface SwapEvent {
+  proposalPda: string;
+  pool: string;
+  market: number; // Pool index (0, 1, etc)
+  trader: string;
+  swapAToB: boolean;
+  amountIn: BN;
+  amountOut: BN;
+  feeAmount: BN;
+}
+
 export interface MonitorEvents {
   'proposal:added': (proposal: MonitoredProposal) => void;
   'proposal:removed': (proposal: MonitoredProposal) => void;
+  'swap': (swap: SwapEvent) => void;
 }
 
 /**
@@ -67,8 +81,13 @@ export class Monitor extends EventEmitter {
   readonly client: FutarchyClient;
 
   private connection: Connection;
-  private eventParser: EventParser;
-  private subscriptionId: number | null = null;
+  private futarchyParser: EventParser;
+  private ammParser: EventParser;
+  private futarchySubId: number | null = null;
+  private ammSubId: number | null = null;
+
+  // pool address -> proposal PDA (for fast swap lookups)
+  private poolToProposal = new Map<string, string>();
 
   constructor(rpcUrl: string) {
     super();
@@ -77,31 +96,45 @@ export class Monitor extends EventEmitter {
     const provider = new AnchorProvider(this.connection, wallet, { commitment: 'confirmed' });
 
     this.client = new FutarchyClient(provider);
-    this.eventParser = new EventParser(FUTARCHY_PROGRAM_ID, new BorshCoder(FutarchyIDL as any));
+    this.futarchyParser = new EventParser(FUTARCHY_PROGRAM_ID, new BorshCoder(FutarchyIDL as any));
+    this.ammParser = new EventParser(AMM_PROGRAM_ID, new BorshCoder(AmmIDL as any));
   }
 
   async start() {
-    this.subscriptionId = this.connection.onLogs(
+    // Listen for Futarchy events (ProposalLaunched, ProposalFinalized)
+    this.futarchySubId = this.connection.onLogs(
       FUTARCHY_PROGRAM_ID,
-      (logs) => this.handleLogs(logs),
+      (logs) => this.handleFutarchyLogs(logs),
       'confirmed'
     );
-    console.log(`Listening for events on ${FUTARCHY_PROGRAM_ID.toBase58()}`);
+    console.log(`[Monitor] Listening for Futarchy events on ${FUTARCHY_PROGRAM_ID.toBase58()}`);
+
+    // Listen for AMM events (CondSwap)
+    this.ammSubId = this.connection.onLogs(
+      AMM_PROGRAM_ID,
+      (logs) => this.handleAmmLogs(logs),
+      'confirmed'
+    );
+    console.log(`[Monitor] Listening for AMM events on ${AMM_PROGRAM_ID.toBase58()}`);
   }
 
   async stop() {
-    if (this.subscriptionId !== null) {
-      await this.connection.removeOnLogsListener(this.subscriptionId);
-      this.subscriptionId = null;
-      console.log('Stopped event listener');
+    if (this.futarchySubId !== null) {
+      await this.connection.removeOnLogsListener(this.futarchySubId);
+      this.futarchySubId = null;
     }
+    if (this.ammSubId !== null) {
+      await this.connection.removeOnLogsListener(this.ammSubId);
+      this.ammSubId = null;
+    }
+    console.log('[Monitor] Stopped event listeners');
   }
 
-  private handleLogs(logs: Logs) {
+  private handleFutarchyLogs(logs: Logs) {
     if (logs.err) return;
 
     try {
-      const events = this.eventParser.parseLogs(logs.logs);
+      const events = this.futarchyParser.parseLogs(logs.logs);
       for (const event of events) {
         if (event.name === 'ProposalLaunched') {
           this.handleProposalLaunched(event.data as ProposalLaunchedEvent);
@@ -112,6 +145,49 @@ export class Monitor extends EventEmitter {
     } catch {
       // Parsing can fail for non-event logs
     }
+  }
+
+  private handleAmmLogs(logs: Logs) {
+    if (logs.err) return;
+
+    try {
+      const events = this.ammParser.parseLogs(logs.logs);
+      for (const event of events) {
+        if (event.name === 'CondSwap') {
+          this.handleCondSwap(event.data as CondSwapEvent);
+        }
+      }
+    } catch {
+      // Parsing can fail for non-event logs
+    }
+  }
+
+  private handleCondSwap(data: CondSwapEvent) {
+    const poolStr = data.pool.toBase58();
+    const proposalPda = this.poolToProposal.get(poolStr);
+
+    // Ignore swaps from pools we're not tracking
+    if (!proposalPda) return;
+
+    const proposal = this.monitored.get(proposalPda);
+    if (!proposal) return;
+
+    // Find market index (which pool in the proposal)
+    const market = proposal.pools.indexOf(poolStr);
+
+    const swap: SwapEvent = {
+      proposalPda,
+      pool: poolStr,
+      market,
+      trader: data.trader.toBase58(),
+      swapAToB: data.swapAToB,
+      amountIn: data.inputAmount,
+      amountOut: data.outputAmount,
+      feeAmount: data.feeAmount,
+    };
+
+    this.emit('swap', swap);
+    console.log(`[Monitor] Swap on ${proposal.name} pool ${market}: ${swap.trader.slice(0, 8)}...`);
   }
 
   private async isTrackedModerator(moderatorPda: string): Promise<boolean> {
@@ -213,8 +289,14 @@ export class Monitor extends EventEmitter {
       };
 
       this.monitored.set(proposalPdaStr, info);
+
+      // Track pools for swap event filtering
+      for (const pool of pools) {
+        this.poolToProposal.set(pool, proposalPdaStr);
+      }
+
       this.emit('proposal:added', info);
-      console.log(`Monitoring proposal ${proposalPdaStr} [${name}] (ends: ${new Date(endTime).toISOString()})`);
+      console.log(`[Monitor] Tracking proposal ${proposalPdaStr} [${name}] (ends: ${new Date(endTime).toISOString()})`);
     } catch (e) {
       console.error(`Failed to handle ProposalLaunched: ${proposalPdaStr}`, e);
       logError('server', {
@@ -230,9 +312,14 @@ export class Monitor extends EventEmitter {
     const info = this.monitored.get(proposalPdaStr);
 
     if (info) {
+      // Remove pool tracking
+      for (const pool of info.pools) {
+        this.poolToProposal.delete(pool);
+      }
+
       this.monitored.delete(proposalPdaStr);
       this.emit('proposal:removed', info);
-      console.log(`Proposal finalized: ${proposalPdaStr} (winner: ${data.winningIdx})`);
+      console.log(`[Monitor] Proposal finalized: ${proposalPdaStr} (winner: ${data.winningIdx})`);
     }
   }
 
@@ -243,6 +330,10 @@ export class Monitor extends EventEmitter {
   removeMonitored(pda: string) {
     const info = this.monitored.get(pda);
     if (info && this.monitored.delete(pda)) {
+      // Remove pool tracking
+      for (const pool of info.pools) {
+        this.poolToProposal.delete(pool);
+      }
       this.emit('proposal:removed', info);
       return true;
     }
