@@ -27,8 +27,8 @@ import express from 'express';
 import cors from 'cors';
 import { requireAdminKey } from './middleware';
 import { Monitor } from './monitor';
-import { LifecycleService } from './lifecycle.service';
-import { TWAPService } from './twap.service';
+import { LifecycleService } from './services/lifecycle.service';
+import { TWAPService } from './services/twap.service';
 import { logError } from './logger';
 
 // Parse CLI args: --port 4000 --dev

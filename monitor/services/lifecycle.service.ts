@@ -17,8 +17,8 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { Monitor, MonitoredProposal } from './monitor';
-import { logError } from './logger';
+import { Monitor, MonitoredProposal } from '../monitor';
+import { logError } from '../logger';
 
 const API_URL = 'https://api.zcombinator.io';
 
