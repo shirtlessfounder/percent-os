@@ -27,7 +27,7 @@ if (!fs.existsSync(LOGS_DIR)) {
   fs.mkdirSync(LOGS_DIR, { recursive: true });
 }
 
-type LogFile = 'lifecycle' | 'server';
+type LogFile = 'lifecycle' | 'server' | 'twap';
 
 /**
  * Append a JSON error entry to the specified log file.

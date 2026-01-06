@@ -28,6 +28,7 @@ import cors from 'cors';
 import { requireAdminKey } from './middleware';
 import { Monitor } from './monitor';
 import { LifecycleService } from './lifecycle.service';
+import { TWAPService } from './twap.service';
 
 // Parse CLI args: --port 4000 --dev
 const args = process.argv.slice(2).reduce((acc, arg, i, arr) => {
@@ -52,6 +53,7 @@ if (!NO_AUTH) app.use(requireAdminKey);
 
 let monitor: Monitor;
 let lifecycle: LifecycleService;
+let twap: TWAPService;
 
 // Status endpoint
 app.get('/status', (_req, res) => {
@@ -82,6 +84,10 @@ const startServer = async () => {
     lifecycle = new LifecycleService();
     lifecycle.start(monitor);
 
+    // Start TWAP cranking service
+    twap = new TWAPService();
+    twap.start(monitor);
+
     app.listen(PORT, () => {
       const flags = [DEV && 'dev', NO_AUTH && 'no-auth'].filter(Boolean);
       const suffix = flags.length ? ` (${flags.join(', ')})` : '';
@@ -96,6 +102,7 @@ const startServer = async () => {
 // Graceful shutdown
 process.on('SIGINT', async () => {
   console.log('\nShutting down...');
+  twap?.stop();
   lifecycle?.stop();
   await monitor?.stop();
   process.exit(0);
