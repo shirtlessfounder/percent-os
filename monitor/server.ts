@@ -25,12 +25,12 @@ dotenv.config();
 
 import express from 'express';
 import cors from 'cors';
-import { requireAdminKey } from './middleware';
+import { requireAdminKey } from './lib/middleware';
+import { logError, readErrors, clearErrors, LOG_FILES, LogFile } from './lib/logger';
 import { Monitor } from './monitor';
 import { LifecycleService } from './services/lifecycle.service';
 import { TWAPService } from './services/twap.service';
 import { PriceService } from './services/price.service';
-import { logError, readErrors, clearErrors, LOG_FILES, LogFile } from './logger';
 
 // ============================================================================
 // CLI Arguments

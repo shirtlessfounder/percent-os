@@ -20,7 +20,7 @@
 import { PublicKey } from '@solana/web3.js';
 import { PoolState, TwapOracle, parsePoolState } from '@zcomb/programs-sdk';
 import { Monitor, MonitoredProposal } from '../monitor';
-import { logError } from '../logger';
+import { logError } from '../lib/logger';
 
 const CRANK_INTERVAL_MS = 60_000; // 60 seconds
 

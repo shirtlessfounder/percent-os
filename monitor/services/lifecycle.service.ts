@@ -18,7 +18,7 @@
  */
 
 import { Monitor, MonitoredProposal } from '../monitor';
-import { logError } from '../logger';
+import { logError } from '../lib/logger';
 
 const API_URL = 'https://api.zcombinator.io';
 

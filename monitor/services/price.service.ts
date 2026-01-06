@@ -17,42 +17,29 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { Express, Request, Response } from 'express';
+import { Express } from 'express';
 import { Monitor, MonitoredProposal } from '../monitor';
+import { SSEManager } from '../lib/sse';
 
 /**
- * SSE Events Broadcast:
- *
- * 1. PRICE_UPDATE - Conditional market price changes
- *    { proposalPda, market: 0|1, price, marketCapUsd, timestamp }
- *
- * 2. TRADE - New trade executed
- *    { proposalPda, market, userAddress, isBaseToQuote, amountIn, amountOut, price, txSignature, timestamp }
- *
- * 3. SPOT_PRICE - Spot market price (from DexScreener or AMM)
- *    { proposalPda, price, marketCapUsd, timestamp }
+ * SSE Events:
+ * - PRICE_UPDATE: { proposalPda, market, price, marketCapUsd, timestamp }
+ * - TRADE: { proposalPda, market, userAddress, isBaseToQuote, amountIn, amountOut, price, timestamp }
  */
 
-interface SSEClient {
-  res: Response;
-  proposals: Set<string>; // proposal PDAs subscribed to
-}
-
 export class PriceService {
-  private clients: Map<string, SSEClient> = new Map(); // clientId -> client
+  private sse = new SSEManager();
   private monitor: Monitor | null = null;
 
-  /**
-   * Mount SSE endpoint on Express app
-   * GET /events?proposals=pda1,pda2
-   */
+  /** Mount SSE endpoint: GET /events */
   mount(app: Express) {
-    app.get('/events', (req, res) => this.handleSSEConnection(req, res));
+    app.get('/events', (req, res) => {
+      const client = this.sse.connect(req, res);
+      client.send('connected', { clientId: client.clientId });
+    });
   }
 
-  /**
-   * Subscribe to monitor events and start price polling
-   */
+  /** Subscribe to monitor events and start price tracking */
   start(monitor: Monitor) {
     this.monitor = monitor;
 
@@ -60,27 +47,15 @@ export class PriceService {
     // monitor.on('proposal:added', (p) => this.startTracking(p));
     // monitor.on('proposal:removed', (p) => this.stopTracking(p));
 
-    // TODO: Setup database listener for trades (pg LISTEN)
-    // TODO: Setup price polling intervals
+    // TODO: Setup on-chain price polling
+
+    console.log('[PriceService] Started');
   }
 
   stop() {
-    // TODO: Cleanup intervals, db connection, close all SSE connections
-  }
-
-  // ─── SSE Connection Management ───────────────────────────────────
-
-  private handleSSEConnection(req: Request, res: Response) {
-    // TODO: Set SSE headers
-    // TODO: Parse ?proposals= query param
-    // TODO: Add to this.clients
-    // TODO: Setup keepalive interval
-    // TODO: Handle req.on('close') cleanup
-  }
-
-  private broadcast(event: string, data: any, proposalPda: string) {
-    // TODO: Send to all clients subscribed to this proposal
-    // res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+    this.sse.closeAll();
+    // TODO: Cleanup price polling intervals
+    console.log('[PriceService] Stopped');
   }
 
   // ─── Price Tracking ──────────────────────────────────────────────
@@ -95,15 +70,28 @@ export class PriceService {
 
   // ─── Event Handlers ──────────────────────────────────────────────
 
-  private onPriceChange(proposalPda: string, market: number, price: number) {
-    // TODO: broadcast('PRICE_UPDATE', {...}, proposalPda)
+  private onPriceChange(proposalPda: string, market: number, price: number, marketCapUsd: number) {
+    this.sse.broadcast('PRICE_UPDATE', {
+      proposalPda,
+      market,
+      price,
+      marketCapUsd,
+      timestamp: Date.now(),
+    });
   }
 
-  private onTrade(trade: any) {
-    // TODO: broadcast('TRADE', {...}, trade.proposalPda)
-  }
-
-  private onSpotPriceChange(proposalPda: string, price: number) {
-    // TODO: broadcast('SPOT_PRICE', {...}, proposalPda)
+  private onTrade(trade: {
+    proposalPda: string;
+    market: number;
+    userAddress: string;
+    isBaseToQuote: boolean;
+    amountIn: string;
+    amountOut: string;
+    price: string;
+  }) {
+    this.sse.broadcast('TRADE', {
+      ...trade,
+      timestamp: Date.now(),
+    });
   }
 }

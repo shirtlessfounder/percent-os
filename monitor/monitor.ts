@@ -29,7 +29,7 @@ import {
 } from '@zcomb/programs-sdk';
 import { FutarchyIDL } from '@zcomb/programs-sdk/dist/generated/idls';
 import { getPool } from '@app/utils/database';
-import { logError } from './logger';
+import { logError } from './lib/logger';
 
 export interface MonitoredProposal {
   // Proposal
