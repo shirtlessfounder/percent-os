@@ -27,6 +27,7 @@ import express from 'express';
 import cors from 'cors';
 import { requireAdminKey } from './lib/middleware';
 import { logError, readErrors, clearErrors, LOG_FILES, LogFile } from './lib/logger';
+import { SSEManager } from './lib/sse';
 import { Monitor } from './monitor';
 import { LifecycleService } from './services/lifecycle.service';
 import { TWAPService } from './services/twap.service';
@@ -57,6 +58,14 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// SSE endpoint (public, no auth required)
+const sse = new SSEManager();
+app.get('/events', (req, res) => {
+  const client = sse.connect(req, res);
+  client.send('connected', { clientId: client.clientId });
+});
+
+// Auth middleware for other endpoints
 if (!NO_AUTH) app.use(requireAdminKey);
 
 // ============================================================================
@@ -160,12 +169,11 @@ const startServer = async () => {
     lifecycle.start(monitor);
 
     // Start TWAP cranking service
-    twap = new TWAPService();
+    twap = new TWAPService(sse);
     twap.start(monitor);
 
     // Start price SSE service
-    price = new PriceService();
-    price.mount(app);
+    price = new PriceService(sse);
     price.start(monitor);
 
     app.listen(PORT, () => {
@@ -183,10 +191,10 @@ const startServer = async () => {
 
 process.on('SIGINT', async () => {
   console.log('\nShutting down...');
-  price?.stop();
   twap?.stop();
   lifecycle?.stop();
   await monitor?.stop();
+  sse.closeAll();
   process.exit(0);
 });
 

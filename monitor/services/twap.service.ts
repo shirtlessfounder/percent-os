@@ -17,7 +17,9 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
+import { PublicKey } from '@solana/web3.js';
 import { Monitor, MonitoredProposal } from '../monitor';
+import { SSEManager } from '../lib/sse';
 import { logError } from '../lib/logger';
 import { callApi } from '../lib/api';
 
@@ -39,13 +41,21 @@ interface CrankResponse {
   results: CrankResult[];
 }
 
+interface PoolTWAP {
+  pool: string;
+  twap: number;
+}
+
 /**
  * Cranks TWAP oracles every ~60 seconds for all pools of monitored proposals.
  * Uses the DAO API to execute cranks (API handles warmup and rate limiting).
+ * Broadcasts TWAP_UPDATE events via SSE after each crank.
  */
 export class TWAPService {
   private monitor: Monitor | null = null;
   private proposalTimers = new Map<string, NodeJS.Timeout>();
+
+  constructor(private sse: SSEManager) {}
 
   /**
    * Subscribe to monitor events and schedule TWAP cranking for all proposals
@@ -86,11 +96,13 @@ export class TWAPService {
   private scheduleCranking(proposal: MonitoredProposal) {
     if (this.proposalTimers.has(proposal.proposalPda)) return; // Already scheduled
 
-    // Crank immediately, then every interval
-    this.crankProposal(proposal);
+    // Crank and broadcast immediately, then every interval
+    void this.crankProposal(proposal);
+    void this.fetchAndBroadcastTWAPs(proposal);
 
     const timer = setInterval(() => {
-      this.crankProposal(proposal);
+      void this.crankProposal(proposal);
+      void this.fetchAndBroadcastTWAPs(proposal);
     }, CRANK_INTERVAL_MS);
 
     this.proposalTimers.set(proposal.proposalPda, timer);
@@ -134,6 +146,39 @@ export class TWAPService {
         console.log(`Proposal ${proposal.proposalPda} not found or finalized, stopping TWAP cranking`);
         this.stopCranking(proposal.proposalPda);
       }
+    }
+  }
+
+  private async fetchAndBroadcastTWAPs(proposal: MonitoredProposal) {
+    if (!this.monitor) return;
+
+    const poolTWAPs: PoolTWAP[] = [];
+
+    for (const poolPdaStr of proposal.pools) {
+      try {
+        const poolPda = new PublicKey(poolPdaStr);
+        const twapBN = await this.monitor.client.amm.fetchTwap(poolPda);
+
+        // Convert BN to number (null means still in warmup)
+        const twap = twapBN ? Number(twapBN.toString()) / 1e12 : 0;
+
+        poolTWAPs.push({
+          pool: poolPdaStr,
+          twap
+        });
+      } catch (error) {
+        // Skip pools that fail to fetch
+        console.error(`Failed to fetch TWAP for pool ${poolPdaStr}:`, error);
+      }
+    }
+
+    // Broadcast TWAP update if we have data
+    if (poolTWAPs.length > 0) {
+      this.sse.broadcast('TWAP_UPDATE', {
+        proposalPda: proposal.proposalPda,
+        pools: poolTWAPs,
+        timestamp: Date.now(),
+      });
     }
   }
 
