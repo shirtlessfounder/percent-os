@@ -62,7 +62,7 @@ app.use(express.json());
 const sse = new SSEManager();
 app.get('/events', (req, res) => {
   const client = sse.connect(req, res);
-  client.send('connected', { clientId: client.clientId });
+  client.send('CONNECTED', { clientId: client.clientId });
 });
 
 // Auth middleware for other endpoints

@@ -78,7 +78,7 @@ export class TWAPService {
       this.stopCranking(proposal.proposalPda);
     });
 
-    console.log('TWAP service started');
+    console.log('[TWAP] Started');
   }
 
   /**
@@ -90,7 +90,7 @@ export class TWAPService {
     }
     this.proposalTimers.clear();
     this.monitor = null;
-    console.log('TWAP service stopped');
+    console.log('[TWAP] Stopped');
   }
 
   private scheduleCranking(proposal: MonitoredProposal) {
@@ -106,7 +106,7 @@ export class TWAPService {
     }, CRANK_INTERVAL_MS);
 
     this.proposalTimers.set(proposal.proposalPda, timer);
-    console.log(`Started TWAP cranking for proposal ${proposal.proposalPda} (every ${CRANK_INTERVAL_MS / 1000}s)`);
+    console.log(`[TWAP] Started cranking for ${proposal.proposalPda} (every ${CRANK_INTERVAL_MS / 1000}s)`);
   }
 
   private async crankProposal(proposal: MonitoredProposal) {
@@ -122,18 +122,18 @@ export class TWAPService {
       const failed = response.results.filter((r) => !r.signature && !r.skipped).length;
 
       console.log(
-        `Cranked TWAP for proposal ${proposal.proposalPda}: ${cranked} cranked, ${skipped} skipped, ${failed} failed`
+        `[TWAP] Cranked ${proposal.proposalPda}: ${cranked} cranked, ${skipped} skipped, ${failed} failed`
       );
 
       // Log individual failures
       for (const result of response.results) {
         if (!result.signature && !result.skipped) {
-          console.error(`  Pool ${result.pool} failed: ${result.reason}`);
+          console.error(`[TWAP] Pool ${result.pool} failed: ${result.reason}`);
         }
       }
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
-      console.error(`Failed to crank TWAP for proposal ${proposal.proposalPda}:`, errMsg);
+      console.error(`[TWAP] Crank failed for ${proposal.proposalPda}:`, errMsg);
       logError('twap', {
         action: 'crank',
         name: proposal.name,
@@ -143,7 +143,7 @@ export class TWAPService {
 
       // If proposal not found or finalized, stop cranking
       if (errMsg.includes('not found') || errMsg.includes('finalized')) {
-        console.log(`Proposal ${proposal.proposalPda} not found or finalized, stopping TWAP cranking`);
+        console.log(`[TWAP] Proposal ${proposal.proposalPda} not found or finalized, stopping`);
         this.stopCranking(proposal.proposalPda);
       }
     }
@@ -168,7 +168,7 @@ export class TWAPService {
         });
       } catch (error) {
         // Skip pools that fail to fetch
-        console.error(`Failed to fetch TWAP for pool ${poolPdaStr}:`, error);
+        console.error(`[TWAP] Failed to fetch for pool ${poolPdaStr}:`, error);
       }
     }
 
@@ -187,7 +187,7 @@ export class TWAPService {
     if (timer) {
       clearInterval(timer);
       this.proposalTimers.delete(proposalPda);
-      console.log(`Stopped TWAP cranking for proposal ${proposalPda}`);
+      console.log(`[TWAP] Stopped cranking for ${proposalPda}`);
     }
   }
 }

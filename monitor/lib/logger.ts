@@ -27,7 +27,7 @@ if (!fs.existsSync(LOGS_DIR)) {
   fs.mkdirSync(LOGS_DIR, { recursive: true });
 }
 
-export const LOG_FILES = ['lifecycle', 'server', 'twap'] as const;
+export const LOG_FILES = ['lifecycle', 'server', 'twap', 'price'] as const;
 export type LogFile = (typeof LOG_FILES)[number];
 
 /**

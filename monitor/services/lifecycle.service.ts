@@ -59,7 +59,7 @@ export class LifecycleService {
       this.cancelFinalization(proposal.proposalPda);
     });
 
-    console.log('Lifecycle service started');
+    console.log('[Lifecycle] Started');
   }
 
   stop() {
@@ -67,7 +67,7 @@ export class LifecycleService {
       clearTimeout(timer);
     }
     this.timers.clear();
-    console.log('Lifecycle service stopped');
+    console.log('[Lifecycle] Stopped');
   }
 
   private scheduleFinalization(proposal: MonitoredProposal) {
@@ -79,7 +79,7 @@ export class LifecycleService {
     }, delay);
 
     this.timers.set(proposal.proposalPda, timer);
-    console.log(`Scheduled finalization for ${proposal.proposalPda} in ${Math.round(delay / 1000)}s`);
+    console.log(`[Lifecycle] Scheduled finalization for ${proposal.proposalPda} in ${Math.round(delay / 1000)}s`);
   }
 
   private cancelFinalization(pda: string) {
@@ -87,13 +87,13 @@ export class LifecycleService {
     if (timer) {
       clearTimeout(timer);
       this.timers.delete(pda);
-      console.log(`Cancelled finalization for ${pda}`);
+      console.log(`[Lifecycle] Cancelled finalization for ${pda}`);
     }
   }
 
   private async runFinalizationFlow(proposal: MonitoredProposal) {
     const { proposalPda } = proposal;
-    console.log(`Starting finalization flow for ${proposalPda}`);
+    console.log(`[Lifecycle] Starting finalization flow for ${proposalPda}`);
 
     const results: FlowResult = {
       finalize: { success: false },
@@ -107,10 +107,10 @@ export class LifecycleService {
         winning_option: string;
       };
       results.finalize = { success: true, data };
-      console.log(`Finalized: ${proposalPda} (winner: ${data.winning_option})`);
+      console.log(`[Lifecycle] Finalized ${proposalPda} (winner: ${data.winning_option})`);
     } catch (e) {
       results.finalize = { success: false, error: String(e) };
-      console.error(`Finalize failed: ${proposalPda}`, e);
+      console.error(`[Lifecycle] Finalize failed for ${proposalPda}:`, e);
     }
 
     // Step 2: Redeem liquidity (continue regardless of result)
@@ -119,10 +119,10 @@ export class LifecycleService {
         transaction: string;
       };
       results.redeem = { success: true, data };
-      console.log(`Redeemed: ${proposalPda} (tx: ${data.transaction})`);
+      console.log(`[Lifecycle] Redeemed ${proposalPda} (tx: ${data.transaction})`);
     } catch (e) {
       results.redeem = { success: false, error: String(e) };
-      console.error(`Redeem failed: ${proposalPda}`, e);
+      console.error(`[Lifecycle] Redeem failed for ${proposalPda}:`, e);
     }
 
     // Step 3: Deposit back (continue regardless of result)
@@ -133,13 +133,13 @@ export class LifecycleService {
       };
       results.depositBack = { success: true, data };
       if (data.skipped) {
-        console.log(`Deposit-back skipped: ${proposalPda} (${data.reason})`);
+        console.log(`[Lifecycle] Deposit-back skipped for ${proposalPda} (${data.reason})`);
       } else {
-        console.log(`Deposit-back complete: ${proposalPda}`);
+        console.log(`[Lifecycle] Deposit-back complete for ${proposalPda}`);
       }
     } catch (e) {
       results.depositBack = { success: false, error: String(e) };
-      console.error(`Deposit-back failed: ${proposalPda}`, e);
+      console.error(`[Lifecycle] Deposit-back failed for ${proposalPda}:`, e);
     }
 
     // Log errors if any step failed
@@ -154,6 +154,6 @@ export class LifecycleService {
       });
     }
 
-    console.log(`Finalization flow ${hasErrors ? 'completed with errors' : 'complete'} for ${proposalPda}`);
+    console.log(`[Lifecycle] Flow ${hasErrors ? 'completed with errors' : 'complete'} for ${proposalPda}`);
   }
 }

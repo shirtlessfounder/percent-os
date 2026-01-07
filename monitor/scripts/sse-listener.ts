@@ -19,7 +19,7 @@ const colors = {
 };
 
 const eventColors: Record<string, string> = {
-  connected: colors.green,
+  CONNECTED: colors.green,
   PRICE_UPDATE: colors.cyan,
   COND_SWAP: colors.yellow,
   TWAP_UPDATE: colors.magenta,

@@ -1,18 +1,14 @@
-# Proposal Cranker
-A TS Express Server that manages the lifecycle of decision markets running on Combinator's `Futarchy` program.
+# Monitor
+A TypeScript Express server that manages the lifecycle of decision markets running on Combinator's `Futarchy` program.
 
 ## Scope
-This should be a replacement for most of `./app/*`,  `./server/*`, & `router` within `./src/`. 
-This server should offer support to our on-chain programs. It should handle any tasks that must run periodically and automatically within a proposals lifetime.
+This server handles automated tasks that must run periodically within a proposal's lifetime:
 
-This is opposed to another server, currently in `./src/*` and yet to be revamped, that should handle standard HTTP client & ui traffic. 
-
-1. *Listen* for new proposal creation "ProposalLaunched" on-chain. Only monitor proposals created via Combinator's API. 
-2. *Crank* TWAP ~ every minute for managed proposals.
-3. *Finalize* & *Redeem Liquidity* & *Redeposit* for managed proposals.
-4. *Broadcast* trade-events & price-updates for spot & cond. markets using SSE. ! Replacing the current WS `./server/*`
-5. *Persist* on restart
-6. *Log* failures for future analysis / manual resolution.
+1. **Listen** for `ProposalLaunched` / `ProposalFinalized` events on-chain (only for tracked moderators)
+2. **Crank** TWAP oracles every ~60 seconds for managed proposals
+3. **Finalize**, **Redeem Liquidity**, & **Deposit Back** when proposals expire
+4. **Broadcast** trade events & price updates for spot & conditional markets via SSE
+5. **Log** failures for analysis / manual resolution
 
 ## Endpoints (Key-gated)
 
@@ -33,7 +29,7 @@ Returns monitor status and tracked proposals.
 }
 ```
 
-### `GET /logs?file={lifecycle|server|twap}&limit=50`
+### `GET /logs?file={lifecycle|server|twap|price}&limit=50`
 Fetch error logs (newest first, default limit 50, max 500).
 
 ```json
@@ -46,7 +42,7 @@ Fetch error logs (newest first, default limit 50, max 500).
 }
 ```
 
-### `POST /clean?file={lifecycle|server|twap}`
+### `POST /clean?file={lifecycle|server|twap|price}`
 Clear error logs. Omit `file` param to clear all. 
 
 ## Usage
@@ -109,3 +105,15 @@ npm run build && npm run monitor
 | TWAP      | Every minute (live)  | Cranks TWAP oracle via API                          |
 | Price     | Market price changes | Broadcasts prices & trades via SSE                  |
 
+## SSE Events
+
+The `/events` endpoint broadcasts the following events:
+
+| Event | Payload |
+|-------|---------|
+| `CONNECTED` | `{ clientId }` |
+| `PRICE_UPDATE` | `{ proposalPda, market, price, marketCapUsd, timestamp }` |
+| `COND_SWAP` | `{ proposalPda, pool, market, trader, swapAToB, amountIn, amountOut, txSignature, timestamp }` |
+| `TWAP_UPDATE` | `{ proposalPda, pools: [{ pool, twap }], timestamp }` |
+
+- `market = -1` indicates spot pool price, `market >= 0` indicates conditional pool index

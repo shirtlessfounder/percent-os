@@ -23,6 +23,7 @@ import { CpAmm, getPriceFromSqrtPrice, getTokenDecimals } from '@meteora-ag/cp-a
 import DLMM from '@meteora-ag/dlmm';
 import { Monitor, MonitoredProposal, SwapEvent } from '../monitor';
 import { SSEManager } from '../lib/sse';
+import { logError } from '../lib/logger';
 import { PoolType } from '@zcomb/programs-sdk';
 
 /**
@@ -75,7 +76,7 @@ export class PriceService {
       void this.startTracking(p);
     }
 
-    console.log('[PriceService] Started');
+    console.log('[Price] Started');
   }
 
   /** Stop price tracking and cleanup */
@@ -92,7 +93,7 @@ export class PriceService {
     }
     this.spotPollingTimers.clear();
     this.proposalData.clear();
-    console.log('[PriceService] Stopped');
+    console.log('[Price] Stopped');
   } 
 
   // ─── Price Tracking ──────────────────────────────────────────────
@@ -104,7 +105,14 @@ export class PriceService {
       const mintInfo = await getMint(this.connection, new PublicKey(proposal.baseMint));
       totalSupply = Math.floor(Number(mintInfo.supply) / Math.pow(10, mintInfo.decimals));
     } catch (error) {
-      console.error(`[PriceService] Error fetching mint info for ${proposal.baseMint}:`, error);
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[Price] Error fetching mint info for ${proposal.baseMint}:`, errMsg);
+      logError('price', {
+        action: 'fetch_mint_info',
+        proposalPda: proposal.proposalPda,
+        baseMint: proposal.baseMint,
+        error: errMsg,
+      });
     }
 
     this.proposalData.set(proposal.proposalPda, {
@@ -119,7 +127,7 @@ export class PriceService {
       this.startSpotPricePolling(proposal.proposalPda, proposal.spotPool, proposal.spotPoolType);
     }
 
-    console.log(`[PriceService] Tracking ${proposal.proposalPda} (${proposal.pools.length} pools, supply=${totalSupply})`);
+    console.log(`[Price] Tracking ${proposal.proposalPda} (${proposal.pools.length} pools, supply=${totalSupply})`);
   }
 
   private stopTracking(proposal: MonitoredProposal) {
@@ -129,7 +137,7 @@ export class PriceService {
       this.spotPollingTimers.delete(proposal.proposalPda);
     }
     this.proposalData.delete(proposal.proposalPda);
-    console.log(`[PriceService] Stopped tracking ${proposal.proposalPda}`);
+    console.log(`[Price] Stopped tracking ${proposal.proposalPda}`);
   }
 
   // ─── Price Fetching ─────────────────────────────────────────────
@@ -145,7 +153,13 @@ export class PriceService {
       const price = getPriceFromSqrtPrice(poolState.sqrtPrice, tokenADecimal, tokenBDecimal);
       return price.toNumber();
     } catch (error) {
-      console.error(`[PriceService] Error fetching DAMM pool price for ${poolAddress}:`, error);
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[Price] Error fetching DAMM pool price for ${poolAddress}:`, errMsg);
+      logError('price', {
+        action: 'fetch_damm_price',
+        pool: poolAddress,
+        error: errMsg,
+      });
       return null;
     }
   }
@@ -159,7 +173,13 @@ export class PriceService {
       const price = parseFloat(activeBin.pricePerToken);
       return price;
     } catch (error) {
-      console.error(`[PriceService] Error fetching DLMM pool price for ${poolAddress}:`, error);
+      const errMsg = error instanceof Error ? error.message : String(error);
+      console.error(`[Price] Error fetching DLMM pool price for ${poolAddress}:`, errMsg);
+      logError('price', {
+        action: 'fetch_dlmm_price',
+        pool: poolAddress,
+        error: errMsg,
+      });
       return null;
     }
   }
@@ -177,13 +197,13 @@ export class PriceService {
       const price = await this.fetchDlmmPoolPrice(this.SOL_USDC_DLMM_POOL);
       if (price !== null && price > 0) {
         this.solPrice = price;
-        console.log(`[PriceService] Updated SOL price: $${price.toFixed(2)}`);
+        console.log(`[Price] Updated SOL price: $${price.toFixed(2)}`);
       }
     };
 
     void poll(); // Initial fetch
     this.solPriceTimer = setInterval(poll, this.SOL_PRICE_POLL_INTERVAL_MS);
-    console.log('[PriceService] Started SOL price polling');
+    console.log('[Price] Started SOL price polling');
   }
 
   // ─── Spot Price Polling ─────────────────────────────────────────
@@ -208,7 +228,7 @@ export class PriceService {
     void poll(); // Initial fetch
     const timer = setInterval(poll, this.SPOT_POLL_INTERVAL_MS);
     this.spotPollingTimers.set(proposalPda, timer);
-    console.log(`[PriceService] Started spot price polling for ${proposalPda} (${isDlmm ? 'dlmm' : 'damm'})`);
+    console.log(`[Price] Started spot price polling for ${proposalPda} (${isDlmm ? 'dlmm' : 'damm'})`);
   }
 
   // ─── Event Handlers ──────────────────────────────────────────────
