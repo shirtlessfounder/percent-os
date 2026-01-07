@@ -32,7 +32,6 @@ import { PoolType } from '@zcomb/programs-sdk';
  */
 
 export class PriceService {
-  private monitor: Monitor | null = null;
   private connection: Connection;
   private cpAmm: CpAmm;
 
@@ -61,8 +60,6 @@ export class PriceService {
 
   /** Subscribe to monitor events and start price tracking */
   start(monitor: Monitor) {
-    this.monitor = monitor;
-
     // Start SOL price polling
     this.startSolPricePolling();
 
@@ -95,7 +92,6 @@ export class PriceService {
     }
     this.spotPollingTimers.clear();
     this.proposalData.clear();
-    this.monitor = null;
     console.log('[PriceService] Stopped');
   } 
 
