@@ -458,7 +458,7 @@ export class DammService {
     try {
       this.logger.info('Starting DAMM cleanup flow', { poolAddress });
 
-      // Step 1: Build and execute swap (if needed)
+      // Step 1: Build and execute swap (if needed) - best effort, no retry
       const swapBuildData = await this.buildCleanupSwap(poolAddress);
 
       if (swapBuildData) {
@@ -475,31 +475,77 @@ export class DammService {
       }
 
       // Step 2: Build and execute deposit (0,0 mode - uses LP owner balances)
-      const depositBuildData = await this.buildCleanupDeposit(poolAddress);
+      // Retry logic for slippage/balance issues - each retry fetches fresh quote
+      const maxDepositAttempts = 3;
+      let lastError: Error | null = null;
 
-      if (!depositBuildData) {
-        this.logger.info('No tokens to deposit after cleanup', { poolAddress });
-        return null;
+      for (let attempt = 1; attempt <= maxDepositAttempts; attempt++) {
+        try {
+          // Wait before retry to let RPC state settle
+          if (attempt > 1) {
+            const delayMs = 2000 * attempt; // 4s, 6s for retries
+            this.logger.info(`Deposit attempt ${attempt}/${maxDepositAttempts}, waiting ${delayMs}ms for fresh state...`, { poolAddress });
+            await new Promise(r => setTimeout(r, delayMs));
+          }
+
+          const depositBuildData = await this.buildCleanupDeposit(poolAddress);
+
+          if (!depositBuildData) {
+            this.logger.info('No tokens to deposit after cleanup', { poolAddress });
+            return null;
+          }
+
+          // Sign and confirm deposit
+          const depositTxBuffer = bs58.decode(depositBuildData.transaction);
+          const depositTransaction = Transaction.from(depositTxBuffer);
+          const signedDepositTx = await signTransaction(depositTransaction);
+          const signedDepositTxBase58 = bs58.encode(
+            signedDepositTx.serialize({ requireAllSignatures: false })
+          );
+
+          const confirmData = await this.confirmDammDeposit(signedDepositTxBase58, depositBuildData.requestId);
+
+          this.logger.info('DAMM cleanup flow completed', {
+            poolAddress,
+            signature: confirmData.signature,
+            depositedTokenA: confirmData.deposited.tokenA,
+            depositedTokenB: confirmData.deposited.tokenB,
+            attempts: attempt
+          });
+
+          return confirmData;
+
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+
+          // Check if error is retryable (slippage/balance issues)
+          const errorMsg = lastError.message.toLowerCase();
+          const isRetryable = errorMsg.includes('insufficient lamports') ||
+                              errorMsg.includes('0x1') ||
+                              errorMsg.includes('slippage') ||
+                              errorMsg.includes('simulation failed');
+
+          if (isRetryable && attempt < maxDepositAttempts) {
+            this.logger.warn(`Deposit failed (attempt ${attempt}/${maxDepositAttempts}), will retry`, {
+              poolAddress,
+              error: lastError.message
+            });
+            continue;
+          }
+
+          // Not retryable or out of attempts
+          break;
+        }
       }
 
-      // Sign and confirm deposit
-      const depositTxBuffer = bs58.decode(depositBuildData.transaction);
-      const depositTransaction = Transaction.from(depositTxBuffer);
-      const signedDepositTx = await signTransaction(depositTransaction);
-      const signedDepositTxBase58 = bs58.encode(
-        signedDepositTx.serialize({ requireAllSignatures: false })
-      );
-
-      const confirmData = await this.confirmDammDeposit(signedDepositTxBase58, depositBuildData.requestId);
-
-      this.logger.info('DAMM cleanup flow completed', {
+      // All attempts failed
+      this.logger.error('Failed to complete DAMM cleanup flow after retries', {
         poolAddress,
-        signature: confirmData.signature,
-        depositedTokenA: confirmData.deposited.tokenA,
-        depositedTokenB: confirmData.deposited.tokenB
+        attempts: maxDepositAttempts,
+        error: lastError?.message
       });
+      throw lastError || new Error('Deposit failed after max attempts');
 
-      return confirmData;
     } catch (error) {
       this.logger.error('Failed to complete DAMM cleanup flow', {
         poolAddress,
