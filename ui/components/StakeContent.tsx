@@ -1078,7 +1078,7 @@ export function StakeContent({ useExploreHeader = true }: StakeContentProps) {
                                       href={`https://solscan.io/account/${trade.userAddress}`}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="text-[#6B6E71] hover:text-theme-text transition-colors ml-1 inline"
+                                      className="text-[#6B6E71] hover:text-[#DDDDD7] transition-colors ml-1 inline cursor-pointer"
                                       title="View on Solscan"
                                     >
                                       <svg
@@ -1122,7 +1122,7 @@ export function StakeContent({ useExploreHeader = true }: StakeContentProps) {
                                         href={`https://solscan.io/tx/${trade.txSignature}`}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="text-[#6B6E71] hover:text-theme-text transition-colors ml-1 inline"
+                                        className="text-[#6B6E71] hover:text-[#DDDDD7] transition-colors ml-1 inline cursor-pointer"
                                       >
                                         <svg
                                           width="12"
