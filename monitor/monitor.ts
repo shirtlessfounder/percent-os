@@ -32,6 +32,7 @@ import {
 import { FutarchyIDL, AmmIDL } from '@zcomb/programs-sdk/dist/generated/idls';
 import { getPool } from '@app/utils/database';
 import { logError } from './lib/logger';
+import { callApi, ApiProposal, AllProposalsResponse } from './lib/api';
 
 export interface MonitoredProposal {
   // Proposal
@@ -117,6 +118,154 @@ export class Monitor extends EventEmitter {
       'confirmed'
     );
     console.log(`[Monitor] Listening for AMM events on ${AMM_PROGRAM_ID.toBase58()}`);
+  }
+
+  /**
+   * Load all pending proposals from the external API on startup.
+   * Fetches on-chain data to build complete MonitoredProposal objects.
+   */
+  async loadPendingProposals(): Promise<void> {
+    console.log('[Monitor] Loading pending proposals from API...');
+
+    // 1. Fetch all proposals from API
+    let apiProposals: ApiProposal[];
+    try {
+      const response = await callApi<AllProposalsResponse>('/dao/proposals/all');
+      apiProposals = response.proposals;
+    } catch (error) {
+      console.error('[Monitor] Failed to fetch proposals from API:', error);
+      logError('server', { type: 'load_pending_proposals', error: String(error) });
+      return;
+    }
+
+    // 2. Filter for 'Pending' status only
+    const pendingProposals = apiProposals.filter((p) => p.status === 'Pending');
+    console.log(`[Monitor] Found ${pendingProposals.length} pending proposals to load`);
+
+    if (pendingProposals.length === 0) return;
+
+    // 3. Load all proposals in parallel
+    const results = await Promise.all(
+      pendingProposals.map(async (apiProposal) => {
+        try {
+          await this.loadProposalFromApi(apiProposal);
+          return { pda: apiProposal.proposalPda, success: true };
+        } catch (error) {
+          const errMsg = String(error);
+          console.error(`[Monitor] Failed to load proposal ${apiProposal.proposalPda}:`, errMsg);
+          logError('server', {
+            type: 'load_proposal_failed',
+            proposalPda: apiProposal.proposalPda,
+            daoName: apiProposal.daoName,
+            error: errMsg,
+          });
+          return { pda: apiProposal.proposalPda, success: false };
+        }
+      })
+    );
+
+    const loaded = results.filter((r) => r.success).length;
+    const failed = results.filter((r) => !r.success).length;
+    console.log(`[Monitor] Loaded ${loaded} proposals, ${failed} failed`);
+  }
+
+  /**
+   * Load a single proposal from API data by fetching on-chain state.
+   */
+  private async loadProposalFromApi(apiProposal: ApiProposal): Promise<void> {
+    const proposalPda = new PublicKey(apiProposal.proposalPda);
+    const proposalPdaStr = apiProposal.proposalPda;
+
+    // Skip if already monitored
+    if (this.monitored.has(proposalPdaStr)) {
+      console.log(`[Monitor] Proposal ${proposalPdaStr} already monitored, skipping`);
+      return;
+    }
+
+    // Fetch on-chain proposal data
+    const proposal = await this.client.fetchProposal(proposalPda);
+    const moderatorPdaStr = proposal.moderator.toBase58();
+
+    // Check if moderator is tracked in our database
+    if (!(await this.isTrackedModerator(moderatorPdaStr))) {
+      console.log(`[Monitor] Ignoring proposal ${proposalPdaStr} - moderator not tracked`);
+      return;
+    }
+
+    // Fetch moderator for mints
+    const moderator = await this.client.fetchModerator(proposal.moderator);
+    const name = moderator.name;
+    const baseMint = moderator.baseMint.toBase58();
+    const quoteMint = moderator.quoteMint.toBase58();
+
+    // Try to fetch DAO for spot pool (optional)
+    const [daoPda] = this.client.deriveDAOPDA(name);
+    let daoInfo: { daoPda: string; spotPool: string; spotPoolType: PoolType } | undefined;
+
+    try {
+      const dao = await this.client.fetchDAO(daoPda);
+
+      // Child DAOs are not supported
+      if (!('parent' in dao.daoType) || !dao.daoType.parent) {
+        console.log(`[Monitor] DAO ${name} is a child DAO - skipping spot pool info`);
+      } else {
+        const { moderator: daoModerator, pool, poolType } = dao.daoType.parent;
+
+        // Moderator mismatch check
+        if (daoModerator.toBase58() !== moderatorPdaStr) {
+          logError('server', {
+            type: 'load_proposal_moderator_mismatch',
+            name,
+            proposalPda: proposalPdaStr,
+            error: `Moderator mismatch: DAO has ${daoModerator.toBase58()}, proposal has ${moderatorPdaStr}`,
+          });
+          return;
+        }
+
+        daoInfo = {
+          daoPda: daoPda.toBase58(),
+          spotPool: pool.toBase58(),
+          spotPoolType: poolType,
+        };
+      }
+    } catch {
+      // DAO doesn't exist - continue without spot pool
+      console.log(`[Monitor] DAO ${name} not found - continuing without spot pool info`);
+    }
+
+    // Calculate timing
+    const createdAtMs = apiProposal.createdAt;
+    const timeRemaining = this.client.getTimeRemaining(proposal);
+    const endTime = Date.now() + timeRemaining * 1000;
+
+    // Filter out uninitialized pool slots
+    const pools = proposal.pools
+      .map((p: PublicKey) => p.toBase58())
+      .filter((p: string) => p !== '11111111111111111111111111111111');
+
+    const info: MonitoredProposal = {
+      proposalPda: proposalPdaStr,
+      proposalId: proposal.id,
+      numOptions: proposal.numOptions,
+      pools,
+      endTime,
+      createdAt: createdAtMs,
+      moderatorPda: moderatorPdaStr,
+      name,
+      baseMint,
+      quoteMint,
+      ...daoInfo,
+    };
+
+    this.monitored.set(proposalPdaStr, info);
+
+    // Track pools for swap event filtering
+    for (const pool of pools) {
+      this.poolToProposal.set(pool, proposalPdaStr);
+    }
+
+    this.emit('proposal:added', info);
+    console.log(`[Monitor] Loaded proposal ${proposalPdaStr} [${name}] (ends: ${new Date(endTime).toISOString()})`);
   }
 
   async stop() {

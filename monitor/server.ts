@@ -160,8 +160,13 @@ const startServer = async () => {
     if (!process.env.SOLANA_RPC_URL) throw Error('Missing SOLANA_RPC_URL');
     if (!NO_AUTH && !process.env.ADMIN_API_KEY) throw Error('Missing ADMIN_API_KEY');
 
-    // Start monitor
+    // Create monitor instance
     monitor = new Monitor(process.env.SOLANA_RPC_URL);
+
+    // Load existing pending proposals from API (blocking)
+    await monitor.loadPendingProposals();
+
+    // Start event listeners for new proposals
     await monitor.start();
 
     // Start lifecycle service

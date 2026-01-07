@@ -19,11 +19,48 @@
 
 export const API_URL = 'https://api.zcombinator.io';
 
-export async function callApi(endpoint: string, body: Record<string, string>): Promise<unknown> {
+// ============================================================================
+// Types
+// ============================================================================
+
+export interface ApiProposal {
+  id: number;
+  proposalPda: string;
+  title: string;
+  description: string;
+  options: string[];
+  status: 'Setup' | 'Pending' | 'Passed' | 'Failed'; // Vibe slopped status from api
+  createdAt: number;
+  endsAt: number | null;
+  finalizedAt: number | null;
+  metadataCid: string | null;
+  daoPda: string;
+  daoName: string;
+  tokenMint: string;
+  tokenIcon: string | null;
+}
+
+export interface AllProposalsResponse {
+  proposals: ApiProposal[];
+}
+
+// ============================================================================
+// API Functions
+// ============================================================================
+
+/**
+ * Call the Combinator API.
+ * - GET request if no body provided
+ * - POST request if body provided
+ */
+export async function callApi<T = unknown>(
+  endpoint: string,
+  body?: Record<string, string>
+): Promise<T> {
   const res = await fetch(`${API_URL}${endpoint}`, {
-    method: 'POST',
+    method: body ? 'POST' : 'GET',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    ...(body && { body: JSON.stringify(body) }),
   });
 
   const data = (await res.json()) as { error?: string; [key: string]: unknown };
@@ -32,5 +69,5 @@ export async function callApi(endpoint: string, body: Record<string, string>): P
     throw new Error(data.error || `API error: ${res.status}`);
   }
 
-  return data;
+  return data as T;
 }
