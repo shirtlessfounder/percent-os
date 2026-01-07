@@ -15,6 +15,7 @@ import { ModeToggle } from '@/components/ModeToggle';
 import { DepositCard } from '@/components/DepositCard';
 import { useProposalsWithFutarchy } from '@/hooks/useProposals';
 import { useTradeHistory } from '@/hooks/useTradeHistory';
+import { api } from '@/lib/api';
 import { useUserBalances } from '@/hooks/useUserBalances';
 import { formatNumber, formatCurrency } from '@/lib/formatters';
 import { getProposalContent } from '@/lib/proposalContent';
@@ -128,11 +129,47 @@ export default function HomePage() {
     return proposal ? applyMarketLabelOverrides(filtered, moderatorId, proposal.id) : filtered;
   }, [proposal, moderatorId]);
 
+  // For futarchy proposals, fetch detailed proposal info to get vault and pools
+  const [futarchyProposalDetail, setFutarchyProposalDetail] = useState<{
+    vault: string;
+    pools: string[];
+  } | null>(null);
+
+  useEffect(() => {
+    if (!isFutarchy || !proposal?.proposalPda) {
+      setFutarchyProposalDetail(null);
+      return;
+    }
+
+    // Fetch proposal detail to get vault and pools
+    const fetchDetail = async () => {
+      try {
+        const detail = await api.getZcombinatorProposal(proposal.proposalPda!);
+        if (detail) {
+          setFutarchyProposalDetail({
+            vault: detail.vault,
+            pools: detail.pools,
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching futarchy proposal detail:', error);
+      }
+    };
+
+    fetchDetail();
+  }, [isFutarchy, proposal?.proposalPda]);
+
+  // Determine the effective vault PDA (futarchy uses detail, old system uses proposal.vaultPDA)
+  const effectiveVaultPDA = isFutarchy && futarchyProposalDetail?.vault
+    ? futarchyProposalDetail.vault
+    : proposal?.vaultPDA ?? null;
+
   // Fetch user balances for the selected proposal (uses client-side SDK)
   const { data: userBalances, refetch: refetchBalances } = useUserBalances(
     selectedProposalId,
-    proposal?.vaultPDA ?? null,
-    walletAddress
+    effectiveVaultPDA,
+    walletAddress,
+    isFutarchy
   );
 
   // Fetch trade history for the selected proposal
@@ -459,7 +496,7 @@ export default function HomePage() {
                     <div className="order-2 md:order-1">
                       <DepositCard
                         proposalId={proposal.id}
-                        vaultPDA={proposal.vaultPDA}
+                        vaultPDA={effectiveVaultPDA || proposal.vaultPDA}
                         solBalance={solBalance}
                         baseTokenBalance={baseTokenBalance}
                         userBalances={userBalances}
@@ -468,6 +505,7 @@ export default function HomePage() {
                         baseDecimals={baseDecimals}
                         proposalStatus={proposal.status as 'Pending' | 'Passed' | 'Failed'}
                         winningMarketIndex={proposal.winningMarketIndex}
+                        isFutarchy={isFutarchy}
                       />
                     </div>
 
@@ -504,6 +542,8 @@ export default function HomePage() {
                             baseMint={baseMint}
                             tokenSymbol={tokenSymbol}
                             winningMarketIndex={proposal.winningMarketIndex}
+                            isFutarchy={isFutarchy}
+                            pools={futarchyProposalDetail?.pools}
                           />
                         </div>
                       </div>

@@ -26,6 +26,8 @@ import { useTransactionSigner } from '@/hooks/useTransactionSigner';
 import { formatNumber, formatCurrency } from '@/lib/formatters';
 import { openPosition } from '@/lib/trading';
 import { api } from '@/lib/api';
+import { getSwapQuote as getFutarchySwapQuote } from '@/lib/programs/futarchy';
+import { PublicKey } from '@solana/web3.js';
 import toast from 'react-hot-toast';
 import { SOL_MULTIPLIER } from '@/lib/constants/tokens';
 import type { UserBalancesResponse } from '@/lib/programs/vault';
@@ -45,6 +47,9 @@ interface TradingInterfaceProps {
   baseMint?: string | null;
   tokenSymbol?: string;
   winningMarketIndex?: number | null;  // For claiming winnings
+  // Futarchy-specific fields (new system)
+  isFutarchy?: boolean;  // Whether this is a futarchy proposal
+  pools?: string[];  // Pool PDAs for each market (index corresponds to market index)
 }
 
 const TradingInterface = memo(({
@@ -60,7 +65,9 @@ const TradingInterface = memo(({
   visualFocusClassName = '',
   baseMint,
   tokenSymbol = 'ZC',
-  winningMarketIndex
+  winningMarketIndex,
+  isFutarchy = false,
+  pools
 }: TradingInterfaceProps) => {
   // Get display label for the selected market (strip URLs and trim)
   const selectedLabel = marketLabels?.[selectedMarketIndex]?.replace(/(https?:\/\/[^\s]+)/gi, '').trim() || `Coin ${selectedMarketIndex + 1}`;
@@ -222,26 +229,51 @@ const TradingInterface = memo(({
         }
 
         // Determine swap direction
-        const isBaseToQuote = sellingToken === 'baseToken';
+        // For futarchy: mintA = SOL (quote), mintB = base
+        // For old system: mintA = base, mintB = SOL (quote)
+        const swapAToB = isFutarchy
+          ? sellingToken === 'sol'      // Futarchy: selling SOL (A) → swapAToB = true
+          : sellingToken === 'baseToken'; // Old: selling base (A) → swapAToB = true
 
-        // Fetch quote from API
-        const quoteData = await api.getSwapQuote(
-          proposalId,
-          selectedMarketIndex,
-          isBaseToQuote,
-          amountInSmallestUnits.toString(),
-          2000, // 20% slippage
-          moderatorId || undefined
-        );
+        // Fetch quote - use SDK for futarchy, API for old system
+        if (isFutarchy && pools?.[selectedMarketIndex]) {
+          // Futarchy: use SDK directly
+          const poolPDA = pools[selectedMarketIndex];
+          const quoteData = await getFutarchySwapQuote(
+            new PublicKey(poolPDA),
+            swapAToB,
+            amountInSmallestUnits.toString()
+          );
 
-        if (quoteData) {
-          setQuote({
-            swapOutAmount: quoteData.swapOutAmount,
-            minSwapOutAmount: quoteData.minSwapOutAmount,
-            priceImpact: quoteData.priceImpact
-          });
+          if (quoteData) {
+            setQuote({
+              swapOutAmount: quoteData.outputAmount,
+              minSwapOutAmount: quoteData.minOutputAmount,
+              priceImpact: quoteData.priceImpact
+            });
+          } else {
+            setQuote(null);
+          }
         } else {
-          setQuote(null);
+          // Old system: use API
+          const quoteData = await api.getSwapQuote(
+            proposalId,
+            selectedMarketIndex,
+            swapAToB,
+            amountInSmallestUnits.toString(),
+            2000, // 20% slippage
+            moderatorId || undefined
+          );
+
+          if (quoteData) {
+            setQuote({
+              swapOutAmount: quoteData.swapOutAmount,
+              minSwapOutAmount: quoteData.minSwapOutAmount,
+              priceImpact: quoteData.priceImpact
+            });
+          } else {
+            setQuote(null);
+          }
         }
       } catch (error) {
         console.error('Error fetching quote:', error);
@@ -257,7 +289,7 @@ const TradingInterface = memo(({
         clearTimeout(quoteTimeoutRef.current);
       }
     };
-  }, [amount, sellingToken, selectedMarketIndex, proposalId]);
+  }, [amount, sellingToken, selectedMarketIndex, proposalId, isFutarchy, pools, moderatorId, baseMultiplier]);
 
   // Handle MAX button click - set amount to user's balance for selected market and token
   const handleMaxClick = useCallback(() => {
@@ -326,7 +358,9 @@ const TradingInterface = memo(({
         userAddress: walletAddress,
         signTransaction,
         baseDecimals,
-        moderatorId: moderatorId || undefined
+        moderatorId: moderatorId || undefined,
+        isFutarchy,
+        poolPDA: pools?.[selectedMarketIndex]  // Pool PDA for this market
       });
 
       // Clear the amount after successful trade
@@ -345,7 +379,7 @@ const TradingInterface = memo(({
     } finally {
       setIsTrading(false);
     }
-  }, [isConnected, login, walletAddress, amount, proposalId, selectedMarketIndex, sellingToken, signTransaction, refetchBalances, onTradeSuccess]);
+  }, [isConnected, login, walletAddress, amount, proposalId, selectedMarketIndex, sellingToken, signTransaction, refetchBalances, onTradeSuccess, baseDecimals, moderatorId, isFutarchy, pools]);
 
   // Quick amount buttons - depends on selling token
   const quickAmounts = useMemo(() => {

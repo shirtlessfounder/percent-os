@@ -19,7 +19,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { PublicKey } from '@solana/web3.js';
-import { fetchUserBalances } from '@/lib/programs/vault';
+import { fetchUserBalances as fetchUserBalancesOld } from '@/lib/programs/vault';
+import { fetchUserBalances as fetchUserBalancesFutarchy } from '@/lib/programs/futarchy';
 import type { UserBalancesResponse } from '@/lib/programs/vault';
 
 interface UserBalances {
@@ -32,7 +33,8 @@ interface UserBalances {
 export function useUserBalances(
   proposalId: number | null,
   vaultPDA: string | null,
-  walletAddress: string | null
+  walletAddress: string | null,
+  isFutarchy: boolean = false
 ): UserBalances {
   const [balances, setBalances] = useState<Omit<UserBalances, 'refetch'>>({
     data: null,
@@ -43,12 +45,15 @@ export function useUserBalances(
   const fetchBalances = useCallback(async (
     id: number,
     vaultPDAStr: string,
-    address: string
+    address: string,
+    useFutarchy: boolean
   ) => {
     setBalances(prev => ({ ...prev, loading: true, error: null }));
 
     try {
-      const data = await fetchUserBalances(
+      // Use the appropriate SDK based on whether this is a futarchy proposal
+      const fetchFn = useFutarchy ? fetchUserBalancesFutarchy : fetchUserBalancesOld;
+      const data = await fetchFn(
         new PublicKey(vaultPDAStr),
         new PublicKey(address),
         id
@@ -81,24 +86,24 @@ export function useUserBalances(
     }
 
     // Initial fetch
-    fetchBalances(proposalId, vaultPDA, walletAddress);
+    fetchBalances(proposalId, vaultPDA, walletAddress, isFutarchy);
 
     // Refresh every 30 seconds
     const interval = setInterval(() => {
-      fetchBalances(proposalId, vaultPDA, walletAddress);
+      fetchBalances(proposalId, vaultPDA, walletAddress, isFutarchy);
     }, 30000);
 
     // Cleanup
     return () => {
       clearInterval(interval);
     };
-  }, [proposalId, vaultPDA, walletAddress, fetchBalances]);
+  }, [proposalId, vaultPDA, walletAddress, isFutarchy, fetchBalances]);
 
   const refetch = useCallback(() => {
     if (proposalId !== null && vaultPDA && walletAddress) {
-      fetchBalances(proposalId, vaultPDA, walletAddress);
+      fetchBalances(proposalId, vaultPDA, walletAddress, isFutarchy);
     }
-  }, [proposalId, vaultPDA, walletAddress, fetchBalances]);
+  }, [proposalId, vaultPDA, walletAddress, isFutarchy, fetchBalances]);
 
   return {
     ...balances,

@@ -276,13 +276,19 @@ export async function executeSwapWithSlippage(
   const client = createFutarchyClient(userPublicKey, signTransaction);
   const inputBN = BN.isBN(inputAmount) ? inputAmount : new BN(inputAmount.toString());
 
+  // Convert basis points to percent (e.g., 2000 bps -> 20%)
+  // The SDK expects slippagePercent, not basis points
+  const slippagePercent = slippageBps / 100;
+
   const { builder } = await client.amm.swapWithSlippage(
     userPublicKey,
     poolPDA,
     swapAToB,
     inputBN,
-    slippageBps
+    slippagePercent,
+    { autoCreateTokenAccounts: true }
   );
+
   const signature = await builder.rpc();
 
   return signature;

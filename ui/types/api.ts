@@ -49,6 +49,7 @@ export interface ProposalListItem {
   proposalPda?: string;
   metadataCid?: string | null;
   endsAt?: number | null;  // Timestamp when proposal voting ends (futarchy only)
+  pools?: string[];  // Pool PDAs for each market (futarchy only, from proposal detail)
 }
 
 export interface ProposalListResponse {

@@ -152,8 +152,10 @@ export const LivePriceDisplay: React.FC<LivePriceDisplayProps> = ({ proposalId, 
     }
   }, [marketCount]);
 
-  // Set up chart price subscription for pass/fail markets
+  // Set up chart price subscription for pass/fail markets (old system only)
   useEffect(() => {
+    // Skip for futarchy DAOs - they use on-chain AMM prices, not the old price stream
+    if (isFutarchy) return;
     if (moderatorId === null) return; // Wait for moderatorId to be available
 
     const priceService = getPriceStreamService();
@@ -167,7 +169,7 @@ export const LivePriceDisplay: React.FC<LivePriceDisplayProps> = ({ proposalId, 
       priceService.unsubscribeFromChartPrices(moderatorId, proposalId, handleChartPriceUpdate);
       console.log('[LivePriceDisplay] Unsubscribed from chart prices for proposal', proposalId, 'moderator', moderatorId);
     };
-  }, [proposalId, moderatorId, handleChartPriceUpdate]);
+  }, [proposalId, moderatorId, isFutarchy, handleChartPriceUpdate]);
 
   // Call the callback when prices update (only after WebSocket data received)
   // This prevents flickering from stale chart data before real-time prices arrive
@@ -191,6 +193,31 @@ export const LivePriceDisplay: React.FC<LivePriceDisplayProps> = ({ proposalId, 
     return (
       <div className="rounded-lg border p-4" style={{ borderColor: 'rgba(255, 111, 148, 0.2)', backgroundColor: 'rgba(255, 111, 148, 0.05)' }}>
         <p style={{ color: '#FF6F94' }}>Error: {error}</p>
+      </div>
+    );
+  }
+
+  // For futarchy DAOs, show a placeholder since price display isn't implemented yet
+  if (isFutarchy) {
+    const gridColsClass = marketCount === 2 ? 'md:grid-cols-2' :
+                          marketCount === 3 ? 'md:grid-cols-3' :
+                          'md:grid-cols-4';
+    return (
+      <div className={`grid grid-cols-1 ${gridColsClass}`}>
+        {marketLabels.slice(0, marketCount).map((label, index) => (
+          <TokenPriceBox
+            key={index}
+            tokenName={label}
+            tokenSymbol={`COIN${index + 1}-${proposalId}`}
+            tokenAddress=""
+            price={0.5}
+            twap={null}
+            isLoading={false}
+            tokenType="market"
+            marketIndex={index}
+            isLast={index === marketCount - 1}
+          />
+        ))}
       </div>
     );
   }

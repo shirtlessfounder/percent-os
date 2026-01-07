@@ -6,7 +6,8 @@ import { useTransactionSigner } from '@/hooks/useTransactionSigner';
 import { PublicKey } from '@solana/web3.js';
 import toast from 'react-hot-toast';
 import { formatNumber } from '@/lib/formatters';
-import { deposit, withdraw, VaultType, type UserBalancesResponse } from '@/lib/programs/vault';
+import { deposit as depositOld, withdraw as withdrawOld, VaultType, type UserBalancesResponse } from '@/lib/programs/vault';
+import { deposit as depositFutarchy, withdraw as withdrawFutarchy } from '@/lib/programs/futarchy';
 import { claimWinnings } from '@/lib/trading';
 
 const SOL_DECIMALS = 9;
@@ -23,9 +24,10 @@ interface DepositCardProps {
   baseDecimals: number; // Required - token decimals for base token
   proposalStatus?: 'Pending' | 'Passed' | 'Failed';
   winningMarketIndex?: number | null;
+  isFutarchy?: boolean; // Whether this is a futarchy (new system) proposal
 }
 
-export function DepositCard({ proposalId, vaultPDA, solBalance, baseTokenBalance, userBalances, onDepositSuccess, tokenSymbol = 'ZC', baseDecimals, proposalStatus = 'Pending', winningMarketIndex }: DepositCardProps) {
+export function DepositCard({ proposalId, vaultPDA, solBalance, baseTokenBalance, userBalances, onDepositSuccess, tokenSymbol = 'ZC', baseDecimals, proposalStatus = 'Pending', winningMarketIndex, isFutarchy = false }: DepositCardProps) {
   const { ready, authenticated, walletAddress, login } = usePrivyWallet();
   const { signTransaction } = useTransactionSigner();
   const [mode, setMode] = useState<'deposit' | 'withdraw'>('deposit');
@@ -139,8 +141,9 @@ export function DepositCard({ proposalId, vaultPDA, solBalance, baseTokenBalance
       // Determine vault type based on token type
       const vaultType = selectedToken === 'zc' ? VaultType.Base : VaultType.Quote;
 
-      // Execute deposit (split) using client-side SDK
-      await deposit(
+      // Execute deposit (split) using appropriate SDK
+      const depositFn = isFutarchy ? depositFutarchy : depositOld;
+      await depositFn(
         new PublicKey(vaultPDA),
         vaultType,
         amountInSmallestUnits,
@@ -162,7 +165,7 @@ export function DepositCard({ proposalId, vaultPDA, solBalance, baseTokenBalance
     } finally {
       setIsDepositing(false);
     }
-  }, [authenticated, ready, walletAddress, amount, balanceError, selectedToken, baseDecimals, signTransaction, vaultPDA, login, onDepositSuccess]);
+  }, [authenticated, ready, walletAddress, amount, balanceError, selectedToken, baseDecimals, signTransaction, vaultPDA, login, onDepositSuccess, isFutarchy]);
 
   // Handle withdraw
   const handleWithdraw = useCallback(async () => {
@@ -202,8 +205,9 @@ export function DepositCard({ proposalId, vaultPDA, solBalance, baseTokenBalance
       // Determine vault type based on token type
       const vaultType = selectedToken === 'zc' ? VaultType.Base : VaultType.Quote;
 
-      // Execute withdraw (merge) using client-side SDK
-      await withdraw(
+      // Execute withdraw (merge) using appropriate SDK
+      const withdrawFn = isFutarchy ? withdrawFutarchy : withdrawOld;
+      await withdrawFn(
         new PublicKey(vaultPDA),
         vaultType,
         amountInSmallestUnits,
@@ -225,7 +229,7 @@ export function DepositCard({ proposalId, vaultPDA, solBalance, baseTokenBalance
     } finally {
       setIsDepositing(false);
     }
-  }, [authenticated, ready, walletAddress, amount, balanceError, selectedToken, baseDecimals, signTransaction, vaultPDA, login, onDepositSuccess]);
+  }, [authenticated, ready, walletAddress, amount, balanceError, selectedToken, baseDecimals, signTransaction, vaultPDA, login, onDepositSuccess, isFutarchy]);
 
   // Handle claim (for completed markets)
   const handleClaim = useCallback(async () => {
@@ -253,6 +257,7 @@ export function DepositCard({ proposalId, vaultPDA, solBalance, baseTokenBalance
         vaultPDA,
         userAddress: walletAddress,
         signTransaction,
+        isFutarchy,
       });
 
       onDepositSuccess();
@@ -262,7 +267,7 @@ export function DepositCard({ proposalId, vaultPDA, solBalance, baseTokenBalance
     } finally {
       setIsDepositing(false);
     }
-  }, [authenticated, ready, walletAddress, winningMarketIndex, proposalId, vaultPDA, signTransaction, login, onDepositSuccess]);
+  }, [authenticated, ready, walletAddress, winningMarketIndex, proposalId, vaultPDA, signTransaction, login, onDepositSuccess, isFutarchy]);
 
   return (
     <div className="bg-[#121212] border border-[#191919] rounded-[9px] pt-2.5 pb-4 px-5 transition-all duration-300">
