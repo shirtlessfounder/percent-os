@@ -122,6 +122,16 @@ export class PriceService {
       pools: proposal.pools,
     });
 
+    // Broadcast initial conditional pool prices
+    for (let i = 0; i < proposal.pools.length; i++) {
+      const pool = proposal.pools[i];
+      const price = await this.fetchPoolPrice(pool);
+      if (price !== null) {
+        const marketCapUsd = price * totalSupply * this.solPrice;
+        this.onPriceChange(proposal.proposalPda, i, price, marketCapUsd);
+      }
+    }
+
     // Start spot price polling if spotPool exists
     if (proposal.spotPool) {
       this.startSpotPricePolling(proposal.proposalPda, proposal.spotPool, proposal.spotPoolType);
