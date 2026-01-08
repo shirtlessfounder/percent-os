@@ -48,6 +48,8 @@ export function useTradeHistory(proposalId: number | null, moderatorId?: number 
   const proposalIdRef = useRef(proposalId);
   const moderatorIdRef = useRef(moderatorId);
   const proposalPdaRef = useRef(proposalPda);
+  const tradesRef = useRef(trades);
+  const lastFetchRef = useRef(0);
 
   const fetchTrades = useCallback(async () => {
     if (proposalId === null) return;
@@ -138,6 +140,10 @@ export function useTradeHistory(proposalId: number | null, moderatorId?: number 
   useEffect(() => {
     proposalPdaRef.current = proposalPda;
   }, [proposalPda]);
+
+  useEffect(() => {
+    tradesRef.current = trades;
+  }, [trades]);
 
   // WebSocket connection for real-time trade updates
   const connectWebSocket = useCallback(() => {
@@ -290,14 +296,18 @@ export function useTradeHistory(proposalId: number | null, moderatorId?: number 
 
     // Check if this trade already exists to avoid unnecessary refetches
     const exists = trade.txSignature
-      ? trades.some(t => t.txSignature === trade.txSignature)
+      ? tradesRef.current.some(t => t.txSignature === trade.txSignature)
       : false;
 
     if (!exists) {
-      // Refetch trades to get full data with price and marketCapUsd from backend
-      fetchTrades();
+      // Debounce: only refetch if at least 2 seconds since last fetch
+      const now = Date.now();
+      if (now - lastFetchRef.current > 2000) {
+        lastFetchRef.current = now;
+        fetchTrades();
+      }
     }
-  }, [trades, fetchTrades]);
+  }, [fetchTrades]);
 
   useEffect(() => {
     if (!proposalId) {
