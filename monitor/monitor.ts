@@ -23,12 +23,34 @@ import { AnchorProvider, Wallet, BorshCoder, EventParser, BN } from '@coral-xyz/
 import {
   FutarchyClient,
   FUTARCHY_PROGRAM_ID,
-  ProposalLaunchedEvent,
-  ProposalFinalizedEvent,
   PoolType,
-  CondSwapEvent,
   AMM_PROGRAM_ID,
 } from '@zcomb/programs-sdk';
+
+// Local event types with snake_case fields (matches raw Anchor event parsing)
+interface ProposalLaunchedEvent {
+  proposal_id: number;
+  proposal: PublicKey;
+  num_options: number;
+  base_amount: BN;
+  quote_amount: BN;
+  created_at: BN;
+}
+
+interface ProposalFinalizedEvent {
+  proposal_id: number;
+  proposal: PublicKey;
+  winning_idx: number;
+}
+
+interface CondSwapEvent {
+  pool: PublicKey;
+  trader: PublicKey;
+  swap_a_to_b: boolean;
+  input_amount: BN;
+  output_amount: BN;
+  fee_amount: BN;
+}
 import { FutarchyIDL, AmmIDL } from '@zcomb/programs-sdk/dist/generated/idls';
 import { getPool } from '@app/utils/database';
 import { logError } from './lib/logger';
@@ -313,6 +335,15 @@ export class Monitor extends EventEmitter {
   }
 
   private handleCondSwap(data: CondSwapEvent, txSignature: string) {
+    console.log('[Monitor] CondSwap event:', JSON.stringify({
+      pool: data.pool.toBase58(),
+      trader: data.trader.toBase58(),
+      swap_a_to_b: data.swap_a_to_b,
+      input_amount: data.input_amount.toString(),
+      output_amount: data.output_amount.toString(),
+      fee_amount: data.fee_amount.toString(),
+    }, null, 2));
+
     const poolStr = data.pool.toBase58();
     const proposalPda = this.poolToProposal.get(poolStr);
 
@@ -330,10 +361,10 @@ export class Monitor extends EventEmitter {
       pool: poolStr,
       market,
       trader: data.trader.toBase58(),
-      swapAToB: data.swapAToB,
-      amountIn: data.inputAmount,
-      amountOut: data.outputAmount,
-      feeAmount: data.feeAmount,
+      swapAToB: data.swap_a_to_b,
+      amountIn: data.input_amount,
+      amountOut: data.output_amount,
+      feeAmount: data.fee_amount,
       txSignature,
     };
 
@@ -350,6 +381,15 @@ export class Monitor extends EventEmitter {
   }
 
   private async handleProposalLaunched(data: ProposalLaunchedEvent) {
+    console.log('[Monitor] ProposalLaunched event:', JSON.stringify({
+      proposal_id: data.proposal_id,
+      proposal: data.proposal.toBase58(),
+      num_options: data.num_options,
+      base_amount: data.base_amount.toString(),
+      quote_amount: data.quote_amount.toString(),
+      created_at: data.created_at.toString(),
+    }, null, 2));
+
     const proposalPdaStr = data.proposal.toBase58();
 
     try {
@@ -411,7 +451,7 @@ export class Monitor extends EventEmitter {
       }
 
       // Calculate timing
-      const createdAtMs = Number(data.createdAt) * 1000;
+      const createdAtMs = Number(data.created_at) * 1000;
       const timeRemaining = this.client.getTimeRemaining(proposal);
       const endTime = Date.now() + timeRemaining * 1000;
 
@@ -423,8 +463,8 @@ export class Monitor extends EventEmitter {
       const info: MonitoredProposal = {
         // Proposal
         proposalPda: proposalPdaStr,
-        proposalId: data.proposalId,
-        numOptions: data.numOptions,
+        proposalId: data.proposal_id,
+        numOptions: data.num_options,
         pools,
         endTime,
         createdAt: createdAtMs,
@@ -459,6 +499,12 @@ export class Monitor extends EventEmitter {
   }
 
   private handleProposalFinalized(data: ProposalFinalizedEvent) {
+    console.log('[Monitor] ProposalFinalized event:', JSON.stringify({
+      proposal_id: data.proposal_id,
+      proposal: data.proposal.toBase58(),
+      winning_idx: data.winning_idx,
+    }, null, 2));
+
     const proposalPdaStr = data.proposal.toBase58();
     const info = this.monitored.get(proposalPdaStr);
 
@@ -470,7 +516,7 @@ export class Monitor extends EventEmitter {
 
       this.monitored.delete(proposalPdaStr);
       this.emit('proposal:removed', info);
-      console.log(`[Monitor] Proposal finalized: ${proposalPdaStr} (winner: ${data.winningIdx})`);
+      console.log(`[Monitor] Proposal finalized: ${proposalPdaStr} (winner: ${data.winning_idx})`);
     }
   }
 
