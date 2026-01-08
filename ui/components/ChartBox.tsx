@@ -19,6 +19,7 @@ interface ChartBoxProps {
   tokenSymbol?: string;  // Token symbol for spot market overlay (e.g., "ZC", "SURF")
   isFutarchy?: boolean;  // Skip old system API calls for futarchy DAOs
   proposalPda?: string;  // Required for futarchy mode
+  solPrice?: number | null;  // SOL price for USD conversion
 }
 
 export function ChartBox({
@@ -34,7 +35,8 @@ export function ChartBox({
   userWalletAddress,
   tokenSymbol,
   isFutarchy,
-  proposalPda
+  proposalPda,
+  solPrice
 }: ChartBoxProps) {
   // Get display label for the selected market (strip URLs and trim)
   const selectedLabel = marketLabels?.[selectedMarketIndex]?.replace(/(https?:\/\/[^\s]+)/gi, '').trim() || `Coin ${selectedMarketIndex + 1}`;
@@ -43,7 +45,7 @@ export function ChartBox({
   const [showOnlyMyTrades, setShowOnlyMyTrades] = useState(false);
 
   // Fetch volume from API (aggregated server-side, all historical trades)
-  const { volumeByMarket } = useMarketVolume(proposalId, moderatorId, isFutarchy);
+  const { volumeByMarket } = useMarketVolume(proposalId, moderatorId, isFutarchy, proposalPda, solPrice);
 
   // Get volume for the selected market (matches old behavior, but with all historical data)
   const marketVolume = volumeByMarket.get(selectedMarketIndex) || 0;
@@ -277,7 +279,7 @@ export function ChartBox({
                     </span>
                   </td>
                   <td className="py-3 w-[140px]">
-                    {/* Mobile: 1 decimal */}
+                    {/* Mobile: compact decimals */}
                     <span className="md:hidden">
                       {(() => {
                         const tokenUsed = getTokenUsed(trade.isBaseToQuote, trade.market);
@@ -287,9 +289,19 @@ export function ChartBox({
                           return num.replace(/\.?0+$/, '');
                         };
 
+                        // Format SOL with appropriate decimals based on size
+                        const formatSolAmount = (val: number): string => {
+                          if (val >= 100) return removeTrailingZeros(val.toFixed(1));
+                          if (val >= 1) return removeTrailingZeros(val.toFixed(2));
+                          if (val >= 0.01) return removeTrailingZeros(val.toFixed(3));
+                          if (val >= 0.0001) return removeTrailingZeros(val.toFixed(4));
+                          if (val === 0) return '0';
+                          return val.toExponential(1);
+                        };
+
                         let formattedAmount;
                         if (tokenUsed === 'SOL') {
-                          formattedAmount = removeTrailingZeros(amount.toFixed(1));
+                          formattedAmount = formatSolAmount(amount);
                         } else {
                           // Base token formatting with K/M/B notation
                           if (amount >= 1000000000) {
@@ -306,7 +318,7 @@ export function ChartBox({
                         return `${formattedAmount} ${tokenUsed.replace('$', '')}`;
                       })()}
                     </span>
-                    {/* Desktop: 3 decimals */}
+                    {/* Desktop: more decimals */}
                     <span className="hidden md:inline">
                       {(() => {
                         const tokenUsed = getTokenUsed(trade.isBaseToQuote, trade.market);
@@ -316,9 +328,19 @@ export function ChartBox({
                           return num.replace(/\.?0+$/, '');
                         };
 
+                        // Format SOL with appropriate decimals based on size
+                        const formatSolAmount = (val: number): string => {
+                          if (val >= 100) return removeTrailingZeros(val.toFixed(2));
+                          if (val >= 1) return removeTrailingZeros(val.toFixed(4));
+                          if (val >= 0.001) return removeTrailingZeros(val.toFixed(5));
+                          if (val >= 0.000001) return removeTrailingZeros(val.toFixed(6));
+                          if (val === 0) return '0';
+                          return val.toExponential(2);
+                        };
+
                         let formattedAmount;
                         if (tokenUsed === 'SOL') {
-                          formattedAmount = removeTrailingZeros(amount.toFixed(3));
+                          formattedAmount = formatSolAmount(amount);
                         } else {
                           // Base token formatting with K/M/B notation
                           if (amount >= 1000000000) {

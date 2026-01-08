@@ -44,6 +44,8 @@ export interface FutarchyTradeRecord {
   amountOut: string;
   feeAmount?: string;
   txSignature?: string;
+  price?: string;
+  marketCapUsd?: string;
 }
 
 export interface FutarchyVolumeRecord {

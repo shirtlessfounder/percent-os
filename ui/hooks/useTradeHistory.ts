@@ -31,7 +31,9 @@ interface TradeHistoryResponse {
 
 type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 
-export function useTradeHistory(proposalId: number | null, moderatorId?: number | string, baseMint?: string | null, tokenSymbol?: string, isFutarchy?: boolean, proposalPda?: string) {
+const SOL_DECIMALS = 9;
+
+export function useTradeHistory(proposalId: number | null, moderatorId?: number | string, baseMint?: string | null, tokenSymbol?: string, isFutarchy?: boolean, proposalPda?: string, baseDecimals: number = 6) {
   // DEBUG: Log futarchy state
   console.log('[useTradeHistory] isFutarchy:', isFutarchy, 'proposalPda:', proposalPda, 'proposalId:', proposalId);
 
@@ -62,18 +64,40 @@ export function useTradeHistory(proposalId: number | null, moderatorId?: number 
         }
 
         // Transform futarchy trades to common Trade format
-        const transformedTrades: Trade[] = result.data.map((trade: FutarchyTradeRecord) => ({
-          id: trade.id,
-          timestamp: trade.timestamp,
-          proposalId: proposalId,
-          market: trade.market,
-          userAddress: trade.trader,
-          isBaseToQuote: trade.isBaseToQuote,
-          amountIn: trade.amountIn,
-          amountOut: trade.amountOut,
-          price: '0', // Not available in futarchy trades
-          txSignature: trade.txSignature || null,
-        }));
+        // Convert raw amounts to human-readable format
+        const transformedTrades: Trade[] = result.data.map((trade: FutarchyTradeRecord) => {
+          // isBaseToQuote = true (sell): amountIn is base tokens, amountOut is SOL
+          // isBaseToQuote = false (buy): amountIn is SOL, amountOut is base tokens
+          const rawAmountIn = parseFloat(trade.amountIn);
+          const rawAmountOut = parseFloat(trade.amountOut);
+
+          let formattedAmountIn: string;
+          let formattedAmountOut: string;
+
+          if (trade.isBaseToQuote) {
+            // Selling base token for SOL
+            formattedAmountIn = (rawAmountIn / Math.pow(10, baseDecimals)).toString();
+            formattedAmountOut = (rawAmountOut / Math.pow(10, SOL_DECIMALS)).toString();
+          } else {
+            // Buying base token with SOL
+            formattedAmountIn = (rawAmountIn / Math.pow(10, SOL_DECIMALS)).toString();
+            formattedAmountOut = (rawAmountOut / Math.pow(10, baseDecimals)).toString();
+          }
+
+          return {
+            id: trade.id,
+            timestamp: trade.timestamp,
+            proposalId: proposalId,
+            market: trade.market,
+            userAddress: trade.trader,
+            isBaseToQuote: trade.isBaseToQuote,
+            amountIn: formattedAmountIn,
+            amountOut: formattedAmountOut,
+            price: trade.price || '0',
+            txSignature: trade.txSignature || null,
+            marketCapUsd: trade.marketCapUsd ? parseFloat(trade.marketCapUsd) : undefined,
+          };
+        });
 
         // Sort by timestamp descending (most recent first)
         const sortedTrades = transformedTrades.sort((a, b) =>
@@ -264,15 +288,35 @@ export function useTradeHistory(proposalId: number | null, moderatorId?: number 
   const handleFutarchyTrade = useCallback((trade: MonitorTradeUpdate) => {
     if (!proposalIdRef.current) return;
 
+    // Convert raw amounts to human-readable format
+    // swapAToB: A is base token, B is quote (SOL)
+    // swapAToB = true means base->quote (sell), swapAToB = false means quote->base (buy)
+    const isBaseToQuote = trade.swapAToB;
+    const rawAmountIn = parseFloat(trade.amountIn);
+    const rawAmountOut = parseFloat(trade.amountOut);
+
+    let formattedAmountIn: string;
+    let formattedAmountOut: string;
+
+    if (isBaseToQuote) {
+      // Selling base token for SOL
+      formattedAmountIn = (rawAmountIn / Math.pow(10, baseDecimals)).toString();
+      formattedAmountOut = (rawAmountOut / Math.pow(10, SOL_DECIMALS)).toString();
+    } else {
+      // Buying base token with SOL
+      formattedAmountIn = (rawAmountIn / Math.pow(10, SOL_DECIMALS)).toString();
+      formattedAmountOut = (rawAmountOut / Math.pow(10, baseDecimals)).toString();
+    }
+
     const newTrade: Trade = {
       id: Date.now(), // Generate unique ID
       timestamp: new Date(trade.timestamp).toISOString(),
       proposalId: proposalIdRef.current,
       market: trade.market,
       userAddress: trade.trader,
-      isBaseToQuote: !trade.swapAToB, // A is Quote, so swapAToB=true means quote->base (sell)
-      amountIn: trade.amountIn,
-      amountOut: trade.amountOut,
+      isBaseToQuote: isBaseToQuote,
+      amountIn: formattedAmountIn,
+      amountOut: formattedAmountOut,
       price: '0',
       txSignature: trade.txSignature || null,
     };
@@ -288,7 +332,7 @@ export function useTradeHistory(proposalId: number | null, moderatorId?: number 
       // Add new trade to the beginning and limit to 100 trades
       return [newTrade, ...prevTrades].slice(0, 100);
     });
-  }, []);
+  }, [baseDecimals]);
 
   useEffect(() => {
     if (!proposalId) {

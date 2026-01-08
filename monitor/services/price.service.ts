@@ -310,7 +310,14 @@ export class PriceService {
       timestamp: Date.now(),
     });
 
-    // 2. Record trade to DB (skip in listen-only mode)
+    // 2. Fetch pool state and calculate price/market cap
+    const price = await this.fetchPoolPrice(swap.pool);
+    const data = this.proposalData.get(swap.proposalPda);
+    const marketCapUsd = price !== null
+      ? price * (data?.totalSupply || 0) * this.solPrice
+      : null;
+
+    // 3. Record trade to DB with price and market cap (skip in listen-only mode)
     if (!this.listenOnly) {
       try {
         await HistoryService.recordCmbTrade({
@@ -322,6 +329,8 @@ export class PriceService {
           amountOut: new Decimal(swap.amountOut.toString()),
           feeAmount: new Decimal(swap.feeAmount.toString()),
           txSignature: swap.txSignature,
+          price: price !== null ? new Decimal(price) : undefined,
+          marketCapUsd: marketCapUsd !== null ? new Decimal(marketCapUsd) : undefined,
         });
       } catch (error) {
         const errMsg = error instanceof Error ? error.message : String(error);
@@ -330,12 +339,9 @@ export class PriceService {
       }
     }
 
-    // 3. Fetch pool state and calculate new price
-    const price = await this.fetchPoolPrice(swap.pool);
+    // 4. Broadcast price update
     if (price !== null) {
-      const data = this.proposalData.get(swap.proposalPda);
-      const marketCapUsd = price * (data?.totalSupply || 0) * this.solPrice;
-      this.onPriceChange(swap.proposalPda, swap.market, price, marketCapUsd);
+      this.onPriceChange(swap.proposalPda, swap.market, price, marketCapUsd!);
     }
   }
 }

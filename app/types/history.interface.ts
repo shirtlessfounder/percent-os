@@ -121,6 +121,8 @@ export interface ICmbTradeHistory {
   amountOut: Decimal;
   feeAmount?: Decimal;
   txSignature?: string;
+  price?: Decimal;
+  marketCapUsd?: Decimal;
 }
 
 /**

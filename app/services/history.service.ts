@@ -547,8 +547,9 @@ export class HistoryService {
     const query = `
       INSERT INTO cmb_trade_history (
         proposal_pda, market, trader, is_base_to_quote,
-        amount_in, amount_out, fee_amount, tx_signature
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        amount_in, amount_out, fee_amount, tx_signature,
+        price, market_cap_usd
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     `;
 
     await pool.query(query, [
@@ -560,6 +561,8 @@ export class HistoryService {
       data.amountOut.toString(),
       data.feeAmount?.toString() || null,
       data.txSignature || null,
+      data.price?.toString() || null,
+      data.marketCapUsd?.toString() || null,
     ]);
   }
 
@@ -687,6 +690,8 @@ export class HistoryService {
       amountOut: new Decimal(row.amount_out),
       feeAmount: row.fee_amount ? new Decimal(row.fee_amount) : undefined,
       txSignature: row.tx_signature,
+      price: row.price ? new Decimal(row.price) : undefined,
+      marketCapUsd: row.market_cap_usd ? new Decimal(row.market_cap_usd) : undefined,
     }));
   }
 

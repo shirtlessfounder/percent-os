@@ -201,7 +201,7 @@ export default function HomePage() {
     refetch: refetchTrades,
     getTimeAgo,
     getTokenUsed,
-  } = useTradeHistory(proposal?.id || null, moderatorId ?? undefined, baseMint, tokenSymbol, isFutarchy, proposal?.proposalPda);
+  } = useTradeHistory(proposal?.id || null, moderatorId ?? undefined, baseMint, tokenSymbol, isFutarchy, proposal?.proposalPda, baseDecimals);
 
 
   const handleSelectProposal = useCallback((id: number) => {
@@ -509,6 +509,7 @@ export default function HomePage() {
                         tokenSymbol={tokenSymbol}
                         isFutarchy={isFutarchy}
                         proposalPda={proposal.proposalPda}
+                        solPrice={solPrice}
                       />
                     </div>
                   </div>

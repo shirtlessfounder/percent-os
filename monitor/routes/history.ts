@@ -120,6 +120,8 @@ router.get('/:pda/trades', async (req: Request, res: Response, next: NextFunctio
         amountOut: trade.amountOut.toString(),
         feeAmount: trade.feeAmount?.toString(),
         txSignature: trade.txSignature,
+        price: trade.price?.toString(),
+        marketCapUsd: trade.marketCapUsd?.toString(),
       })),
     });
   } catch (error) {
