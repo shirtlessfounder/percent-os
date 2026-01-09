@@ -83,18 +83,15 @@ class MonitorStreamService {
    */
   connect(): void {
     if (this.eventSource) {
-      console.log('[MonitorStream] Already connected, skipping');
       return; // Already connected
     }
 
     const url = `${getMonitorUrl()}/events`;
-    console.log('[MonitorStream] Connecting to', url, '(NEXT_PUBLIC_MONITOR_URL:', process.env.NEXT_PUBLIC_MONITOR_URL, ')');
 
     try {
       this.eventSource = new EventSource(url);
 
       this.eventSource.onopen = () => {
-        console.log('[MonitorStream] Connected');
         this.connected = true;
         this.reconnectAttempts = 0;
       };
@@ -120,7 +117,6 @@ class MonitorStreamService {
       // Handle specific event types
       this.eventSource.addEventListener('PRICE_UPDATE', (event: MessageEvent) => {
         try {
-          console.log('[MonitorStream] Received PRICE_UPDATE event:', event.data);
           const data = JSON.parse(event.data);
           this.handlePriceUpdate(data);
         } catch (error) {
@@ -146,13 +142,8 @@ class MonitorStreamService {
         }
       });
 
-      this.eventSource.addEventListener('CONNECTED', (event: MessageEvent) => {
-        try {
-          const data = JSON.parse(event.data);
-          console.log('[MonitorStream] Received CONNECTED with clientId:', data.clientId);
-        } catch (error) {
-          // Ignore parse errors for CONNECTED event
-        }
+      this.eventSource.addEventListener('CONNECTED', () => {
+        // Connection confirmed by server
       });
     } catch (error) {
       console.error('[MonitorStream] Failed to create EventSource:', error);
@@ -176,7 +167,6 @@ class MonitorStreamService {
 
     this.connected = false;
     this.reconnectAttempts = 0;
-    console.log('[MonitorStream] Disconnected');
   }
 
   /**
@@ -206,7 +196,6 @@ class MonitorStreamService {
     if (hasSubscribers && this.reconnectAttempts < this.maxReconnectAttempts) {
       this.reconnectAttempts++;
       const delay = this.reconnectDelay * Math.min(this.reconnectAttempts, 3);
-      console.log(`[MonitorStream] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
 
       this.reconnectTimeout = setTimeout(() => {
         this.connect();
@@ -217,12 +206,8 @@ class MonitorStreamService {
   /**
    * Handle generic messages (fallback)
    */
-  private handleMessage(type: string, data: unknown): void {
+  private handleMessage(_type: string, _data: unknown): void {
     // Most messages are handled by specific event listeners
-    // This is a fallback for debugging
-    if (type === 'message') {
-      console.log('[MonitorStream] Generic message:', data);
-    }
   }
 
   /**
@@ -281,16 +266,13 @@ class MonitorStreamService {
    * Subscribe to price updates for a proposal
    */
   subscribeToPrices(proposalPda: string, callback: PriceCallback): void {
-    console.log('[MonitorStream] subscribeToPrices called for', proposalPda);
     if (!this.priceSubscribers.has(proposalPda)) {
       this.priceSubscribers.set(proposalPda, new Set());
     }
     this.priceSubscribers.get(proposalPda)!.add(callback);
-    console.log('[MonitorStream] Price subscribers count:', this.priceSubscribers.get(proposalPda)!.size);
 
     // Auto-connect if not connected
     if (!this.connected && !this.eventSource) {
-      console.log('[MonitorStream] Auto-connecting...');
       this.connect();
     }
   }
@@ -377,7 +359,6 @@ class MonitorStreamService {
       this.twapSubscribers.size > 0;
 
     if (!hasSubscribers) {
-      console.log('[MonitorStream] No more subscribers, disconnecting');
       this.disconnect();
     }
   }

@@ -129,8 +129,6 @@ export function ModeToggle({ marketLabels, marketCaps, livePrices, timeElapsedPe
   // For futarchy mode, we may not have live prices - use TWAP data alone if available
   const hasAllData = hasTwapData && hasSolPrice && (hasLivePrices || marketCaps.every(cap => cap != null));
 
-  console.log('[ModeToggle] hasAllData:', hasAllData, 'hasTwapData:', hasTwapData, 'hasLivePrices:', hasLivePrices, 'hasSolPrice:', hasSolPrice);
-
   // Convert current TWAPs from SOL to USD (for display)
   const marketCapsUsd = marketCaps.map(cap =>
     cap != null && solPrice ? cap * solPrice : null

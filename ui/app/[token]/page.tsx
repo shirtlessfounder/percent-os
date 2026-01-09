@@ -41,7 +41,7 @@ const LivePriceDisplay = dynamic(() => import('@/components/LivePriceDisplay').t
 export default function HomePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { tokenSlug, poolAddress, baseMint, baseDecimals, tokenSymbol, moderatorId, icon, isLoading: tokenContextLoading, isFutarchy, daoPda } = useTokenContext();
+  const { tokenSlug, poolAddress, baseMint, baseDecimals, tokenSymbol, moderatorId, icon, isLoading: tokenContextLoading, isFutarchy, daoPda, quoteMint, quoteDecimals, quoteDisplayDecimals, quoteSymbol, quoteIcon, isQuoteSol } = useTokenContext();
 
   // Show toast for historical QM navigation (only once)
   const hasShownHistoricalToast = useRef(false);
@@ -122,15 +122,17 @@ export default function HomePage() {
     return () => document.removeEventListener('keydown', handleEsc);
   }, [isProposalModalOpen]);
 
-  // Fetch wallet balances for current token
+  // Fetch wallet balances for current token (sol = quote token balance for backward compatibility)
   const { sol: solBalance, baseToken: baseTokenBalance, refetch: refetchWalletBalances } = useWalletBalances({
     walletAddress,
     baseMint,
     baseDecimals,
+    quoteMint,
+    quoteDecimals,
   });
 
-  // Fetch token prices for USD conversion
-  const { sol: solPrice, baseToken: baseTokenPrice } = useTokenPrices(baseMint);
+  // Fetch token prices for USD conversion (sol = quote token price for backward compatibility)
+  const { sol: solPrice, baseToken: baseTokenPrice } = useTokenPrices(baseMint, quoteMint);
 
   // Memoize sorted proposals for live view (sort by creation time to match backend ordering)
   const sortedProposals = useMemo(() =>
@@ -201,7 +203,7 @@ export default function HomePage() {
     refetch: refetchTrades,
     getTimeAgo,
     getTokenUsed,
-  } = useTradeHistory(proposal?.id || null, moderatorId ?? undefined, baseMint, tokenSymbol, isFutarchy, proposal?.proposalPda, baseDecimals);
+  } = useTradeHistory(proposal?.id || null, moderatorId ?? undefined, baseMint, tokenSymbol, isFutarchy, proposal?.proposalPda, quoteMint, quoteSymbol, baseDecimals, quoteDecimals);
 
 
   const handleSelectProposal = useCallback((id: number) => {
@@ -233,13 +235,10 @@ export default function HomePage() {
   }, [refetch]);
 
   const handlePricesUpdate = useCallback((prices: (number | null)[]) => {
-    console.log('[HomePage] handlePricesUpdate called with:', prices);
     setLivePrices(prices);
-    console.log('[HomePage] livePrices state will be updated');
   }, []);
 
   const handleTwapUpdate = useCallback((twaps: (number | null)[]) => {
-    console.log('TWAP update from LivePriceDisplay:', twaps);
     setTwapData(twaps);
   }, []);
 
@@ -332,13 +331,14 @@ export default function HomePage() {
             tokenSymbol={tokenSymbol}
             tokenIcon={icon}
             baseMint={baseMint}
+            quoteSymbol={quoteSymbol}
+            quoteIcon={quoteIcon}
           />
 
           {/* Empty state */}
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
-              <h2 className="text-2xl font-semibold text-gray-400 mb-2">No Proposals</h2>
-              <p className="text-gray-500">Check back later for new governance proposals</p>
+              <p className="text-gray-400 font-semibold">Check back later for when a proposal goes live!</p>
             </div>
           </div>
         </div>
@@ -363,6 +363,8 @@ export default function HomePage() {
           tokenSymbol={tokenSymbol}
           tokenIcon={icon}
           baseMint={baseMint}
+          quoteSymbol={quoteSymbol}
+          quoteIcon={quoteIcon}
         />
 
         {/* Content Area */}
@@ -510,6 +512,7 @@ export default function HomePage() {
                         isFutarchy={isFutarchy}
                         proposalPda={proposal.proposalPda}
                         solPrice={solPrice}
+                        quoteDecimals={quoteDecimals}
                       />
                     </div>
                   </div>
@@ -527,6 +530,9 @@ export default function HomePage() {
                         onDepositSuccess={handleBalanceChange}
                         tokenSymbol={tokenSymbol}
                         baseDecimals={baseDecimals}
+                        quoteDecimals={quoteDecimals}
+                        quoteSymbol={quoteSymbol}
+                        isQuoteSol={isQuoteSol}
                         proposalStatus={proposal.status as 'Pending' | 'Passed' | 'Failed'}
                         winningMarketIndex={proposal.winningMarketIndex}
                         isFutarchy={isFutarchy}
@@ -573,7 +579,7 @@ export default function HomePage() {
                       </div>
                     </div>
 
-                    {/* User Balances - Separate ZC and SOL cards */}
+                    {/* User Balances - Separate base and quote token cards */}
                     <div className="order-6 md:order-4 pb-10 md:pb-0">
                     {(() => {
                       // Calculate if market expired and which tokens are losing
@@ -586,13 +592,14 @@ export default function HomePage() {
 
                       // Calculate actual balances using market index and dynamic decimals
                       const baseMultiplier = Math.pow(10, baseDecimals);
+                      const quoteMultiplier = Math.pow(10, quoteDecimals);
                       const baseTokenBalance = userBalances ? parseFloat(
                         userBalances.base.conditionalBalances[selectedMarketIndex] || '0'
                       ) / baseMultiplier : 0;
 
                       const solBalance = userBalances ? parseFloat(
                         userBalances.quote.conditionalBalances[selectedMarketIndex] || '0'
-                      ) / 1e9 : 0; // SOL is always 9 decimals
+                      ) / quoteMultiplier : 0;
 
                       // Zero out if showing losing tokens on expired market
                       const displayBaseTokenBalance = (isExpired && isShowingLosingTokens) ? 0 : baseTokenBalance;
@@ -617,7 +624,7 @@ export default function HomePage() {
                           </div>
                         </div>
 
-                        {/* SOL Balance Card */}
+                        {/* Quote Token Balance Card */}
                         <div className="flex-1 bg-[#121212] border border-[#191919] rounded-[9px] py-3 px-5 transition-all duration-300">
                           <div className="text-white flex flex-col">
                             <span className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] uppercase mb-6 text-center block" style={{ color: '#DDDDD7' }}>
@@ -625,7 +632,7 @@ export default function HomePage() {
                             </span>
                             <div className="group flex items-center justify-center border border-[#191919] rounded-[6px] py-3 px-4 text-lg font-ibm-plex-mono cursor-default" style={{ color: '#DDDDD7', fontFamily: 'IBM Plex Mono, monospace' }}>
                               <span className="group-hover:hidden">
-                                {formatNumber(displaySOLBalance, 3)} SOL<sup className="text-xs">*</sup>
+                                {formatNumber(displaySOLBalance, quoteDisplayDecimals)} {quoteSymbol}<sup className="text-xs">*</sup>
                               </span>
                               {solPrice && (
                                 <span className="hidden group-hover:inline">

@@ -17,11 +17,13 @@ export default function CreatePage() {
   const searchParams = useSearchParams();
   const { ready, authenticated, user, walletAddress, login } = usePrivyWallet();
   const { wallets } = useSolanaWallets();
-  const { tokenSlug, poolAddress, poolMetadata, baseMint, baseDecimals, tokenSymbol, moderatorId, icon, isLoading: poolLoading } = useTokenContext();
+  const { tokenSlug, poolAddress, poolMetadata, baseMint, baseDecimals, tokenSymbol, moderatorId, icon, isLoading: poolLoading, quoteMint, quoteDecimals, quoteSymbol, quoteIcon } = useTokenContext();
   const { sol: solBalance, baseToken: baseTokenBalance } = useWalletBalances({
     walletAddress,
     baseMint,
     baseDecimals,
+    quoteMint,
+    quoteDecimals,
   });
   const hasWalletBalance = solBalance > 0 || baseTokenBalance > 0;
 
@@ -389,6 +391,8 @@ export default function CreatePage() {
           tokenIcon={icon}
           baseMint={baseMint}
           isCreateAuthorized={tokenSlug !== 'zc' || isAuthorized}
+          quoteSymbol={quoteSymbol}
+          quoteIcon={quoteIcon}
         />
 
         {/* Content Area */}

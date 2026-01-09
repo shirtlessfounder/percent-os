@@ -25,18 +25,17 @@ import { fetchUserBalanceForWinningMint as fetchUserBalanceFutarchy, redeemWinni
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
-// SOL mint address (quote token)
-const SOL_MINT = 'So11111111111111111111111111111111111111112';
-const SOL_DECIMALS = 9;
-
 export interface OpenPositionConfig {
   proposalId: number;
   market: number;  // Which AMM market to trade on (0-3 for quantum markets)
-  inputToken: 'sol' | 'baseToken';  // Which conditional token we're selling
+  inputToken: 'quote' | 'base';  // Which conditional token we're selling
   inputAmount: string;  // Amount of conditional tokens to sell
   userAddress: string;
   signTransaction: (transaction: Transaction) => Promise<Transaction>;
   baseDecimals: number;  // Required - decimals for the base token
+  quoteDecimals: number; // Required - decimals for the quote token
+  tokenSymbol: string;  // Display symbol for the base token (e.g., 'ZC')
+  quoteSymbol: string;  // Display symbol for the quote token (e.g., 'SOL', 'USDC')
   moderatorId?: number;  // Moderator ID for multi-moderator support
   // Futarchy-specific fields (new system)
   isFutarchy?: boolean;  // Whether this is a futarchy proposal
@@ -48,20 +47,20 @@ export interface OpenPositionConfig {
  * Swaps conditional tokens: e.g., Pass-ZC → Pass-SOL or Fail-SOL → Fail-ZC
  */
 export async function openPosition(config: OpenPositionConfig): Promise<void> {
-  const { proposalId, market, inputToken, inputAmount, userAddress, signTransaction, baseDecimals, moderatorId, isFutarchy, poolPDA } = config;
+  const { proposalId, market, inputToken, inputAmount, userAddress, signTransaction, baseDecimals, quoteDecimals, tokenSymbol, quoteSymbol, moderatorId, isFutarchy, poolPDA } = config;
 
   // Determine swap direction based on inputToken and system type
-  // Futarchy pools: mintA = SOL (quote), mintB = base
-  // Old system pools: mintA = base, mintB = SOL (quote)
+  // Futarchy pools: mintA = quote, mintB = base
+  // Old system pools: mintA = base, mintB = quote
   const swapAToB = isFutarchy
-    ? inputToken === 'sol'      // Futarchy: selling SOL (A) → swapAToB = true
-    : inputToken === 'baseToken'; // Old: selling base (A) → swapAToB = true
+    ? inputToken === 'quote'      // Futarchy: selling quote (A) → swapAToB = true
+    : inputToken === 'base';      // Old: selling base (A) → swapAToB = true
 
   const toastId = toast.loading(`Swapping ${market}-${inputToken.toUpperCase()}...`);
 
   try {
     // Convert decimal amount to smallest units using dynamic decimals
-    const decimals = inputToken === 'baseToken' ? baseDecimals : SOL_DECIMALS;
+    const decimals = inputToken === 'base' ? baseDecimals : quoteDecimals;
     const amountInSmallestUnits = Math.floor(parseFloat(inputAmount) * Math.pow(10, decimals)).toString();
 
     if (isFutarchy && poolPDA) {
@@ -87,9 +86,10 @@ export async function openPosition(config: OpenPositionConfig): Promise<void> {
     }
 
     // Success message
-    const outputToken = inputToken === 'baseToken' ? 'SOL' : 'BASE';
+    const inputSymbol = inputToken === 'base' ? tokenSymbol : quoteSymbol;
+    const outputSymbol = inputToken === 'base' ? quoteSymbol : tokenSymbol;
     toast.success(
-      `Successfully swapped ${market}-${inputToken.toUpperCase()} → ${market}-${outputToken}!`,
+      `Successfully swapped ${inputSymbol} → ${outputSymbol}!`,
       { id: toastId, duration: 5000 }
     );
 

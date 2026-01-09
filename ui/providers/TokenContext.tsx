@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import { getTokenSymbol, getTokenIcon, isNativeSol, getDisplayDecimals, isStablecoin } from '@/lib/constants/tokens';
 
 interface PoolMetadata {
   poolAddress: string;
@@ -26,7 +27,7 @@ interface TokenContextValue {
   tokenSlug: string;
   poolAddress: string | null;
   poolMetadata: PoolMetadata | null;
-  // Convenience getters for common values
+  // Convenience getters - required, callers must check isLoading before using
   baseMint: string | null;
   baseDecimals: number;
   tokenSymbol: string;
@@ -34,6 +35,14 @@ interface TokenContextValue {
   icon: string | null;
   isLoading: boolean;
   error: string | null;
+  // Quote token info - required, callers must check isLoading before using
+  quoteMint: string | null;
+  quoteDecimals: number;
+  quoteSymbol: string;
+  quoteIcon: string | null;
+  isQuoteSol: boolean;
+  isQuoteStablecoin: boolean;
+  quoteDisplayDecimals: number;
   // Futarchy-specific fields (new system)
   isFutarchy: boolean;
   moderatorPda: string | null;
@@ -84,23 +93,25 @@ export function TokenProvider({ tokenSlug, children }: TokenProviderProps) {
     fetchPoolMetadata();
   }, [tokenSlug, router]);
 
-  // Note: baseDecimals defaults to 9 during loading. This is safe because:
-  // - Pages check isLoading before rendering components that use baseDecimals
-  // - After loading, poolMetadata.baseDecimals will have the correct value
-  // The default of 9 (SOL decimals) is used as it's the most common and will
-  // cause obvious errors if incorrectly used (amounts will be 1000x too small for 6-decimal tokens)
+  const quoteMint = poolMetadata?.quoteMint || null;
   const value: TokenContextValue = {
     tokenSlug,
     poolAddress: poolMetadata?.poolAddress || null,
     poolMetadata,
-    // Convenience getters
     baseMint: poolMetadata?.baseMint || null,
-    baseDecimals: poolMetadata?.baseDecimals ?? 9, // Default to 9 during loading (will cause obvious errors if used)
+    baseDecimals: poolMetadata?.baseDecimals ?? 9,
     tokenSymbol: poolMetadata?.ticker?.toUpperCase() || tokenSlug.toUpperCase(),
     moderatorId: poolMetadata?.moderatorId ?? null,
     icon: poolMetadata?.icon || null,
     isLoading,
     error,
+    quoteMint,
+    quoteDecimals: poolMetadata?.quoteDecimals ?? 9,
+    quoteSymbol: getTokenSymbol(quoteMint),
+    quoteIcon: getTokenIcon(quoteMint),
+    isQuoteSol: isNativeSol(quoteMint),
+    isQuoteStablecoin: isStablecoin(quoteMint),
+    quoteDisplayDecimals: getDisplayDecimals(quoteMint),
     // Futarchy-specific fields (new system)
     isFutarchy: poolMetadata?.isFutarchy ?? false,
     moderatorPda: poolMetadata?.moderatorPda || null,

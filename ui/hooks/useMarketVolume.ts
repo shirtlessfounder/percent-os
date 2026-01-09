@@ -3,7 +3,6 @@ import { buildApiUrl } from '@/lib/api-utils';
 import { getFutarchyVolume } from '@/lib/monitor-api';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-const SOL_DECIMALS = 9;
 
 interface MarketVolume {
   market: number;
@@ -36,7 +35,8 @@ export function useMarketVolume(
   moderatorId?: number | string,
   isFutarchy?: boolean,
   proposalPda?: string,
-  solPrice?: number | null
+  solPrice?: number | null,
+  quoteDecimals: number = 9
 ): UseMarketVolumeResult {
   const [volumeByMarket, setVolumeByMarket] = useState<Map<number, number>>(new Map());
   const [totalVolumeUsd, setTotalVolumeUsd] = useState(0);
@@ -66,9 +66,9 @@ export function useMarketVolume(
         let totalUsd = 0;
 
         for (const m of data.byMarket) {
-          // Volume is in lamports, convert to SOL then to USD
-          const volumeSol = parseFloat(m.volume) / Math.pow(10, SOL_DECIMALS);
-          const volumeUsd = solPrice ? volumeSol * solPrice : volumeSol;
+          // Volume is in smallest units, convert to quote token then to USD
+          const volumeQuote = parseFloat(m.volume) / Math.pow(10, quoteDecimals);
+          const volumeUsd = solPrice ? volumeQuote * solPrice : volumeQuote;
           volumeMap.set(m.market, volumeUsd);
           totalUsd += volumeUsd;
         }

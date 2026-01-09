@@ -42,9 +42,6 @@ interface LivePriceDisplayProps {
 export const LivePriceDisplay: React.FC<LivePriceDisplayProps> = ({ proposalId, marketLabels, marketCount, onPricesUpdate, onTwapUpdate, proposalPda }) => {
   const { moderatorId, isFutarchy } = useTokenContext();
 
-  // DEBUG: Log futarchy state
-  console.log('[LivePriceDisplay] isFutarchy:', isFutarchy, 'proposalPda:', proposalPda, 'proposalId:', proposalId);
-
   // Array-based state indexed by market
   const [prices, setPrices] = useState<(number | null)[]>(() => Array(marketCount).fill(null));
   const [twapData, setTwapData] = useState<(number | null)[]>(() => Array(marketCount).fill(null));
@@ -72,17 +69,11 @@ export const LivePriceDisplay: React.FC<LivePriceDisplayProps> = ({ proposalId, 
   useEffect(() => {
     // Futarchy mode - use monitor API for TWAP and initial prices
     if (isFutarchy && proposalPda) {
-      console.log('[LivePriceDisplay] Futarchy mode - fetching TWAP for', proposalPda);
-
       const fetchFutarchyData = async () => {
         try {
-          // Fetch TWAP data
-          console.log('[LivePriceDisplay] Calling getFutarchyTWAP...');
           const result = await getFutarchyTWAP(proposalPda);
-          console.log('[LivePriceDisplay] getFutarchyTWAP result:', result);
           if (result && result.data && result.data.length > 0) {
             const latest = result.data[0];
-            console.log('[LivePriceDisplay] Latest TWAP record:', latest);
             // Backend returns twaps[] array
             const twaps: (number | null)[] = (latest.twaps || [])
               .slice(0, marketCount)
@@ -93,7 +84,6 @@ export const LivePriceDisplay: React.FC<LivePriceDisplayProps> = ({ proposalId, 
               twaps.push(null);
             }
 
-            console.log('[LivePriceDisplay] Parsed TWAPs:', twaps);
             setTwapData(twaps);
             if (onTwapUpdate) {
               onTwapUpdate(twaps);
@@ -108,12 +98,9 @@ export const LivePriceDisplay: React.FC<LivePriceDisplayProps> = ({ proposalId, 
                   newPrices[i] = twaps[i];
                 }
               }
-              console.log('[LivePriceDisplay] Set initial prices from TWAP:', newPrices);
               return newPrices;
             });
             setHasWebSocketData(true); // Allow price propagation
-          } else {
-            console.log('[LivePriceDisplay] No TWAP data returned or empty data array');
           }
         } catch (error) {
           console.error('[LivePriceDisplay] Error fetching futarchy TWAP:', error);
@@ -219,10 +206,8 @@ export const LivePriceDisplay: React.FC<LivePriceDisplayProps> = ({ proposalId, 
 
   // Handle futarchy price updates (from monitor SSE)
   const handleFutarchyPriceUpdate = useCallback((update: MonitorPriceUpdate) => {
-    console.log('[LivePriceDisplay] Received futarchy price update:', update);
     // Verify this is for our proposal
     if (update.proposalPda !== proposalPdaRef.current) {
-      console.log('[LivePriceDisplay] Price update for different proposal, ignoring');
       return;
     }
 
@@ -230,7 +215,6 @@ export const LivePriceDisplay: React.FC<LivePriceDisplayProps> = ({ proposalId, 
 
     const marketIndex = update.market;
     if (marketIndex >= 0 && marketIndex < marketCount) {
-      console.log('[LivePriceDisplay] Setting price for market', marketIndex, ':', update.price);
       setPrices(prev => {
         const newPrices = [...prev];
         newPrices[marketIndex] = update.price;
@@ -281,18 +265,14 @@ export const LivePriceDisplay: React.FC<LivePriceDisplayProps> = ({ proposalId, 
   useEffect(() => {
     if (!isFutarchy || !proposalPda) return;
 
-    console.log('[LivePriceDisplay] Setting up SSE subscription for', proposalPda);
     const monitorService = getMonitorStreamService();
-    console.log('[LivePriceDisplay] MonitorStreamService connected:', monitorService.isConnected());
 
     // Subscribe to price and TWAP updates
     monitorService.subscribeToPrices(proposalPda, handleFutarchyPriceUpdate);
     monitorService.subscribeToTWAP(proposalPda, handleFutarchyTwapUpdate);
-    console.log('[LivePriceDisplay] Subscribed to prices and TWAP');
 
     // Cleanup on unmount
     return () => {
-      console.log('[LivePriceDisplay] Cleaning up SSE subscription');
       monitorService.unsubscribeFromPrices(proposalPda, handleFutarchyPriceUpdate);
       monitorService.unsubscribeFromTWAP(proposalPda, handleFutarchyTwapUpdate);
     };
@@ -304,13 +284,7 @@ export const LivePriceDisplay: React.FC<LivePriceDisplayProps> = ({ proposalId, 
     // Only propagate prices to parent after WebSocket has sent real-time data
     // This avoids showing stale chart prices that would cause reordering flicker
     if (onPricesUpdate && prices.length > 0 && hasWebSocketData) {
-      console.log('[LivePriceDisplay] Prices changed:', {
-        prices,
-        hasCallback: !!onPricesUpdate,
-        hasWebSocketData
-      });
       onPricesUpdate(prices);
-      console.log('[LivePriceDisplay] onPricesUpdate called with WebSocket prices');
     }
   }, [prices, onPricesUpdate, hasWebSocketData]);
 

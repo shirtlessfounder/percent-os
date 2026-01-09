@@ -25,9 +25,6 @@ interface MarketChartProps {
 }
 
 export default function MarketChart({ proposalId, market, marketLabel, height = 256, moderatorId, tokenSymbol, isFutarchy, proposalPda }: MarketChartProps) {
-  // DEBUG: Log futarchy state
-  console.log('[MarketChart] isFutarchy:', isFutarchy, 'proposalPda:', proposalPda, 'proposalId:', proposalId, 'market:', market);
-
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetRef = useRef<any>(null);
   const [isLoading, setIsLoading] = useState(true);

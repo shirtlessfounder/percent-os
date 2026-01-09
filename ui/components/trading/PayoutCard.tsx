@@ -1,18 +1,21 @@
 import { formatNumber, formatCurrency } from '@/lib/formatters';
-import { SOL_MULTIPLIER } from '@/lib/constants/tokens';
 
 interface PayoutCardProps {
   marketIndex: number;  // Which market this payout is for (0-3)
   isWinning: boolean;   // Whether this was the winning market
   label: string;
   amount: number;
-  token: 'sol' | 'zc';
+  token: 'quote' | 'base';  // Which token this payout is for
   tokenPrice: number;
   isHovered: boolean;
   onHover: (id: string | null) => void;
   hoverId: string;
   baseDecimals: number;  // Required - decimals for the base token
-  tokenSymbol?: string;  // Display symbol for the base token
+  quoteDecimals: number; // Required - decimals for the quote token
+  quoteDisplayDecimals?: number; // Display decimals for quote token (default 4, stablecoins use 2)
+  tokenSymbol: string;  // Display symbol for the base token
+  quoteSymbol: string;  // Display symbol for the quote token
+  quoteIcon?: string | null; // Icon URL for the quote token
 }
 
 const SolIcon = ({ className }: { className?: string }) => (
@@ -56,9 +59,14 @@ export function PayoutCard({
   onHover,
   hoverId,
   baseDecimals,
-  tokenSymbol = 'ZC',
+  quoteDecimals,
+  quoteDisplayDecimals = 4,
+  tokenSymbol,
+  quoteSymbol,
+  quoteIcon,
 }: PayoutCardProps) {
-  const multiplier = token === 'sol' ? SOL_MULTIPLIER : Math.pow(10, baseDecimals);
+  const isQuoteToken = token === 'quote';
+  const multiplier = isQuoteToken ? Math.pow(10, quoteDecimals) : Math.pow(10, baseDecimals);
   const decimalAmount = amount / multiplier;
   const usdValue = decimalAmount * tokenPrice;
   // Use green for winners, market-specific color otherwise
@@ -79,15 +87,19 @@ export function PayoutCard({
           formatCurrency(usdValue)
         ) : (
           <div className="flex items-center gap-1">
-            {token === 'zc' ? (
+            {!isQuoteToken ? (
               <>
                 {formatNumber(decimalAmount)}
                 <span className="text-theme-text-secondary text-sm font-bold">${tokenSymbol}</span>
               </>
             ) : (
               <>
-                {decimalAmount.toFixed(4)}
-                <SolIcon className="h-3 w-3 text-theme-text-secondary" />
+                {decimalAmount.toFixed(quoteDisplayDecimals)}
+                {quoteIcon ? (
+                  <img src={quoteIcon} alt={quoteSymbol} className="h-3 w-3 rounded-full" />
+                ) : (
+                  <SolIcon className="h-3 w-3 text-theme-text-secondary" />
+                )}
               </>
             )}
           </div>

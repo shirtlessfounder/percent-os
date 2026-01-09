@@ -17,7 +17,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-export const API_URL = 'https://api.zcombinator.io';
+export const getApiUrl = () => process.env.ZCOMBINATOR_API_URL || 'https://api.zcombinator.io';
 
 // ============================================================================
 // Types
@@ -57,7 +57,7 @@ export async function callApi<T = unknown>(
   endpoint: string,
   body?: Record<string, string>
 ): Promise<T> {
-  const res = await fetch(`${API_URL}${endpoint}`, {
+  const res = await fetch(`${getApiUrl()}${endpoint}`, {
     method: body ? 'POST' : 'GET',
     headers: { 'Content-Type': 'application/json' },
     ...(body && { body: JSON.stringify(body) }),

@@ -12,14 +12,15 @@ interface ChartBoxProps {
   trades: Trade[];
   tradesLoading: boolean;
   getTimeAgo: (timestamp: string) => string;
-  getTokenUsed: (isBaseToQuote: boolean, market: number) => string;
+  getTokenUsed: (isBaseToQuote: boolean, market: number) => string | undefined;
   moderatorId?: number;
   className?: string;
   userWalletAddress?: string | null;
   tokenSymbol?: string;  // Token symbol for spot market overlay (e.g., "ZC", "SURF")
   isFutarchy?: boolean;  // Skip old system API calls for futarchy DAOs
   proposalPda?: string;  // Required for futarchy mode
-  solPrice?: number | null;  // SOL price for USD conversion
+  solPrice?: number | null;  // Quote token price for USD conversion
+  quoteDecimals: number;  // Quote token decimals for volume calculation
 }
 
 export function ChartBox({
@@ -36,7 +37,8 @@ export function ChartBox({
   tokenSymbol,
   isFutarchy,
   proposalPda,
-  solPrice
+  solPrice,
+  quoteDecimals
 }: ChartBoxProps) {
   // Get display label for the selected market (strip URLs and trim)
   const selectedLabel = marketLabels?.[selectedMarketIndex]?.replace(/(https?:\/\/[^\s]+)/gi, '').trim() || `Coin ${selectedMarketIndex + 1}`;
@@ -45,7 +47,7 @@ export function ChartBox({
   const [showOnlyMyTrades, setShowOnlyMyTrades] = useState(false);
 
   // Fetch volume from API (aggregated server-side, all historical trades)
-  const { volumeByMarket } = useMarketVolume(proposalId, moderatorId, isFutarchy, proposalPda, solPrice);
+  const { volumeByMarket } = useMarketVolume(proposalId, moderatorId, isFutarchy, proposalPda, solPrice, quoteDecimals);
 
   // Get volume for the selected market (matches old behavior, but with all historical data)
   const marketVolume = volumeByMarket.get(selectedMarketIndex) || 0;
@@ -300,8 +302,9 @@ export function ChartBox({
                         };
 
                         let formattedAmount;
-                        if (tokenUsed === 'SOL') {
-                          formattedAmount = formatSolAmount(amount);
+                        const isQuoteToken = !tokenUsed.startsWith('$'); // Quote tokens don't have $ prefix
+                        if (isQuoteToken) {
+                          formattedAmount = removeTrailingZeros(amount.toFixed(1));
                         } else {
                           // Base token formatting with K/M/B notation
                           if (amount >= 1000000000) {
@@ -339,8 +342,9 @@ export function ChartBox({
                         };
 
                         let formattedAmount;
-                        if (tokenUsed === 'SOL') {
-                          formattedAmount = formatSolAmount(amount);
+                        const isQuoteToken = !tokenUsed.startsWith('$'); // Quote tokens don't have $ prefix
+                        if (isQuoteToken) {
+                          formattedAmount = removeTrailingZeros(amount.toFixed(3));
                         } else {
                           // Base token formatting with K/M/B notation
                           if (amount >= 1000000000) {

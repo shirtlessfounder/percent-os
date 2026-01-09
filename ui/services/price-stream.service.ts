@@ -84,7 +84,6 @@ export class PriceStreamService {
         this.ws = new WebSocket(this.wsUrl);
 
         this.ws.onopen = () => {
-          console.log('Connected to price stream');
           this.isConnecting = false;
           this.reconnectAttempts = 0;
           this.setupPingInterval();
@@ -143,8 +142,6 @@ export class PriceStreamService {
   }
 
   private handleMessage(message: any) {
-    console.log('[PriceStreamService] Message received:', message.type, message);
-
     if (message.type === 'PRICE_UPDATE' && message.data) {
       const { tokenAddress, price, priceUsd, timestamp } = message.data;
 
@@ -159,14 +156,6 @@ export class PriceStreamService {
       });
     } else if (message.type === 'PRICE_UPDATE' && message.proposalId !== undefined) {
       // Chart price update from price_history table
-      console.log('[PriceStreamService] ✅ Chart PRICE_UPDATE received:', {
-        moderatorId: message.moderatorId,
-        proposalId: message.proposalId,
-        market: message.market,
-        price: message.price,
-        marketCapUsd: message.marketCapUsd,
-        timestamp: message.timestamp
-      });
       const { moderatorId, proposalId, market, price, marketCapUsd, timestamp } = message;
 
       // Convert timestamp to milliseconds if it's a string
@@ -175,21 +164,17 @@ export class PriceStreamService {
         : timestamp;
 
       const subscriptionKey = `${moderatorId}-${proposalId}`;
-      console.log('[PriceStreamService] Chart price subscriptions map:', Array.from(this.chartPriceSubscriptions.keys()));
       const callbacks = this.chartPriceSubscriptions.get(subscriptionKey) || [];
-      console.log(`[PriceStreamService] Found ${callbacks.length} callback(s) for ${subscriptionKey}`);
 
       // Notify all callbacks for this proposal
-      callbacks.forEach((callback, index) => {
+      callbacks.forEach((callback) => {
         try {
-          console.log(`[PriceStreamService] Calling chart price callback #${index + 1} with marketCapUsd:`, marketCapUsd);
           callback({ proposalId, market, price, marketCapUsd, timestamp: timestampMs });
         } catch (error) {
           console.error('Error in chart price callback:', error);
         }
       });
     } else if (message.type === 'TRADE') {
-      console.log('[PriceStreamService] TRADE message received for proposal', message.proposalId, 'moderator', message.moderatorId);
       // Handle trade notification
       const { moderatorId, proposalId, market, userAddress, amountIn, amountOut, price, marketCapUsd, timestamp } = message;
 
@@ -199,14 +184,11 @@ export class PriceStreamService {
         : timestamp;
 
       const subscriptionKey = `${moderatorId}-${proposalId}`;
-      console.log('[PriceStreamService] Trade subscriptions:', this.tradeSubscriptions);
-      console.log('[PriceStreamService] Callbacks for', subscriptionKey, ':', this.tradeSubscriptions.get(subscriptionKey)?.length || 0);
 
       // Notify all callbacks for this proposal
       const callbacks = this.tradeSubscriptions.get(subscriptionKey) || [];
       callbacks.forEach(callback => {
         try {
-          console.log('[PriceStreamService] Calling trade callback with marketCapUsd:', marketCapUsd);
           callback({ proposalId, market, userAddress, amountIn, amountOut, price, marketCapUsd, timestamp: timestampMs });
         } catch (error) {
           console.error('Error in trade callback:', error);
@@ -286,11 +268,10 @@ export class PriceStreamService {
     }
 
     // Send subscription message with pool address if provided
-    const subscriptionData = poolAddress 
+    const subscriptionData = poolAddress
       ? [{ address: tokenAddress, poolAddress }]
       : [tokenAddress];
     this.sendSubscription(subscriptionData);
-    console.log(`Subscribed to price updates for ${tokenAddress}${poolAddress ? ` with pool ${poolAddress}` : ''}`);
   }
 
   public unsubscribeFromToken(tokenAddress: string, callback: PriceUpdateCallback): void {
@@ -304,7 +285,6 @@ export class PriceStreamService {
         this.subscriptions.delete(tokenAddress);
         this.poolAddresses.delete(tokenAddress); // Clean up pool address
         this.sendUnsubscription([tokenAddress]);
-        console.log(`Unsubscribed from price updates for ${tokenAddress}`);
       } else {
         this.subscriptions.set(tokenAddress, callbacks);
       }
@@ -326,8 +306,6 @@ export class PriceStreamService {
     if (isFirstSubscription) {
       this.sendTradeSubscription(moderatorId, proposalId);
     }
-
-    console.log(`Subscribed to trade updates for proposal ${proposalId} (moderator ${moderatorId})`);
   }
 
   private sendTradeSubscription(moderatorId: number, proposalId: number) {
@@ -338,7 +316,6 @@ export class PriceStreamService {
         moderatorId,
         proposalId
       }));
-      console.log(`Sent SUBSCRIBE_TRADES for proposal ${proposalId} (moderator ${moderatorId})`);
     }
   }
 
@@ -350,7 +327,6 @@ export class PriceStreamService {
         moderatorId,
         proposalId
       }));
-      console.log(`Sent UNSUBSCRIBE_TRADES for proposal ${proposalId} (moderator ${moderatorId})`);
     }
   }
 
@@ -365,7 +341,6 @@ export class PriceStreamService {
       if (callbacks.length === 0) {
         this.tradeSubscriptions.delete(subscriptionKey);
         this.sendTradeUnsubscription(moderatorId, proposalId);
-        console.log(`Unsubscribed from trade updates for proposal ${proposalId} (moderator ${moderatorId})`);
       } else {
         this.tradeSubscriptions.set(subscriptionKey, callbacks);
       }
@@ -387,8 +362,6 @@ export class PriceStreamService {
     if (isFirstSubscription) {
       this.sendTradeSubscription(moderatorId, proposalId);
     }
-
-    console.log(`Subscribed to chart price updates for proposal ${proposalId} (moderator ${moderatorId})`);
   }
 
   public unsubscribeFromChartPrices(moderatorId: number, proposalId: number, callback: ChartPriceUpdateCallback): void {
@@ -405,7 +378,6 @@ export class PriceStreamService {
         if (!this.tradeSubscriptions.has(subscriptionKey)) {
           this.sendTradeUnsubscription(moderatorId, proposalId);
         }
-        console.log(`Unsubscribed from chart price updates for proposal ${proposalId} (moderator ${moderatorId})`);
       } else {
         this.chartPriceSubscriptions.set(subscriptionKey, callbacks);
       }

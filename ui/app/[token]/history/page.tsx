@@ -21,7 +21,7 @@ import { ProposalVolume } from '@/components/ProposalVolume';
 import { useTokenContext } from '@/providers/TokenContext';
 
 export default function HistoryPage() {
-  const { tokenSlug, poolAddress, baseMint, baseDecimals, tokenSymbol, moderatorId, icon, isFutarchy, daoPda } = useTokenContext();
+  const { tokenSlug, poolAddress, baseMint, baseDecimals, tokenSymbol, moderatorId, icon, isFutarchy, daoPda, quoteMint, quoteDecimals, quoteSymbol, quoteIcon } = useTokenContext();
   const { ready, authenticated, user, walletAddress, login } = usePrivyWallet();
   const { proposals, loading, refetch } = useProposalsWithFutarchy({
     poolAddress: poolAddress || undefined,
@@ -37,10 +37,12 @@ export default function HistoryPage() {
     walletAddress,
     baseMint,
     baseDecimals,
+    quoteMint,
+    quoteDecimals,
   });
 
   // Fetch token prices for USD conversion
-  const { sol: solPrice, baseToken: baseTokenPrice } = useTokenPrices(baseMint);
+  const { sol: solPrice, baseToken: baseTokenPrice } = useTokenPrices(baseMint, quoteMint);
 
   // Get transaction signer
   const { signTransaction } = useTransactionSigner();
@@ -119,6 +121,8 @@ export default function HistoryPage() {
           tokenSymbol={tokenSymbol}
           tokenIcon={icon}
           baseMint={baseMint}
+          quoteSymbol={quoteSymbol}
+          quoteIcon={quoteIcon}
         />
 
         <div className="flex-1 flex justify-center overflow-y-auto">
@@ -199,7 +203,7 @@ export default function HistoryPage() {
                               <CheckCircle2 className="w-3 h-3" />
                             </span>
                           )}
-                          <ProposalVolume proposalId={proposal.id} moderatorId={moderatorId ?? undefined} baseMint={baseMint} isFutarchy={isFutarchy} proposalPda={proposal.proposalPda} baseDecimals={baseDecimals} />
+                          <ProposalVolume proposalId={proposal.id} moderatorId={moderatorId ?? undefined} baseMint={baseMint} isFutarchy={isFutarchy} proposalPda={proposal.proposalPda} baseDecimals={baseDecimals} quoteDecimals={quoteDecimals} quoteMint={quoteMint} quoteSymbol={quoteSymbol} />
                         </div>
                         <div className="text-sm text-[#B0AFAB]">
                           {new Date(proposal.finalizedAt).toLocaleDateString('en-US', {
@@ -234,15 +238,15 @@ export default function HistoryPage() {
                           {/* Rewards display */}
                           <div className="text-sm" style={{ color: '#BEE8FC' }}>
                             {(() => {
-                              const zcReward = proposalRewards.find(r => r.claimableToken === 'zc');
-                              const solReward = proposalRewards.find(r => r.claimableToken === 'sol');
+                              const baseReward = proposalRewards.find(r => r.claimableToken === 'base');
+                              const quoteReward = proposalRewards.find(r => r.claimableToken === 'quote');
 
                               const parts = [];
-                              if (zcReward) {
-                                parts.push(`${formatNumber(zcReward.claimableAmount, 0)} ${tokenSymbol}`);
+                              if (baseReward) {
+                                parts.push(`${formatNumber(baseReward.claimableAmount, 0)} ${tokenSymbol}`);
                               }
-                              if (solReward) {
-                                parts.push(`${solReward.claimableAmount.toFixed(4)} SOL`);
+                              if (quoteReward) {
+                                parts.push(`${quoteReward.claimableAmount.toFixed(4)} ${quoteSymbol}`);
                               }
 
                               return parts.join(' / ');
@@ -335,7 +339,7 @@ export default function HistoryPage() {
                                 <CheckCircle2 className="w-3 h-3" />
                               </span>
                             )}
-                            <ProposalVolume proposalId={proposal.id} moderatorId={moderatorId ?? undefined} baseMint={baseMint} isFutarchy={isFutarchy} proposalPda={proposal.proposalPda} baseDecimals={baseDecimals} />
+                            <ProposalVolume proposalId={proposal.id} moderatorId={moderatorId ?? undefined} baseMint={baseMint} isFutarchy={isFutarchy} proposalPda={proposal.proposalPda} baseDecimals={baseDecimals} quoteDecimals={quoteDecimals} quoteMint={quoteMint} quoteSymbol={quoteSymbol} />
                           </div>
                           <div className="text-sm text-[#B0AFAB]">
                             {new Date(proposal.finalizedAt).toLocaleDateString('en-US', {
@@ -370,15 +374,15 @@ export default function HistoryPage() {
                             {/* Rewards display */}
                             <div className="text-sm" style={{ color: '#BEE8FC' }}>
                               {(() => {
-                                const zcReward = proposalRewards.find(r => r.claimableToken === 'zc');
-                                const solReward = proposalRewards.find(r => r.claimableToken === 'sol');
+                                const baseReward = proposalRewards.find(r => r.claimableToken === 'base');
+                                const quoteReward = proposalRewards.find(r => r.claimableToken === 'quote');
 
                                 const parts = [];
-                                if (zcReward) {
-                                  parts.push(`${formatNumber(zcReward.claimableAmount, 0)} ${tokenSymbol}`);
+                                if (baseReward) {
+                                  parts.push(`${formatNumber(baseReward.claimableAmount, 0)} ${tokenSymbol}`);
                                 }
-                                if (solReward) {
-                                  parts.push(`${solReward.claimableAmount.toFixed(4)} SOL`);
+                                if (quoteReward) {
+                                  parts.push(`${quoteReward.claimableAmount.toFixed(4)} ${quoteSymbol}`);
                                 }
 
                                 return parts.join(' / ');

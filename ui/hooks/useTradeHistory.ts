@@ -31,17 +31,12 @@ interface TradeHistoryResponse {
 
 type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error';
 
-const SOL_DECIMALS = 9;
-
-export function useTradeHistory(proposalId: number | null, moderatorId?: number | string, baseMint?: string | null, tokenSymbol?: string, isFutarchy?: boolean, proposalPda?: string, baseDecimals: number = 6) {
-  // DEBUG: Log futarchy state
-  console.log('[useTradeHistory] isFutarchy:', isFutarchy, 'proposalPda:', proposalPda, 'proposalId:', proposalId);
-
+export function useTradeHistory(proposalId: number | null, moderatorId?: number | string, baseMint?: string | null, tokenSymbol?: string, isFutarchy?: boolean, proposalPda?: string, quoteMint?: string | null, quoteSymbol?: string, baseDecimals?: number, quoteDecimals?: number) {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [wsStatus, setWsStatus] = useState<ConnectionStatus>('disconnected');
-  const { sol: solPrice, baseToken: baseTokenPrice } = useTokenPrices(baseMint);
+  const { sol: solPrice, baseToken: baseTokenPrice } = useTokenPrices(baseMint, quoteMint);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectAttemptsRef = useRef(0);
@@ -77,13 +72,13 @@ export function useTradeHistory(proposalId: number | null, moderatorId?: number 
           let formattedAmountOut: string;
 
           if (trade.isBaseToQuote) {
-            // Selling base token for SOL
-            formattedAmountIn = (rawAmountIn / Math.pow(10, baseDecimals)).toString();
-            formattedAmountOut = (rawAmountOut / Math.pow(10, SOL_DECIMALS)).toString();
+            // Selling base token for quote token
+            formattedAmountIn = (rawAmountIn / Math.pow(10, baseDecimals!)).toString();
+            formattedAmountOut = (rawAmountOut / Math.pow(10, quoteDecimals!)).toString();
           } else {
-            // Buying base token with SOL
-            formattedAmountIn = (rawAmountIn / Math.pow(10, SOL_DECIMALS)).toString();
-            formattedAmountOut = (rawAmountOut / Math.pow(10, baseDecimals)).toString();
+            // Buying base token with quote token
+            formattedAmountIn = (rawAmountIn / Math.pow(10, quoteDecimals!)).toString();
+            formattedAmountOut = (rawAmountOut / Math.pow(10, baseDecimals!)).toString();
           }
 
           return {
@@ -126,7 +121,7 @@ export function useTradeHistory(proposalId: number | null, moderatorId?: number 
     } finally {
       setLoading(false);
     }
-  }, [proposalId, moderatorId, isFutarchy, proposalPda]);
+  }, [proposalId, moderatorId, isFutarchy, proposalPda, baseDecimals, quoteDecimals]);
 
   // Update refs
   useEffect(() => {
@@ -372,21 +367,21 @@ export function useTradeHistory(proposalId: number | null, moderatorId?: number 
   // Memoized helper function to determine token used
   const getTokenUsed = useCallback((isBaseToQuote: boolean, market: number) => {
     // All markets use the same token pairs:
-    // base = token (ZC/OOGWAY/etc), quote = SOL
-    return isBaseToQuote ? `$${tokenSymbol || 'ZC'}` : 'SOL';
-  }, [tokenSymbol]);
+    // base = token (ZC/OOGWAY/etc), quote = quote token (SOL/USDC/etc)
+    return isBaseToQuote ? `$${tokenSymbol}` : quoteSymbol;
+  }, [tokenSymbol, quoteSymbol]);
 
   // Memoized helper function to calculate volume in USD
   const calculateVolume = useCallback((amountIn: string, isBaseToQuote: boolean, market: number) => {
     const amount = parseFloat(amountIn);
-    const token = getTokenUsed(isBaseToQuote, market);
-
-    if (token === 'SOL') {
-      return amount * solPrice;
+    // isBaseToQuote = selling base token, receiving quote token (so input is base)
+    // !isBaseToQuote = selling quote token, receiving base token (so input is quote)
+    if (!isBaseToQuote) {
+      return amount * solPrice; // solPrice is actually quote token price
     } else {
       return amount * baseTokenPrice;
     }
-  }, [solPrice, baseTokenPrice, getTokenUsed]);
+  }, [solPrice, baseTokenPrice]);
 
   // Calculate total volume for all trades in this proposal
   const totalVolume = useMemo(() => {

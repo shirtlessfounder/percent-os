@@ -19,7 +19,7 @@
 
 'use client';
 
-import { useState, useMemo, memo, useCallback } from 'react';
+import { useState, useMemo, memo, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Masonry from 'react-masonry-css';
@@ -30,6 +30,7 @@ import { useAllProposals, type ExploreProposal } from '@/hooks/useAllProposals';
 import { getProposalContent, proposalContentMap } from '@/lib/proposalContent';
 import { MarkdownText } from '@/lib/renderMarkdown';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { api } from '@/lib/api';
 
 // Type for pre-computed proposal data
 interface ProposalCardData {
@@ -244,9 +245,45 @@ const ProposalCard = memo(function ProposalCard({
 
 export default function ExplorePage() {
   const router = useRouter();
-  const { proposals, loading, error } = useAllProposals();
+  const { proposals: allProposals, loading: proposalsLoading, error: proposalsError } = useAllProposals();
   const [hoveredProposalId, setHoveredProposalId] = useState<number | null>(null);
   const [hoveredModeratorId, setHoveredModeratorId] = useState<number | null>(null);
+
+  // Fetch verified DAOs to filter futarchy proposals
+  const [verifiedDaoPdas, setVerifiedDaoPdas] = useState<Set<string>>(new Set());
+  const [daosLoading, setDaosLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchVerifiedDaos = async () => {
+      try {
+        setDaosLoading(true);
+        const daos = await api.getZcombinatorDaos();
+        const verified = new Set(
+          daos.filter(dao => dao.verified === true).map(dao => dao.dao_pda)
+        );
+        setVerifiedDaoPdas(verified);
+      } catch (err) {
+        console.error('Error fetching verified DAOs:', err);
+      } finally {
+        setDaosLoading(false);
+      }
+    };
+
+    fetchVerifiedDaos();
+  }, []);
+
+  // Filter proposals: show all old system + only verified futarchy DAOs
+  const proposals = useMemo(() => {
+    return allProposals.filter(p => {
+      // Old system proposals are always shown
+      if (!p.isFutarchy) return true;
+      // Futarchy proposals only shown if from a verified DAO
+      return p.daoPda && verifiedDaoPdas.has(p.daoPda);
+    });
+  }, [allProposals, verifiedDaoPdas]);
+
+  const loading = proposalsLoading || daosLoading;
+  const error = proposalsError;
 
   // Pre-compute all derived data once when proposals change
   // This prevents expensive re-computations on hover
@@ -347,7 +384,7 @@ export default function ExplorePage() {
           <div className="md:hidden flex flex-col gap-4 pb-8">
             {proposalCardData.map((data) => (
               <ProposalCard
-                key={`mobile-${data.proposal.moderatorId}-${data.proposal.id}`}
+                key={`mobile-${getProjectKey(data.proposal)}-${data.proposal.id}`}
                 data={data}
                 isHovered={hoveredProposalId === data.proposal.id && hoveredModeratorId === data.proposal.moderatorId}
                 onHover={handleHover}
@@ -368,7 +405,7 @@ export default function ExplorePage() {
             >
               {proposalCardData.map((data) => (
                 <ProposalCard
-                  key={`desktop-${data.proposal.moderatorId}-${data.proposal.id}`}
+                  key={`desktop-${getProjectKey(data.proposal)}-${data.proposal.id}`}
                   data={data}
                   isHovered={hoveredProposalId === data.proposal.id && hoveredModeratorId === data.proposal.moderatorId}
                   onHover={handleHover}

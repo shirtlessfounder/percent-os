@@ -54,7 +54,8 @@ export function TradeHistoryTable({
             };
 
             let formattedAmount;
-            if (tokenUsed === 'SOL') {
+            const isQuoteToken = !tokenUsed.startsWith('$'); // Quote tokens don't have $ prefix
+            if (isQuoteToken) {
               formattedAmount = removeTrailingZeros(amount.toFixed(3));
             } else {
               // Base token formatting with K/M/B notation

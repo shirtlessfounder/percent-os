@@ -13,7 +13,7 @@ export interface ClaimablePosition {
   winningMarketIndex: number;  // Which market won (for N-ary quantum markets)
   isWinner: boolean;
   claimableAmount: number; // Amount of tokens to claim
-  claimableToken: 'sol' | 'zc'; // Which token they'll receive
+  claimableToken: 'quote' | 'base'; // Which token they'll receive
   claimableValue: number; // USD value
   isFutarchy?: boolean; // Whether this is from a futarchy proposal
   vaultPDA?: string; // Vault PDA for claiming
@@ -133,7 +133,7 @@ export function useClaimablePositions(
         const baseMultiplier = Math.pow(10, proposal.baseDecimals);
         const quoteMultiplier = Math.pow(10, proposal.quoteDecimals);
 
-        // Check base vault winning tokens (ZC)
+        // Check base vault winning tokens
         if (baseWinningTokens > 0) {
           const value = (baseWinningTokens / baseMultiplier) * baseTokenPrice;
           claimableList.push({
@@ -143,7 +143,7 @@ export function useClaimablePositions(
             winningMarketIndex: winningIndex,
             isWinner: true,
             claimableAmount: baseWinningTokens / baseMultiplier,
-            claimableToken: 'zc',
+            claimableToken: 'base',
             claimableValue: value,
             isFutarchy: proposal.isFutarchy,
             vaultPDA: proposal.vaultPDA,
@@ -151,7 +151,7 @@ export function useClaimablePositions(
           total += value;
         }
 
-        // Check quote vault winning tokens (SOL)
+        // Check quote vault winning tokens
         if (quoteWinningTokens > 0) {
           const value = (quoteWinningTokens / quoteMultiplier) * solPrice;
           claimableList.push({
@@ -161,7 +161,7 @@ export function useClaimablePositions(
             winningMarketIndex: winningIndex,
             isWinner: true,
             claimableAmount: quoteWinningTokens / quoteMultiplier,
-            claimableToken: 'sol',
+            claimableToken: 'quote',
             claimableValue: value,
             isFutarchy: proposal.isFutarchy,
             vaultPDA: proposal.vaultPDA,
