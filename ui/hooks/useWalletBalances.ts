@@ -21,6 +21,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Connection, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { getAccount, getAssociatedTokenAddress } from '@solana/spl-token';
 import { isNativeSol, TOKEN_MINTS } from '@/lib/constants/tokens';
+import { getTokenProgramForMint } from '@/lib/programs/utils';
 
 interface WalletBalancesState {
   sol: number; // Quote token balance (SOL, USDC, etc.) - named 'sol' for backward compatibility
@@ -62,11 +63,7 @@ export function useWalletBalances({
     setBalances(prev => ({ ...prev, loading: true, error: null }));
 
     try {
-      // Use Helius RPC with API key if available, otherwise fall back to other options
-      const heliusApiKey = process.env.NEXT_PUBLIC_HELIUS_API_KEY;
-      const rpcUrl = heliusApiKey
-        ? `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`
-        : process.env.NEXT_PUBLIC_RPC_URL || 'https://api.mainnet-beta.solana.com';
+      const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.mainnet-beta.solana.com';
       const connection = new Connection(rpcUrl, 'confirmed');
       const pubKey = new PublicKey(address);
 
@@ -80,8 +77,9 @@ export function useWalletBalances({
         // SPL token balance (USDC, etc.)
         try {
           const tokenMint = new PublicKey(quoteMint);
-          const tokenATA = await getAssociatedTokenAddress(tokenMint, pubKey);
-          const tokenAccount = await getAccount(connection, tokenATA);
+          const programId = await getTokenProgramForMint(tokenMint);
+          const tokenATA = await getAssociatedTokenAddress(tokenMint, pubKey, false, programId);
+          const tokenAccount = await getAccount(connection, tokenATA, 'confirmed', programId);
           quoteAmount = Number(tokenAccount.amount) / Math.pow(10, quoteDecimals);
         } catch {
           // Token account might not exist if user has 0 balance - this is normal
@@ -93,12 +91,9 @@ export function useWalletBalances({
       if (baseMint) {
         try {
           const tokenMint = new PublicKey(baseMint);
-          const tokenATA = await getAssociatedTokenAddress(
-            tokenMint,
-            pubKey
-          );
-
-          const tokenAccount = await getAccount(connection, tokenATA);
+          const programId = await getTokenProgramForMint(tokenMint);
+          const tokenATA = await getAssociatedTokenAddress(tokenMint, pubKey, false, programId);
+          const tokenAccount = await getAccount(connection, tokenATA, 'confirmed', programId);
           // Use dynamic decimals
           baseTokenAmount = Number(tokenAccount.amount) / Math.pow(10, baseDecimals);
         } catch {
@@ -137,10 +132,7 @@ export function useWalletBalances({
     fetchBalances(walletAddress);
 
     // Set up WebSocket subscriptions for real-time updates
-    const heliusApiKey = process.env.NEXT_PUBLIC_HELIUS_API_KEY;
-    const rpcUrl = heliusApiKey
-      ? `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`
-      : process.env.NEXT_PUBLIC_RPC_URL || 'https://api.mainnet-beta.solana.com';
+    const rpcUrl = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.mainnet-beta.solana.com';
     const connection = new Connection(rpcUrl, 'confirmed');
     const pubKey = new PublicKey(walletAddress);
 
@@ -161,7 +153,8 @@ export function useWalletBalances({
       (async () => {
         try {
           const tokenMint = new PublicKey(quoteMint);
-          const tokenATA = await getAssociatedTokenAddress(tokenMint, pubKey);
+          const programId = await getTokenProgramForMint(tokenMint);
+          const tokenATA = await getAssociatedTokenAddress(tokenMint, pubKey, false, programId);
           quoteSubscriptionId = connection.onAccountChange(
             tokenATA,
             () => fetchBalances(walletAddress),
@@ -179,8 +172,8 @@ export function useWalletBalances({
       (async () => {
         try {
           const tokenMint = new PublicKey(baseMint);
-          const tokenATA = await getAssociatedTokenAddress(tokenMint, pubKey);
-
+          const programId = await getTokenProgramForMint(tokenMint);
+          const tokenATA = await getAssociatedTokenAddress(tokenMint, pubKey, false, programId);
           baseTokenSubscriptionId = connection.onAccountChange(
             tokenATA,
             () => fetchBalances(walletAddress),

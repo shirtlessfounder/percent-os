@@ -21,7 +21,7 @@ import { Router } from 'express';
 import { requireApiKey } from '../middleware/auth';
 import { attachModerator, requireModeratorId, getModerator } from '../middleware/validation';
 import { Transaction, PublicKey, Connection } from '@solana/web3.js';
-import { getMint, TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import { getMint, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from '@solana/spl-token';
 import BN from 'bn.js';
 import bs58 from 'bs58';
 import nacl from 'tweetnacl';
@@ -939,18 +939,21 @@ async function recordSlashIfApplicable(
       STAKING_PROGRAM_ID
     );
 
-    // Find user's sZC token account
-    const tokenAccounts = await connection.getProgramAccounts(TOKEN_PROGRAM_ID, {
-      filters: [
-        { dataSize: 165 },
-        { memcmp: { offset: 0, bytes: shareMint.toBase58() } },
-        { memcmp: { offset: 32, bytes: targetWallet } }
-      ]
-    });
+    // Find user's sZC token account (query both TOKEN_PROGRAM_ID and TOKEN_2022_PROGRAM_ID)
+    const filters = [
+      { dataSize: 165 },
+      { memcmp: { offset: 0, bytes: shareMint.toBase58() } },
+      { memcmp: { offset: 32, bytes: targetWallet } }
+    ];
+    const [tokenAccounts, token2022Accounts] = await Promise.all([
+      connection.getProgramAccounts(TOKEN_PROGRAM_ID, { filters }),
+      connection.getProgramAccounts(TOKEN_2022_PROGRAM_ID, { filters })
+    ]);
+    const allTokenAccounts = [...tokenAccounts, ...token2022Accounts];
 
-    if (tokenAccounts.length > 0) {
+    if (allTokenAccounts.length > 0) {
       // Parse the token account balance
-      const accountData = tokenAccounts[0].account.data;
+      const accountData = allTokenAccounts[0].account.data;
       const rawBalance = accountData.readBigUInt64LE(64);
       const stakedBalance = Number(rawBalance) / 1_000_000; // sZC has 6 decimals
 

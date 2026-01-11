@@ -30,7 +30,7 @@ import { useAllProposals, type ExploreProposal } from '@/hooks/useAllProposals';
 import { getProposalContent, proposalContentMap } from '@/lib/proposalContent';
 import { MarkdownText } from '@/lib/renderMarkdown';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { api } from '@/lib/api';
+import { api, VISIBILITY_THRESHOLD } from '@/lib/api';
 
 // Type for pre-computed proposal data
 interface ProposalCardData {
@@ -249,38 +249,38 @@ export default function ExplorePage() {
   const [hoveredProposalId, setHoveredProposalId] = useState<number | null>(null);
   const [hoveredModeratorId, setHoveredModeratorId] = useState<number | null>(null);
 
-  // Fetch verified DAOs to filter futarchy proposals
-  const [verifiedDaoPdas, setVerifiedDaoPdas] = useState<Set<string>>(new Set());
+  // Fetch visible DAOs to filter futarchy proposals (visibility: 0=hidden, 1=test, 2=prod)
+  const [visibleDaoPdas, setVisibleDaoPdas] = useState<Set<string>>(new Set());
   const [daosLoading, setDaosLoading] = useState(true);
 
   useEffect(() => {
-    const fetchVerifiedDaos = async () => {
+    const fetchVisibleDaos = async () => {
       try {
         setDaosLoading(true);
         const daos = await api.getZcombinatorDaos();
-        const verified = new Set(
-          daos.filter(dao => dao.verified === true).map(dao => dao.dao_pda)
+        const visible = new Set(
+          daos.filter(dao => (dao.visibility ?? 0) >= VISIBILITY_THRESHOLD).map(dao => dao.dao_pda)
         );
-        setVerifiedDaoPdas(verified);
+        setVisibleDaoPdas(visible);
       } catch (err) {
-        console.error('Error fetching verified DAOs:', err);
+        console.error('Error fetching visible DAOs:', err);
       } finally {
         setDaosLoading(false);
       }
     };
 
-    fetchVerifiedDaos();
+    fetchVisibleDaos();
   }, []);
 
-  // Filter proposals: show all old system + only verified futarchy DAOs
+  // Filter proposals: show all old system + only visible futarchy DAOs
   const proposals = useMemo(() => {
     return allProposals.filter(p => {
       // Old system proposals are always shown
       if (!p.isFutarchy) return true;
-      // Futarchy proposals only shown if from a verified DAO
-      return p.daoPda && verifiedDaoPdas.has(p.daoPda);
+      // Futarchy proposals only shown if from a visible DAO
+      return p.daoPda && visibleDaoPdas.has(p.daoPda);
     });
-  }, [allProposals, verifiedDaoPdas]);
+  }, [allProposals, visibleDaoPdas]);
 
   const loading = proposalsLoading || daosLoading;
   const error = proposalsError;

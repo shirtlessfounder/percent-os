@@ -24,7 +24,7 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import ExploreHeader from '@/components/ExploreHeader';
 import { useOldSystemProposals } from '@/hooks/useAllProposals';
-import { api, ZcombinatorDAO } from '@/lib/api';
+import { api, ZcombinatorDAO, VISIBILITY_THRESHOLD } from '@/lib/api';
 
 interface Project {
   moderatorId: number;
@@ -65,9 +65,9 @@ export default function ProjectsPage() {
       try {
         setFutarchyLoading(true);
         const daos = await api.getZcombinatorDaos();
-        // Filter for verified DAOs only (when field exists)
-        const verifiedDaos = daos.filter(dao => dao.verified === true);
-        setFutarchyDaos(verifiedDaos);
+        // Filter DAOs by visibility threshold (0=hidden, 1=test, 2=prod)
+        const visibleDaos = daos.filter(dao => (dao.visibility ?? 0) >= VISIBILITY_THRESHOLD);
+        setFutarchyDaos(visibleDaos);
         setFutarchyError(null);
       } catch (err) {
         console.error('Error fetching futarchy DAOs:', err);

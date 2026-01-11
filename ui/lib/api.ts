@@ -28,6 +28,9 @@ const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.devnet.solana.co
 // Zcombinator API for futarchy DAOs (new system)
 const ZCOMBINATOR_API_URL = process.env.NEXT_PUBLIC_ZCOMBINATOR_API_URL || 'https://api.zcombinator.io';
 
+// Visibility threshold: 1 for test/dev (shows test + prod), 2 for prod (shows prod only)
+export const VISIBILITY_THRESHOLD = parseInt(process.env.NEXT_PUBLIC_VISIBILITY_THRESHOLD || '2', 10);
+
 /**
  * DAO data returned from zcombinator API
  */
@@ -58,8 +61,8 @@ export interface ZcombinatorDAO {
     childDaoCount: number;
     proposalCount?: number; // undefined until cache is populated
   };
-  // Verification status for display on projects page
-  verified?: boolean;
+  // Visibility level for filtering: 0=hidden, 1=test, 2=production
+  visibility?: number;
   icon?: string;
 }
 
@@ -140,7 +143,7 @@ class GovernanceAPI {
   }
 
   /**
-   * Fetch proposals from all verified futarchy DAOs
+   * Fetch proposals from all visible futarchy DAOs
    */
   private async getFutarchyProposals(): Promise<Array<ProposalListItem & {
     moderatorId: number;

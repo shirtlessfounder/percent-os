@@ -13,7 +13,7 @@ interface ZcombinatorDAO {
   moderator_pda: string;
   pool_address: string;
   token_mint: string;
-  verified?: boolean;
+  visibility?: number;
   icon?: string;
   stats: {
     proposerCount: number;
@@ -44,7 +44,7 @@ async function testListDaos() {
   const data = await response.json() as { daos: ZcombinatorDAO[] };
   console.log(`Found ${data.daos.length} DAOs:`);
   data.daos.forEach(dao => {
-    console.log(`  - ${dao.dao_name} (verified: ${dao.verified ?? 'unknown'}, proposals: ${dao.stats.proposalCount})`);
+    console.log(`  - ${dao.dao_name} (visibility: ${dao.visibility ?? 0}, proposals: ${dao.stats.proposalCount})`);
   });
   return data.daos;
 }
@@ -63,7 +63,7 @@ async function testGetDaoByName(name: string) {
     console.log(`  PDA: ${dao.dao_pda}`);
     console.log(`  Pool: ${dao.pool_address}`);
     console.log(`  Token: ${dao.token_mint}`);
-    console.log(`  Verified: ${dao.verified}`);
+    console.log(`  Visibility: ${dao.visibility ?? 0}`);
     console.log(`  Stats: ${JSON.stringify(dao.stats)}`);
   } else {
     console.log(`DAO not found: ${name}`);

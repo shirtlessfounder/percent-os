@@ -59,13 +59,15 @@ export interface ISPLTokenService {
    * @param destination - The token account to receive minted tokens
    * @param amount - Amount to mint in smallest units
    * @param mintAuthority - Public key of mint authority
+   * @param programId - Optional token program ID (defaults to TOKEN_PROGRAM_ID)
    * @returns Mint instruction
    */
   buildMintToIx(
     mint: PublicKey,
     destination: PublicKey,
     amount: bigint,
-    mintAuthority: PublicKey
+    mintAuthority: PublicKey,
+    programId?: PublicKey
   ): TransactionInstruction;
 
   /**
@@ -89,13 +91,15 @@ export interface ISPLTokenService {
    * @param account - The token account to burn from
    * @param amount - Amount to burn in smallest units
    * @param owner - Public key of account owner
+   * @param programId - Optional token program ID (defaults to TOKEN_PROGRAM_ID)
    * @returns Burn instruction
    */
   buildBurnIx(
     mint: PublicKey,
     account: PublicKey,
     amount: bigint,
-    owner: PublicKey
+    owner: PublicKey,
+    programId?: PublicKey
   ): TransactionInstruction;
 
   /**
@@ -119,13 +123,15 @@ export interface ISPLTokenService {
    * @param destination - The token account to transfer to
    * @param amount - Amount to transfer in smallest units
    * @param owner - Public key of source account owner
+   * @param programId - Optional token program ID (defaults to TOKEN_PROGRAM_ID)
    * @returns Transfer instruction
    */
   buildTransferIx(
     source: PublicKey,
     destination: PublicKey,
     amount: bigint,
-    owner: PublicKey
+    owner: PublicKey,
+    programId?: PublicKey
   ): TransactionInstruction;
 
   /**
@@ -148,12 +154,14 @@ export interface ISPLTokenService {
    * @param account - The token account to close
    * @param destination - Account to receive remaining SOL
    * @param owner - Public key of account owner
+   * @param programId - Optional token program ID (defaults to TOKEN_PROGRAM_ID)
    * @returns Close account instruction
    */
   buildCloseAccountIx(
     account: PublicKey,
     destination: PublicKey,
-    owner: PublicKey
+    owner: PublicKey,
+    programId?: PublicKey
   ): TransactionInstruction;
 
   /**
@@ -174,12 +182,14 @@ export interface ISPLTokenService {
    * @param mint - The token mint
    * @param owner - The owner of the token account
    * @param payer - The account paying for creation if needed
+   * @param programId - Optional token program ID (auto-detected from mint if not provided)
    * @returns PublicKey of the associated token account
    */
   getOrCreateAssociatedTokenAccount(
     mint: PublicKey,
     owner: PublicKey,
-    payer: Keypair
+    payer: Keypair,
+    programId?: PublicKey
   ): Promise<PublicKey>;
 
   /**
@@ -209,13 +219,15 @@ export interface ISPLTokenService {
    * @param newAuthority - The new authority (or null to revoke)
    * @param authorityType - Type of authority to set (MintTokens, FreezeAccount, etc)
    * @param currentAuthority - Current authority public key
+   * @param programId - Optional token program ID (defaults to TOKEN_PROGRAM_ID)
    * @returns Set authority instruction
    */
   buildSetAuthorityIx(
     mint: PublicKey,
     newAuthority: PublicKey | null,
     authorityType: AuthorityType,
-    currentAuthority: PublicKey
+    currentAuthority: PublicKey,
+    programId?: PublicKey
   ): TransactionInstruction;
 
   /**
