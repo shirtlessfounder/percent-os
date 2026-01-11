@@ -9,7 +9,7 @@
     "create-moderator": "tsx scripts/create-moderator.ts",
     "create-proposal": "tsx scripts/create-proposal.ts",
     "state": "tsx scripts/fetch-state.ts",
-    "monitor": "tsx monitor/server.ts",
+    "monitor": "tsx monitor/server.ts --port 4040",
     "monitor:dev": "tsx monitor/server.ts --dev --no-auth",
     "monitor:listen": "tsx monitor/scripts/sse-listener.ts"
   },
