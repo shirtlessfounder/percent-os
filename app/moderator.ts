@@ -18,7 +18,7 @@
  */
 
 import { Keypair, PublicKey, Transaction, SystemProgram } from '@solana/web3.js';
-import { getAssociatedTokenAddress, createAssociatedTokenAccountIdempotentInstruction, createTransferInstruction, TOKEN_PROGRAM_ID, NATIVE_MINT, getAccount } from '@solana/spl-token';
+import { getAssociatedTokenAddress, createAssociatedTokenAccountIdempotentInstruction, createTransferInstruction, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, NATIVE_MINT, getAccount, ASSOCIATED_TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { IModerator, IModeratorConfig, IModeratorInfo, ProposalStatus, ICreateProposalParams } from './types/moderator.interface';
 import { IExecutionConfig, PriorityFeeMode, Commitment } from './types/execution.interface';
 import { IProposal, IProposalConfig } from './types/proposal.interface';
@@ -93,6 +93,19 @@ export class Moderator implements IModerator {
     // if (this.config.jitoUuid) {
     //   this.jitoService = new JitoService(BlockEngineUrl.MAINNET, this.config.jitoUuid);
     // }
+  }
+
+  /**
+   * Detects which token program owns a given mint (TOKEN_PROGRAM_ID or TOKEN_2022_PROGRAM_ID).
+   * @param mint - The mint address to check
+   * @returns The program ID that owns the mint
+   */
+  private async getTokenProgramForMint(mint: PublicKey): Promise<PublicKey> {
+    const accountInfo = await this.executionService.connection.getAccountInfo(mint);
+    if (!accountInfo) {
+      return TOKEN_PROGRAM_ID; // Fallback
+    }
+    return accountInfo.owner;
   }
 
   /**
@@ -602,6 +615,10 @@ export class Moderator implements IModerator {
     let tokenAAmount = 0n;
     let tokenBAmount = 0n;
 
+    // Detect token programs for Token-2022 support
+    const tokenAProgramId = isTokenANativeSOL ? TOKEN_PROGRAM_ID : await this.getTokenProgramForMint(tokenAMint);
+    const tokenBProgramId = isTokenBNativeSOL ? TOKEN_PROGRAM_ID : await this.getTokenProgramForMint(tokenBMint);
+
     // Get tokenA balance
     if (isTokenANativeSOL) {
       const solBalance = await connection.getBalance(authority.publicKey);
@@ -609,7 +626,7 @@ export class Moderator implements IModerator {
       if (tokenAAmount < 0n) tokenAAmount = 0n;
     } else {
       try {
-        const authorityTokenA = await getAssociatedTokenAddress(tokenAMint, authority.publicKey);
+        const authorityTokenA = await getAssociatedTokenAddress(tokenAMint, authority.publicKey, false, tokenAProgramId);
         const tokenAAccount = await getAccount(connection, authorityTokenA);
         tokenAAmount = tokenAAccount.amount;
       } catch {
@@ -629,7 +646,7 @@ export class Moderator implements IModerator {
       }
     } else {
       try {
-        const authorityTokenB = await getAssociatedTokenAddress(tokenBMint, authority.publicKey);
+        const authorityTokenB = await getAssociatedTokenAddress(tokenBMint, authority.publicKey, false, tokenBProgramId);
         const tokenBAccount = await getAccount(connection, authorityTokenB);
         tokenBAmount = tokenBAccount.amount;
       } catch {
@@ -669,9 +686,9 @@ export class Moderator implements IModerator {
           })
         );
       } else {
-        // TokenA is a regular SPL token
-        const authorityTokenA = await getAssociatedTokenAddress(tokenAMint, authority.publicKey);
-        const lpOwnerTokenA = await getAssociatedTokenAddress(tokenAMint, lpOwner);
+        // TokenA is a regular SPL token (or Token-2022)
+        const authorityTokenA = await getAssociatedTokenAddress(tokenAMint, authority.publicKey, false, tokenAProgramId);
+        const lpOwnerTokenA = await getAssociatedTokenAddress(tokenAMint, lpOwner, false, tokenAProgramId);
 
         // Create LP owner's ATA if needed
         transaction.add(
@@ -679,7 +696,9 @@ export class Moderator implements IModerator {
             authority.publicKey,
             lpOwnerTokenA,
             lpOwner,
-            tokenAMint
+            tokenAMint,
+            tokenAProgramId,
+            ASSOCIATED_TOKEN_PROGRAM_ID
           )
         );
 
@@ -691,7 +710,7 @@ export class Moderator implements IModerator {
             authority.publicKey,
             tokenAAmount,
             [],
-            TOKEN_PROGRAM_ID
+            tokenAProgramId
           )
         );
       }
@@ -709,9 +728,9 @@ export class Moderator implements IModerator {
           })
         );
       } else {
-        // TokenB is a regular SPL token
-        const authorityTokenB = await getAssociatedTokenAddress(tokenBMint, authority.publicKey);
-        const lpOwnerTokenB = await getAssociatedTokenAddress(tokenBMint, lpOwner);
+        // TokenB is a regular SPL token (or Token-2022)
+        const authorityTokenB = await getAssociatedTokenAddress(tokenBMint, authority.publicKey, false, tokenBProgramId);
+        const lpOwnerTokenB = await getAssociatedTokenAddress(tokenBMint, lpOwner, false, tokenBProgramId);
 
         // Create LP owner's ATA if needed
         transaction.add(
@@ -719,7 +738,9 @@ export class Moderator implements IModerator {
             authority.publicKey,
             lpOwnerTokenB,
             lpOwner,
-            tokenBMint
+            tokenBMint,
+            tokenBProgramId,
+            ASSOCIATED_TOKEN_PROGRAM_ID
           )
         );
 
@@ -731,7 +752,7 @@ export class Moderator implements IModerator {
             authority.publicKey,
             tokenBAmount,
             [],
-            TOKEN_PROGRAM_ID
+            tokenBProgramId
           )
         );
       }

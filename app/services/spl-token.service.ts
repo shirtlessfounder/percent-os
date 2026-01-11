@@ -39,6 +39,7 @@ import {
   getAccount,
   AuthorityType,
   TOKEN_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
   NATIVE_MINT,
   MINT_SIZE,
@@ -48,8 +49,12 @@ import { IExecutionService } from '../types/execution.interface';
 import { ISPLTokenService, ITokenAccountInfo } from '../types/spl-token.interface';
 import { LoggerService } from './logger.service';
 
-// Re-export AuthorityType and NATIVE_MINT for external use
-export { AuthorityType, NATIVE_MINT } from '@solana/spl-token';
+// Re-export AuthorityType, NATIVE_MINT, and token program IDs for external use
+export { AuthorityType, NATIVE_MINT, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from '@solana/spl-token';
+
+// Cache for token program lookups
+const tokenProgramCache = new Map<string, { programId: PublicKey; expiry: number }>();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
  * SPL Token Service
@@ -62,6 +67,39 @@ export class SPLTokenService implements ISPLTokenService {
   constructor(executionService: IExecutionService, logger: LoggerService) {
     this.logger = logger;
     this.executionService = executionService;
+  }
+
+  /**
+   * Detects which token program owns a given mint (TOKEN_PROGRAM_ID or TOKEN_2022_PROGRAM_ID).
+   * Results are cached to minimize RPC calls.
+   * @param mint - The mint address to check
+   * @returns The program ID that owns the mint
+   */
+  async getTokenProgramForMint(mint: PublicKey): Promise<PublicKey> {
+    const mintStr = mint.toBase58();
+
+    // Check cache first
+    const cached = tokenProgramCache.get(mintStr);
+    if (cached && cached.expiry > Date.now()) {
+      return cached.programId;
+    }
+
+    const accountInfo = await this.executionService.connection.getAccountInfo(mint);
+
+    if (!accountInfo) {
+      // Default to TOKEN_PROGRAM_ID if mint not found
+      return TOKEN_PROGRAM_ID;
+    }
+
+    const programId = accountInfo.owner;
+
+    // Cache the result
+    tokenProgramCache.set(mintStr, {
+      programId,
+      expiry: Date.now() + CACHE_TTL_MS,
+    });
+
+    return programId;
   }
 
   /**
@@ -149,13 +187,15 @@ export class SPLTokenService implements ISPLTokenService {
    * @param destination - The token account to receive minted tokens
    * @param amount - Amount to mint in smallest units
    * @param mintAuthority - Public key of mint authority
+   * @param programId - Optional token program ID (defaults to TOKEN_PROGRAM_ID)
    * @returns Mint instruction
    */
   buildMintToIx(
     mint: PublicKey,
     destination: PublicKey,
     amount: bigint,
-    mintAuthority: PublicKey
+    mintAuthority: PublicKey,
+    programId: PublicKey = TOKEN_PROGRAM_ID
   ): TransactionInstruction {
     return createMintToInstruction(
       mint,
@@ -163,7 +203,7 @@ export class SPLTokenService implements ISPLTokenService {
       mintAuthority,
       amount,
       [],
-      TOKEN_PROGRAM_ID
+      programId
     );
   }
 
@@ -216,13 +256,15 @@ export class SPLTokenService implements ISPLTokenService {
    * @param account - The token account to burn from
    * @param amount - Amount to burn in smallest units
    * @param owner - Public key of account owner
+   * @param programId - Optional token program ID (defaults to TOKEN_PROGRAM_ID)
    * @returns Burn instruction
    */
   buildBurnIx(
     mint: PublicKey,
     account: PublicKey,
     amount: bigint,
-    owner: PublicKey
+    owner: PublicKey,
+    programId: PublicKey = TOKEN_PROGRAM_ID
   ): TransactionInstruction {
     return createBurnInstruction(
       account,
@@ -230,7 +272,7 @@ export class SPLTokenService implements ISPLTokenService {
       owner,
       amount,
       [],
-      TOKEN_PROGRAM_ID
+      programId
     );
   }
 
@@ -283,13 +325,15 @@ export class SPLTokenService implements ISPLTokenService {
    * @param destination - The token account to transfer to
    * @param amount - Amount to transfer in smallest units
    * @param owner - Public key of source account owner
+   * @param programId - Optional token program ID (defaults to TOKEN_PROGRAM_ID)
    * @returns Transfer instruction
    */
   buildTransferIx(
     source: PublicKey,
     destination: PublicKey,
     amount: bigint,
-    owner: PublicKey
+    owner: PublicKey,
+    programId: PublicKey = TOKEN_PROGRAM_ID
   ): TransactionInstruction {
     return createTransferInstruction(
       source,
@@ -297,7 +341,7 @@ export class SPLTokenService implements ISPLTokenService {
       owner,
       amount,
       [],
-      TOKEN_PROGRAM_ID
+      programId
     );
   }
 
@@ -349,19 +393,21 @@ export class SPLTokenService implements ISPLTokenService {
    * @param account - The token account to close
    * @param destination - Account to receive remaining SOL
    * @param owner - Public key of account owner
+   * @param programId - Optional token program ID (defaults to TOKEN_PROGRAM_ID)
    * @returns Close account instruction
    */
   buildCloseAccountIx(
     account: PublicKey,
     destination: PublicKey,
-    owner: PublicKey
+    owner: PublicKey,
+    programId: PublicKey = TOKEN_PROGRAM_ID
   ): TransactionInstruction {
     return createCloseAccountInstruction(
       account,
       destination,
       owner,
       [],
-      TOKEN_PROGRAM_ID
+      programId
     );
   }
 
@@ -410,18 +456,23 @@ export class SPLTokenService implements ISPLTokenService {
    * @param mint - The token mint
    * @param owner - The owner of the token account
    * @param payer - The account paying for creation if needed
+   * @param programId - Optional token program ID (auto-detected from mint if not provided)
    * @returns PublicKey of the associated token account
    */
   async getOrCreateAssociatedTokenAccount(
     mint: PublicKey,
     owner: PublicKey,
-    payer: Keypair
+    payer: Keypair,
+    programId?: PublicKey
   ): Promise<PublicKey> {
+    // Auto-detect program ID if not provided
+    const tokenProgramId = programId ?? await this.getTokenProgramForMint(mint);
+
     const associatedToken = await getAssociatedTokenAddress(
       mint,
       owner,
       false,
-      TOKEN_PROGRAM_ID,
+      tokenProgramId,
       ASSOCIATED_TOKEN_PROGRAM_ID
     );
 
@@ -436,14 +487,15 @@ export class SPLTokenService implements ISPLTokenService {
           associatedToken,
           owner,
           mint,
-          TOKEN_PROGRAM_ID,
+          tokenProgramId,
           ASSOCIATED_TOKEN_PROGRAM_ID
         )
       );
       this.logger.debug('Creating associated token account', {
         mint,
         owner,
-        associatedToken
+        associatedToken,
+        tokenProgramId: tokenProgramId.toBase58()
       });
       const result = await this.executionService.executeTx(
         transaction,
@@ -510,13 +562,15 @@ export class SPLTokenService implements ISPLTokenService {
    * @param newAuthority - The new authority (or null to revoke)
    * @param authorityType - Type of authority to set (MintTokens, FreezeAccount, etc)
    * @param currentAuthority - Current authority public key
+   * @param programId - Optional token program ID (defaults to TOKEN_PROGRAM_ID)
    * @returns Set authority instruction
    */
   buildSetAuthorityIx(
     mint: PublicKey,
     newAuthority: PublicKey | null,
     authorityType: AuthorityType,
-    currentAuthority: PublicKey
+    currentAuthority: PublicKey,
+    programId: PublicKey = TOKEN_PROGRAM_ID
   ): TransactionInstruction {
     return createSetAuthorityInstruction(
       mint,
@@ -524,7 +578,7 @@ export class SPLTokenService implements ISPLTokenService {
       authorityType,
       newAuthority,
       [],
-      TOKEN_PROGRAM_ID
+      programId
     );
   }
 

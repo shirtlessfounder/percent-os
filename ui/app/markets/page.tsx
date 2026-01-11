@@ -19,7 +19,7 @@
 
 'use client';
 
-import { useState, useMemo, memo, useCallback } from 'react';
+import { useState, useMemo, memo, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Masonry from 'react-masonry-css';
@@ -30,6 +30,7 @@ import { useAllProposals, type ExploreProposal } from '@/hooks/useAllProposals';
 import { getProposalContent, proposalContentMap } from '@/lib/proposalContent';
 import { MarkdownText } from '@/lib/renderMarkdown';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { api, VISIBILITY_THRESHOLD } from '@/lib/api';
 
 // Type for pre-computed proposal data
 interface ProposalCardData {
@@ -41,7 +42,7 @@ interface ProposalCardData {
 }
 
 /**
- * Map moderatorId to token slug for navigation
+ * Map moderatorId to token slug for navigation (old system only)
  */
 function getTokenSlug(moderatorId: number): string {
   const mapping: Record<number, string> = {
@@ -50,6 +51,29 @@ function getTokenSlug(moderatorId: number): string {
     6: 'surf',
   };
   return mapping[moderatorId] || 'zc';
+}
+
+/**
+ * Get the navigation slug for a proposal
+ * For futarchy: uses daoName (lowercase)
+ * For old system: uses moderatorId mapping
+ */
+function getProposalSlug(proposal: ExploreProposal): string {
+  if (proposal.isFutarchy && proposal.daoName) {
+    return proposal.daoName.toLowerCase();
+  }
+  return getTokenSlug(proposal.moderatorId);
+}
+
+/**
+ * Get unique key for a proposal's project (DAO or moderator)
+ * Used for grouping proposals by project
+ */
+function getProjectKey(proposal: ExploreProposal): string {
+  if (proposal.isFutarchy && proposal.daoPda) {
+    return `futarchy-${proposal.daoPda}`;
+  }
+  return `old-${proposal.moderatorId}`;
 }
 
 /**
@@ -190,7 +214,7 @@ const ProposalCard = memo(function ProposalCard({
 
           {/* Date or Countdown */}
           {isLive ? (
-            <MiniCountdownTimer endsAt={proposal.finalizedAt} />
+            <MiniCountdownTimer endsAt={proposal.endsAt || proposal.finalizedAt} />
           ) : (
             <div className="text-sm text-[#B0AFAB]">
               {new Date(proposal.finalizedAt).toLocaleDateString('en-US', {
@@ -221,19 +245,55 @@ const ProposalCard = memo(function ProposalCard({
 
 export default function ExplorePage() {
   const router = useRouter();
-  const { proposals, loading, error } = useAllProposals();
+  const { proposals: allProposals, loading: proposalsLoading, error: proposalsError } = useAllProposals();
   const [hoveredProposalId, setHoveredProposalId] = useState<number | null>(null);
   const [hoveredModeratorId, setHoveredModeratorId] = useState<number | null>(null);
+
+  // Fetch visible DAOs to filter futarchy proposals (visibility: 0=hidden, 1=test, 2=prod)
+  const [visibleDaoPdas, setVisibleDaoPdas] = useState<Set<string>>(new Set());
+  const [daosLoading, setDaosLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchVisibleDaos = async () => {
+      try {
+        setDaosLoading(true);
+        const daos = await api.getZcombinatorDaos();
+        const visible = new Set(
+          daos.filter(dao => (dao.visibility ?? 0) >= VISIBILITY_THRESHOLD).map(dao => dao.dao_pda)
+        );
+        setVisibleDaoPdas(visible);
+      } catch (err) {
+        console.error('Error fetching visible DAOs:', err);
+      } finally {
+        setDaosLoading(false);
+      }
+    };
+
+    fetchVisibleDaos();
+  }, []);
+
+  // Filter proposals: show all old system + only visible futarchy DAOs
+  const proposals = useMemo(() => {
+    return allProposals.filter(p => {
+      // Old system proposals are always shown
+      if (!p.isFutarchy) return true;
+      // Futarchy proposals only shown if from a visible DAO
+      return p.daoPda && visibleDaoPdas.has(p.daoPda);
+    });
+  }, [allProposals, visibleDaoPdas]);
+
+  const loading = proposalsLoading || daosLoading;
+  const error = proposalsError;
 
   // Pre-compute all derived data once when proposals change
   // This prevents expensive re-computations on hover
   const proposalCardData = useMemo(() => {
-    const live = proposals.filter(p => p.status === 'Pending').sort((a, b) => a.finalizedAt - b.finalizedAt);
+    const live = proposals.filter(p => p.status === 'Pending').sort((a, b) => (a.endsAt || a.finalizedAt) - (b.endsAt || b.finalizedAt));
     const historical = proposals.filter(p => p.status !== 'Pending').sort((a, b) => b.finalizedAt - a.finalizedAt);
     const sorted = [...live, ...historical];
 
     return sorted.map((proposal): ProposalCardData => {
-      const tokenSlug = getTokenSlug(proposal.moderatorId);
+      const tokenSlug = getProposalSlug(proposal);
       const proposalContent = getProposalContent(proposal.id, proposal.title, proposal.description, proposal.moderatorId.toString());
       const summaryPreview = getSummaryPreview(proposal, proposal.moderatorId);
       const isLive = proposal.status === 'Pending';
@@ -242,26 +302,28 @@ export default function ExplorePage() {
     });
   }, [proposals]);
 
-  // Compute the most recent proposal ID for each moderator (project)
+  // Compute the most recent proposal ID for each project (DAO or moderator)
   // Most recent = live proposal, or highest ID if none are live
-  const latestProposalByModerator = useMemo(() => {
-    const latest = new Map<number, number>();
+  // Uses project key to handle both old system (moderatorId) and futarchy (daoPda)
+  const latestProposalByProject = useMemo(() => {
+    const latest = new Map<string, number>();
     for (const proposal of proposals) {
-      const current = latest.get(proposal.moderatorId);
+      const projectKey = getProjectKey(proposal);
+      const current = latest.get(projectKey);
       if (current === undefined) {
-        latest.set(proposal.moderatorId, proposal.id);
+        latest.set(projectKey, proposal.id);
       } else {
         // Prefer live proposals, otherwise take higher ID
-        const currentProposal = proposals.find(p => p.moderatorId === proposal.moderatorId && p.id === current);
+        const currentProposal = proposals.find(p => getProjectKey(p) === projectKey && p.id === current);
         const isCurrentLive = currentProposal?.status === 'Pending';
         const isNewLive = proposal.status === 'Pending';
 
         if (isNewLive && !isCurrentLive) {
-          latest.set(proposal.moderatorId, proposal.id);
+          latest.set(projectKey, proposal.id);
         } else if (!isNewLive && isCurrentLive) {
           // Keep current (it's live)
         } else if (proposal.id > current) {
-          latest.set(proposal.moderatorId, proposal.id);
+          latest.set(projectKey, proposal.id);
         }
       }
     }
@@ -280,11 +342,12 @@ export default function ExplorePage() {
   }, []);
 
   const handleCardClick = useCallback((proposal: ExploreProposal) => {
-    const tokenSlug = getTokenSlug(proposal.moderatorId);
-    const latestId = latestProposalByModerator.get(proposal.moderatorId);
+    const slug = getProposalSlug(proposal);
+    const projectKey = getProjectKey(proposal);
+    const latestId = latestProposalByProject.get(projectKey);
     const isHistorical = latestId !== proposal.id;
-    router.push(`/${tokenSlug}${isHistorical ? '?historical=true' : ''}`);
-  }, [router, latestProposalByModerator]);
+    router.push(`/${slug}${isHistorical ? '?historical=true' : ''}`);
+  }, [router, latestProposalByProject]);
 
   if (loading) {
     return (
@@ -321,7 +384,7 @@ export default function ExplorePage() {
           <div className="md:hidden flex flex-col gap-4 pb-8">
             {proposalCardData.map((data) => (
               <ProposalCard
-                key={`mobile-${data.proposal.moderatorId}-${data.proposal.id}`}
+                key={`mobile-${getProjectKey(data.proposal)}-${data.proposal.id}`}
                 data={data}
                 isHovered={hoveredProposalId === data.proposal.id && hoveredModeratorId === data.proposal.moderatorId}
                 onHover={handleHover}
@@ -342,7 +405,7 @@ export default function ExplorePage() {
             >
               {proposalCardData.map((data) => (
                 <ProposalCard
-                  key={`desktop-${data.proposal.moderatorId}-${data.proposal.id}`}
+                  key={`desktop-${getProjectKey(data.proposal)}-${data.proposal.id}`}
                   data={data}
                   isHovered={hoveredProposalId === data.proposal.id && hoveredModeratorId === data.proposal.moderatorId}
                   onHover={handleHover}

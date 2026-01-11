@@ -1,19 +1,22 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { PublicKey } from '@solana/web3.js';
-import { fetchUserBalanceForWinningMint, type WinningMintBalanceResponse } from '@/lib/programs/vault';
-import { useProposals } from './useProposals';
+import { fetchUserBalanceForWinningMint as fetchUserBalanceOld, type WinningMintBalanceResponse } from '@/lib/programs/vault';
+import { fetchUserBalanceForWinningMint as fetchUserBalanceFutarchy } from '@/lib/programs/futarchy';
+import { useProposalsWithFutarchy } from './useProposals';
 import { useTokenPrices } from './useTokenPrices';
 import type { ProposalListItem } from '@/types/api';
 
 export interface ClaimablePosition {
   proposalId: number;
   proposalDescription: string;
-  proposalStatus: 'Passed' | 'Failed';
+  proposalStatus: 'Passed' | 'Failed' | 'Resolved';
   winningMarketIndex: number;  // Which market won (for N-ary quantum markets)
   isWinner: boolean;
   claimableAmount: number; // Amount of tokens to claim
-  claimableToken: 'sol' | 'zc'; // Which token they'll receive
+  claimableToken: 'quote' | 'base'; // Which token they'll receive
   claimableValue: number; // USD value
+  isFutarchy?: boolean; // Whether this is from a futarchy proposal
+  vaultPDA?: string; // Vault PDA for claiming
 }
 
 interface ClaimablePositions {
@@ -24,17 +27,35 @@ interface ClaimablePositions {
   refetch: () => void;
 }
 
-export function useClaimablePositions(walletAddress: string | null, moderatorId?: number | string): ClaimablePositions {
-  const { proposals } = useProposals(undefined, moderatorId);
+interface UseClaimablePositionsOptions {
+  walletAddress: string | null;
+  moderatorId?: number | string;
+  isFutarchy?: boolean;
+  daoPda?: string;
+}
+
+export function useClaimablePositions(
+  walletAddress: string | null,
+  moderatorId?: number | string,
+  isFutarchy?: boolean,
+  daoPda?: string
+): ClaimablePositions {
+  // Fetch proposals based on system type
+  const { proposals } = useProposalsWithFutarchy({
+    moderatorId: isFutarchy ? undefined : moderatorId,
+    isFutarchy: isFutarchy || false,
+    daoPda: isFutarchy ? daoPda : undefined,
+  });
   const { sol: solPrice, baseToken: baseTokenPrice } = useTokenPrices();
   const [balancesMap, setBalancesMap] = useState<Map<number, WinningMintBalanceResponse>>(new Map());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchAllBalances = useCallback(async (address: string, proposalList: ProposalListItem[]) => {
+  const fetchAllBalances = useCallback(async (address: string, proposalList: ProposalListItem[], useFutarchy: boolean) => {
     // Only fetch for finalized proposals with a winning index
+    // Old system: 'Passed' | 'Failed', New system: 'Resolved'
     const finalizedProposals = proposalList.filter(p =>
-      (p.status === 'Passed' || p.status === 'Failed') &&
+      (p.status === 'Passed' || p.status === 'Failed' || p.status === 'Resolved') &&
       p.winningMarketIndex !== null && p.winningMarketIndex !== undefined
     );
 
@@ -44,9 +65,12 @@ export function useClaimablePositions(walletAddress: string | null, moderatorId?
     setError(null);
 
     try {
+      // Use appropriate SDK based on system type
+      const fetchBalanceFn = useFutarchy ? fetchUserBalanceFutarchy : fetchUserBalanceOld;
+
       // Fetch winning mint balances for finalized proposals in parallel
       const balancePromises = finalizedProposals.map(proposal =>
-        fetchUserBalanceForWinningMint(
+        fetchBalanceFn(
           new PublicKey(proposal.vaultPDA),
           new PublicKey(address),
           proposal.winningMarketIndex!
@@ -80,8 +104,8 @@ export function useClaimablePositions(walletAddress: string | null, moderatorId?
       return;
     }
 
-    fetchAllBalances(walletAddress, proposals);
-  }, [walletAddress, proposals, fetchAllBalances]);
+    fetchAllBalances(walletAddress, proposals, isFutarchy || false);
+  }, [walletAddress, proposals, fetchAllBalances, isFutarchy]);
 
   // Calculate claimable positions from balances
   const { positions, totalClaimableValue } = useMemo(() => {
@@ -90,7 +114,8 @@ export function useClaimablePositions(walletAddress: string | null, moderatorId?
 
     balancesMap.forEach((balances, proposalId) => {
       const proposal = proposals.find(p => p.id === proposalId);
-      if (!proposal || (proposal.status !== 'Passed' && proposal.status !== 'Failed')) return;
+      // Check for finalized status: old system uses 'Passed'/'Failed', new system uses 'Resolved'
+      if (!proposal || (proposal.status !== 'Passed' && proposal.status !== 'Failed' && proposal.status !== 'Resolved')) return;
 
       const winningIndex = balances.winningIndex;
 
@@ -108,34 +133,38 @@ export function useClaimablePositions(walletAddress: string | null, moderatorId?
         const baseMultiplier = Math.pow(10, proposal.baseDecimals);
         const quoteMultiplier = Math.pow(10, proposal.quoteDecimals);
 
-        // Check base vault winning tokens (ZC)
+        // Check base vault winning tokens
         if (baseWinningTokens > 0) {
           const value = (baseWinningTokens / baseMultiplier) * baseTokenPrice;
           claimableList.push({
             proposalId,
             proposalDescription: proposal.description,
-            proposalStatus: proposal.status as 'Passed' | 'Failed',
+            proposalStatus: proposal.status as 'Passed' | 'Failed' | 'Resolved',
             winningMarketIndex: winningIndex,
             isWinner: true,
             claimableAmount: baseWinningTokens / baseMultiplier,
-            claimableToken: 'zc',
-            claimableValue: value
+            claimableToken: 'base',
+            claimableValue: value,
+            isFutarchy: proposal.isFutarchy,
+            vaultPDA: proposal.vaultPDA,
           });
           total += value;
         }
 
-        // Check quote vault winning tokens (SOL)
+        // Check quote vault winning tokens
         if (quoteWinningTokens > 0) {
           const value = (quoteWinningTokens / quoteMultiplier) * solPrice;
           claimableList.push({
             proposalId,
             proposalDescription: proposal.description,
-            proposalStatus: proposal.status as 'Passed' | 'Failed',
+            proposalStatus: proposal.status as 'Passed' | 'Failed' | 'Resolved',
             winningMarketIndex: winningIndex,
             isWinner: true,
             claimableAmount: quoteWinningTokens / quoteMultiplier,
-            claimableToken: 'sol',
-            claimableValue: value
+            claimableToken: 'quote',
+            claimableValue: value,
+            isFutarchy: proposal.isFutarchy,
+            vaultPDA: proposal.vaultPDA,
           });
           total += value;
         }
@@ -143,13 +172,13 @@ export function useClaimablePositions(walletAddress: string | null, moderatorId?
     });
 
     return { positions: claimableList, totalClaimableValue: total };
-  }, [balancesMap, proposals, solPrice, baseTokenPrice]);
+  }, [balancesMap, proposals, solPrice, baseTokenPrice, isFutarchy]);
 
   const refetch = useCallback(() => {
     if (walletAddress && proposals.length > 0) {
-      fetchAllBalances(walletAddress, proposals);
+      fetchAllBalances(walletAddress, proposals, isFutarchy || false);
     }
-  }, [walletAddress, proposals, fetchAllBalances]);
+  }, [walletAddress, proposals, fetchAllBalances, isFutarchy]);
 
   return { positions, totalClaimableValue, loading, error, refetch };
 }

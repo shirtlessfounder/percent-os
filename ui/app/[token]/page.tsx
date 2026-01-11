@@ -13,8 +13,9 @@ import { CountdownTimer } from '@/components/CountdownTimer';
 import { ChartBox } from '@/components/ChartBox';
 import { ModeToggle } from '@/components/ModeToggle';
 import { DepositCard } from '@/components/DepositCard';
-import { useProposals } from '@/hooks/useProposals';
+import { useProposalsWithFutarchy, useLiveProposal } from '@/hooks/useProposals';
 import { useTradeHistory } from '@/hooks/useTradeHistory';
+import { api } from '@/lib/api';
 import { useUserBalances } from '@/hooks/useUserBalances';
 import { formatNumber, formatCurrency } from '@/lib/formatters';
 import { getProposalContent } from '@/lib/proposalContent';
@@ -40,7 +41,7 @@ const LivePriceDisplay = dynamic(() => import('@/components/LivePriceDisplay').t
 export default function HomePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { tokenSlug, poolAddress, baseMint, baseDecimals, tokenSymbol, moderatorId, icon, isLoading: tokenContextLoading } = useTokenContext();
+  const { tokenSlug, poolAddress, baseMint, baseDecimals, tokenSymbol, moderatorId, icon, isLoading: tokenContextLoading, isFutarchy, daoPda, quoteMint, quoteDecimals, quoteDisplayDecimals, quoteSymbol, quoteIcon, isQuoteSol } = useTokenContext();
 
   // Show toast for historical QM navigation (only once)
   const hasShownHistoricalToast = useRef(false);
@@ -54,12 +55,56 @@ export default function HomePage() {
   }, [searchParams, router, tokenSlug]);
   const { ready, authenticated, user, walletAddress, login } = usePrivyWallet();
 
-  // Only fetch proposals after TokenContext has loaded to ensure correct moderatorId
-  const shouldFetchProposals = !tokenContextLoading && moderatorId !== null;
-  const { proposals, loading, refetch } = useProposals(
-    shouldFetchProposals ? (poolAddress || undefined) : undefined,
-    shouldFetchProposals ? moderatorId : undefined
-  );
+  // Only fetch proposals after TokenContext has loaded
+  const shouldFetchProposals = !tokenContextLoading && (isFutarchy ? daoPda !== null : moderatorId !== null);
+
+  // For futarchy DAOs: use optimized single-request hook for live proposal
+  // This replaces the old pattern of fetching all proposals then detail separately
+  const {
+    proposal: futarchyLiveProposal,
+    loading: futarchyLoading,
+    refetch: refetchFutarchyLive,
+  } = useLiveProposal(isFutarchy && shouldFetchProposals ? daoPda || undefined : undefined);
+
+  // For old system DAOs: keep existing multi-proposal fetch
+  const { proposals: oldSystemProposals, loading: oldSystemLoading, refetch: refetchOldSystem } = useProposalsWithFutarchy({
+    poolAddress: !isFutarchy && shouldFetchProposals ? (poolAddress || undefined) : undefined,
+    moderatorId: !isFutarchy && shouldFetchProposals ? moderatorId ?? undefined : undefined,
+    isFutarchy: false,
+    daoPda: undefined,
+  });
+
+  // Unified loading state and refetch
+  const loading = isFutarchy ? futarchyLoading : oldSystemLoading;
+  const refetch = isFutarchy ? refetchFutarchyLive : refetchOldSystem;
+
+  // For futarchy, wrap live proposal in array for compatibility; for old system, use proposals array
+  const proposals = useMemo(() => {
+    if (isFutarchy) {
+      return futarchyLiveProposal ? [{
+        id: futarchyLiveProposal.id,
+        title: futarchyLiveProposal.title,
+        description: futarchyLiveProposal.description,
+        status: futarchyLiveProposal.status,
+        createdAt: futarchyLiveProposal.createdAt,
+        endsAt: futarchyLiveProposal.endsAt,
+        finalizedAt: 0,
+        winningMarketIndex: futarchyLiveProposal.winningIndex,
+        winningMarketLabel: null,
+        passThresholdBps: futarchyLiveProposal.config.marketBias, // Use actual value from on-chain config
+        markets: futarchyLiveProposal.options.length,
+        marketLabels: futarchyLiveProposal.options,
+        baseDecimals: futarchyLiveProposal.baseDecimals, // Use value from API
+        quoteDecimals: futarchyLiveProposal.quoteDecimals, // Use value from API
+        vaultPDA: futarchyLiveProposal.vault,
+        proposalPda: futarchyLiveProposal.proposalPda,
+        metadataCid: futarchyLiveProposal.metadataCid,
+        // Include pools for trading
+        pools: futarchyLiveProposal.pools,
+      }] : [];
+    }
+    return oldSystemProposals;
+  }, [isFutarchy, futarchyLiveProposal, oldSystemProposals]);
   const [livePrices, setLivePrices] = useState<(number | null)[]>([]);
   const [twapData, setTwapData] = useState<(number | null)[]>([]);
   const [isProposalModalOpen, setIsProposalModalOpen] = useState(false);
@@ -77,15 +122,17 @@ export default function HomePage() {
     return () => document.removeEventListener('keydown', handleEsc);
   }, [isProposalModalOpen]);
 
-  // Fetch wallet balances for current token
+  // Fetch wallet balances for current token (sol = quote token balance for backward compatibility)
   const { sol: solBalance, baseToken: baseTokenBalance, refetch: refetchWalletBalances } = useWalletBalances({
     walletAddress,
     baseMint,
     baseDecimals,
+    quoteMint,
+    quoteDecimals,
   });
 
-  // Fetch token prices for USD conversion
-  const { sol: solPrice, baseToken: baseTokenPrice } = useTokenPrices(baseMint);
+  // Fetch token prices for USD conversion (sol = quote token price for backward compatibility)
+  const { sol: solPrice, baseToken: baseTokenPrice } = useTokenPrices(baseMint, quoteMint);
 
   // Memoize sorted proposals for live view (sort by creation time to match backend ordering)
   const sortedProposals = useMemo(() =>
@@ -124,11 +171,29 @@ export default function HomePage() {
     return proposal ? applyMarketLabelOverrides(filtered, moderatorId, proposal.id) : filtered;
   }, [proposal, moderatorId]);
 
+  // For futarchy proposals, derive detail from the live proposal (already fetched)
+  // For old system, we don't need this - vault comes from proposal.vaultPDA
+  const futarchyProposalDetail = useMemo(() => {
+    if (!isFutarchy || !futarchyLiveProposal) {
+      return null;
+    }
+    return {
+      vault: futarchyLiveProposal.vault,
+      pools: futarchyLiveProposal.pools,
+    };
+  }, [isFutarchy, futarchyLiveProposal]);
+
+  // Determine the effective vault PDA (futarchy uses detail, old system uses proposal.vaultPDA)
+  const effectiveVaultPDA = isFutarchy && futarchyProposalDetail?.vault
+    ? futarchyProposalDetail.vault
+    : proposal?.vaultPDA ?? null;
+
   // Fetch user balances for the selected proposal (uses client-side SDK)
   const { data: userBalances, refetch: refetchBalances } = useUserBalances(
     selectedProposalId,
-    proposal?.vaultPDA ?? null,
-    walletAddress
+    effectiveVaultPDA,
+    walletAddress,
+    isFutarchy
   );
 
   // Fetch trade history for the selected proposal
@@ -138,7 +203,7 @@ export default function HomePage() {
     refetch: refetchTrades,
     getTimeAgo,
     getTokenUsed,
-  } = useTradeHistory(proposal?.id || null, moderatorId ?? undefined, baseMint, tokenSymbol);
+  } = useTradeHistory(proposal?.id || null, moderatorId ?? undefined, baseMint, tokenSymbol, isFutarchy, proposal?.proposalPda, quoteMint, quoteSymbol, baseDecimals, quoteDecimals);
 
 
   const handleSelectProposal = useCallback((id: number) => {
@@ -170,13 +235,10 @@ export default function HomePage() {
   }, [refetch]);
 
   const handlePricesUpdate = useCallback((prices: (number | null)[]) => {
-    console.log('[HomePage] handlePricesUpdate called with:', prices);
     setLivePrices(prices);
-    console.log('[HomePage] livePrices state will be updated');
   }, []);
 
   const handleTwapUpdate = useCallback((twaps: (number | null)[]) => {
-    console.log('TWAP update from LivePriceDisplay:', twaps);
     setTwapData(twaps);
   }, []);
 
@@ -223,7 +285,7 @@ export default function HomePage() {
       if (!proposal) return 0;
       const now = Date.now();
       const start = proposal.createdAt;
-      const end = proposal.finalizedAt;
+      const end = proposal.endsAt || proposal.finalizedAt;
       const elapsed = now - start;
       const total = end - start;
       if (total <= 0) return 1;
@@ -269,13 +331,14 @@ export default function HomePage() {
             tokenSymbol={tokenSymbol}
             tokenIcon={icon}
             baseMint={baseMint}
+            quoteSymbol={quoteSymbol}
+            quoteIcon={quoteIcon}
           />
 
           {/* Empty state */}
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
-              <h2 className="text-2xl font-semibold text-gray-400 mb-2">No Proposals</h2>
-              <p className="text-gray-500">Check back later for new governance proposals</p>
+              <p className="text-gray-400 font-semibold">Check back later for when a proposal goes live!</p>
             </div>
           </div>
         </div>
@@ -300,6 +363,8 @@ export default function HomePage() {
           tokenSymbol={tokenSymbol}
           tokenIcon={icon}
           baseMint={baseMint}
+          quoteSymbol={quoteSymbol}
+          quoteIcon={quoteIcon}
         />
 
         {/* Content Area */}
@@ -422,7 +487,7 @@ export default function HomePage() {
                         <div className="text-white flex flex-col items-center">
                           <span className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] uppercase mb-6 block w-full text-left" style={{ color: '#DDDDD7' }}>TIME REMAINING</span>
                           <CountdownTimer
-                            endsAt={proposal.finalizedAt}
+                            endsAt={proposal.endsAt || proposal.finalizedAt}
                             onTimerEnd={handleTimerEnd}
                             isPending={proposal.status === 'Pending'}
                           />
@@ -444,6 +509,10 @@ export default function HomePage() {
                         moderatorId={moderatorId ?? undefined}
                         userWalletAddress={walletAddress}
                         tokenSymbol={tokenSymbol}
+                        isFutarchy={isFutarchy}
+                        proposalPda={proposal.proposalPda}
+                        solPrice={solPrice}
+                        quoteDecimals={quoteDecimals}
                       />
                     </div>
                   </div>
@@ -454,15 +523,19 @@ export default function HomePage() {
                     <div className="order-2 md:order-1">
                       <DepositCard
                         proposalId={proposal.id}
-                        vaultPDA={proposal.vaultPDA}
+                        vaultPDA={effectiveVaultPDA || proposal.vaultPDA}
                         solBalance={solBalance}
                         baseTokenBalance={baseTokenBalance}
                         userBalances={userBalances}
                         onDepositSuccess={handleBalanceChange}
                         tokenSymbol={tokenSymbol}
                         baseDecimals={baseDecimals}
+                        quoteDecimals={quoteDecimals}
+                        quoteSymbol={quoteSymbol}
+                        isQuoteSol={isQuoteSol}
                         proposalStatus={proposal.status as 'Pending' | 'Passed' | 'Failed'}
                         winningMarketIndex={proposal.winningMarketIndex}
+                        isFutarchy={isFutarchy}
                       />
                     </div>
 
@@ -499,12 +572,14 @@ export default function HomePage() {
                             baseMint={baseMint}
                             tokenSymbol={tokenSymbol}
                             winningMarketIndex={proposal.winningMarketIndex}
+                            isFutarchy={isFutarchy}
+                            pools={futarchyProposalDetail?.pools}
                           />
                         </div>
                       </div>
                     </div>
 
-                    {/* User Balances - Separate ZC and SOL cards */}
+                    {/* User Balances - Separate base and quote token cards */}
                     <div className="order-6 md:order-4 pb-10 md:pb-0">
                     {(() => {
                       // Calculate if market expired and which tokens are losing
@@ -517,13 +592,14 @@ export default function HomePage() {
 
                       // Calculate actual balances using market index and dynamic decimals
                       const baseMultiplier = Math.pow(10, baseDecimals);
+                      const quoteMultiplier = Math.pow(10, quoteDecimals);
                       const baseTokenBalance = userBalances ? parseFloat(
                         userBalances.base.conditionalBalances[selectedMarketIndex] || '0'
                       ) / baseMultiplier : 0;
 
                       const solBalance = userBalances ? parseFloat(
                         userBalances.quote.conditionalBalances[selectedMarketIndex] || '0'
-                      ) / 1e9 : 0; // SOL is always 9 decimals
+                      ) / quoteMultiplier : 0;
 
                       // Zero out if showing losing tokens on expired market
                       const displayBaseTokenBalance = (isExpired && isShowingLosingTokens) ? 0 : baseTokenBalance;
@@ -548,7 +624,7 @@ export default function HomePage() {
                           </div>
                         </div>
 
-                        {/* SOL Balance Card */}
+                        {/* Quote Token Balance Card */}
                         <div className="flex-1 bg-[#121212] border border-[#191919] rounded-[9px] py-3 px-5 transition-all duration-300">
                           <div className="text-white flex flex-col">
                             <span className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] uppercase mb-6 text-center block" style={{ color: '#DDDDD7' }}>
@@ -556,7 +632,7 @@ export default function HomePage() {
                             </span>
                             <div className="group flex items-center justify-center border border-[#191919] rounded-[6px] py-3 px-4 text-lg font-ibm-plex-mono cursor-default" style={{ color: '#DDDDD7', fontFamily: 'IBM Plex Mono, monospace' }}>
                               <span className="group-hover:hidden">
-                                {formatNumber(displaySOLBalance, 3)} SOL<sup className="text-xs">*</sup>
+                                {formatNumber(displaySOLBalance, quoteDisplayDecimals)} {quoteSymbol}<sup className="text-xs">*</sup>
                               </span>
                               {solPrice && (
                                 <span className="hidden group-hover:inline">
@@ -581,6 +657,7 @@ export default function HomePage() {
                     marketCount={effectiveMarketCount}
                     onPricesUpdate={handlePricesUpdate}
                     onTwapUpdate={handleTwapUpdate}
+                    proposalPda={proposal.proposalPda}
                   />
                 </div>
               </div>

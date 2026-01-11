@@ -62,7 +62,7 @@ dotenv.config();
 // CONFIGURATION
 // ============================================================================
 const MODERATOR_ID = 6;
-const PROPOSAL_ID = 9;
+const PROPOSAL_ID = 10;
 const MIN_PROFIT_BPS = 0;      // 0% minimum profit threshold
 const MAX_SLIPPAGE_BPS = 500;    // 5% max slippage
 const DRY_RUN = false;            // Simulate only by default

@@ -19,10 +19,12 @@
 
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { PublicKey } from '@solana/web3.js';
 import { TokenPriceBox } from './TokenPriceBox';
 import { getPriceStreamService, ChartPriceUpdate } from '../services/price-stream.service';
+import { getMonitorStreamService, MonitorPriceUpdate, MonitorTWAPUpdate } from '../services/monitor-stream.service';
+import { getFutarchyTWAP } from '@/lib/monitor-api';
 import { api } from '../lib/api';
 import { fetchVaultState } from '@/lib/programs/vault';
 import { buildApiUrl } from '@/lib/api-utils';
@@ -34,10 +36,11 @@ interface LivePriceDisplayProps {
   marketCount: number;         // Number of markets (2-4)
   onPricesUpdate?: (prices: (number | null)[]) => void;  // Array by market index
   onTwapUpdate?: (twaps: (number | null)[]) => void;     // Array by market index
+  proposalPda?: string;        // Required for futarchy mode
 }
 
-export const LivePriceDisplay: React.FC<LivePriceDisplayProps> = ({ proposalId, marketLabels, marketCount, onPricesUpdate, onTwapUpdate }) => {
-  const { moderatorId } = useTokenContext();
+export const LivePriceDisplay: React.FC<LivePriceDisplayProps> = ({ proposalId, marketLabels, marketCount, onPricesUpdate, onTwapUpdate, proposalPda }) => {
+  const { moderatorId, isFutarchy } = useTokenContext();
 
   // Array-based state indexed by market
   const [prices, setPrices] = useState<(number | null)[]>(() => Array(marketCount).fill(null));
@@ -48,14 +51,71 @@ export const LivePriceDisplay: React.FC<LivePriceDisplayProps> = ({ proposalId, 
   const [error, setError] = useState<string | null>(null);
   const [hasWebSocketData, setHasWebSocketData] = useState(false);
 
+  // Refs for futarchy SSE callbacks
+  const proposalPdaRef = useRef(proposalPda);
+
   // Re-initialize arrays when marketCount changes
   useEffect(() => {
     setPrices(Array(marketCount).fill(null));
     setTwapData(Array(marketCount).fill(null));
   }, [marketCount]);
 
+  // Update ref when proposalPda changes
+  useEffect(() => {
+    proposalPdaRef.current = proposalPda;
+  }, [proposalPda]);
+
   // Fetch proposal details, initial prices, and TWAP data
   useEffect(() => {
+    // Futarchy mode - use monitor API for TWAP and initial prices
+    if (isFutarchy && proposalPda) {
+      const fetchFutarchyData = async () => {
+        try {
+          const result = await getFutarchyTWAP(proposalPda);
+          if (result && result.data && result.data.length > 0) {
+            const latest = result.data[0];
+            // Backend returns twaps[] array
+            const twaps: (number | null)[] = (latest.twaps || [])
+              .slice(0, marketCount)
+              .map((t: string) => parseFloat(t));
+
+            // Pad with nulls if needed
+            while (twaps.length < marketCount) {
+              twaps.push(null);
+            }
+
+            setTwapData(twaps);
+            if (onTwapUpdate) {
+              onTwapUpdate(twaps);
+            }
+
+            // Use TWAP values as initial prices (they're the most recent weighted prices)
+            // This ensures ModeToggle can display data before SSE updates arrive
+            setPrices(prev => {
+              const newPrices = [...prev];
+              for (let i = 0; i < twaps.length; i++) {
+                if (newPrices[i] === null && twaps[i] !== null) {
+                  newPrices[i] = twaps[i];
+                }
+              }
+              return newPrices;
+            });
+            setHasWebSocketData(true); // Allow price propagation
+          }
+        } catch (error) {
+          console.error('[LivePriceDisplay] Error fetching futarchy TWAP:', error);
+        } finally {
+          setIsLoading(false);
+        }
+      };
+
+      fetchFutarchyData();
+      // Poll for TWAP updates every 10 seconds
+      const interval = setInterval(fetchFutarchyData, 10000);
+      return () => clearInterval(interval);
+    }
+
+    // Old system - use API for proposal details and TWAP
     const fetchProposalDetails = async () => {
       try {
         const proposal = await api.getProposal(proposalId, moderatorId || undefined);
@@ -83,7 +143,7 @@ export const LivePriceDisplay: React.FC<LivePriceDisplayProps> = ({ proposalId, 
     // The UI will show loading state until WebSocket connects.
 
     fetchProposalDetails();
-    
+
     // Fetch TWAP data for governance decision
     const fetchTwap = async () => {
       try {
@@ -115,19 +175,17 @@ export const LivePriceDisplay: React.FC<LivePriceDisplayProps> = ({ proposalId, 
         // Silently fail - TWAP data not available yet
       }
     };
-    
+
     fetchTwap();
 
     // Poll for TWAP updates every 10 seconds
     const interval = setInterval(fetchTwap, 10000);
 
     return () => clearInterval(interval);
-  }, [proposalId, moderatorId, marketCount]);
+  }, [proposalId, moderatorId, marketCount, isFutarchy, proposalPda, onTwapUpdate]);
 
   // Handle chart price updates for N-ary markets (from WebSocket)
   const handleChartPriceUpdate = useCallback((update: ChartPriceUpdate) => {
-    console.log('[LivePriceDisplay] Chart price update:', update);
-
     // Mark that we've received real-time WebSocket data
     setHasWebSocketData(true);
 
@@ -146,37 +204,87 @@ export const LivePriceDisplay: React.FC<LivePriceDisplayProps> = ({ proposalId, 
     }
   }, [marketCount]);
 
-  // Set up chart price subscription for pass/fail markets
+  // Handle futarchy price updates (from monitor SSE)
+  const handleFutarchyPriceUpdate = useCallback((update: MonitorPriceUpdate) => {
+    // Verify this is for our proposal
+    if (update.proposalPda !== proposalPdaRef.current) {
+      return;
+    }
+
+    setHasWebSocketData(true);
+
+    const marketIndex = update.market;
+    if (marketIndex >= 0 && marketIndex < marketCount) {
+      setPrices(prev => {
+        const newPrices = [...prev];
+        newPrices[marketIndex] = update.price;
+        return newPrices;
+      });
+    }
+  }, [marketCount]);
+
+  // Handle futarchy TWAP updates (from monitor SSE)
+  const handleFutarchyTwapUpdate = useCallback((update: MonitorTWAPUpdate) => {
+    // Verify this is for our proposal
+    if (update.proposalPda !== proposalPdaRef.current) return;
+
+    // Convert pools TWAP to array format
+    const twaps: (number | null)[] = Array(marketCount).fill(null);
+    update.pools.forEach(p => {
+      // Pool index maps to market index
+      const poolIndex = update.pools.indexOf(p);
+      if (poolIndex >= 0 && poolIndex < marketCount) {
+        twaps[poolIndex] = p.twap;
+      }
+    });
+
+    setTwapData(twaps);
+    if (onTwapUpdate) {
+      onTwapUpdate(twaps);
+    }
+  }, [marketCount, onTwapUpdate]);
+
+  // Set up chart price subscription for pass/fail markets (old system only)
   useEffect(() => {
+    // Skip for futarchy DAOs - they use on-chain AMM prices, not the old price stream
+    if (isFutarchy) return;
     if (moderatorId === null) return; // Wait for moderatorId to be available
 
     const priceService = getPriceStreamService();
 
     // Subscribe to chart prices for this proposal (includes pass, fail, and spot)
     priceService.subscribeToChartPrices(moderatorId, proposalId, handleChartPriceUpdate);
-    console.log('[LivePriceDisplay] Subscribed to chart prices for proposal', proposalId, 'moderator', moderatorId);
 
     // Cleanup on unmount
     return () => {
       priceService.unsubscribeFromChartPrices(moderatorId, proposalId, handleChartPriceUpdate);
-      console.log('[LivePriceDisplay] Unsubscribed from chart prices for proposal', proposalId, 'moderator', moderatorId);
     };
-  }, [proposalId, moderatorId, handleChartPriceUpdate]);
+  }, [proposalId, moderatorId, isFutarchy, handleChartPriceUpdate]);
+
+  // Set up SSE subscription for futarchy proposals (monitor server)
+  useEffect(() => {
+    if (!isFutarchy || !proposalPda) return;
+
+    const monitorService = getMonitorStreamService();
+
+    // Subscribe to price and TWAP updates
+    monitorService.subscribeToPrices(proposalPda, handleFutarchyPriceUpdate);
+    monitorService.subscribeToTWAP(proposalPda, handleFutarchyTwapUpdate);
+
+    // Cleanup on unmount
+    return () => {
+      monitorService.unsubscribeFromPrices(proposalPda, handleFutarchyPriceUpdate);
+      monitorService.unsubscribeFromTWAP(proposalPda, handleFutarchyTwapUpdate);
+    };
+  }, [isFutarchy, proposalPda, handleFutarchyPriceUpdate, handleFutarchyTwapUpdate]);
 
   // Call the callback when prices update (only after WebSocket data received)
   // This prevents flickering from stale chart data before real-time prices arrive
   useEffect(() => {
-    console.log('[LivePriceDisplay] Prices changed:', {
-      prices,
-      hasCallback: !!onPricesUpdate,
-      hasWebSocketData
-    });
-
     // Only propagate prices to parent after WebSocket has sent real-time data
     // This avoids showing stale chart prices that would cause reordering flicker
     if (onPricesUpdate && prices.length > 0 && hasWebSocketData) {
       onPricesUpdate(prices);
-      console.log('[LivePriceDisplay] onPricesUpdate called with WebSocket prices');
     }
   }, [prices, onPricesUpdate, hasWebSocketData]);
 
@@ -185,6 +293,31 @@ export const LivePriceDisplay: React.FC<LivePriceDisplayProps> = ({ proposalId, 
     return (
       <div className="rounded-lg border p-4" style={{ borderColor: 'rgba(255, 111, 148, 0.2)', backgroundColor: 'rgba(255, 111, 148, 0.05)' }}>
         <p style={{ color: '#FF6F94' }}>Error: {error}</p>
+      </div>
+    );
+  }
+
+  // For futarchy DAOs, use monitor SSE for real-time prices
+  if (isFutarchy) {
+    const gridColsClass = marketCount === 2 ? 'md:grid-cols-2' :
+                          marketCount === 3 ? 'md:grid-cols-3' :
+                          'md:grid-cols-4';
+    return (
+      <div className={`grid grid-cols-1 ${gridColsClass}`}>
+        {marketLabels.slice(0, marketCount).map((label, index) => (
+          <TokenPriceBox
+            key={index}
+            tokenName={label}
+            tokenSymbol={`COIN${index + 1}-${proposalId}`}
+            tokenAddress=""
+            price={prices[index] ?? null}
+            twap={twapData[index] ?? null}
+            isLoading={prices[index] === null}
+            tokenType="market"
+            marketIndex={index}
+            isLast={index === marketCount - 1}
+          />
+        ))}
       </div>
     );
   }

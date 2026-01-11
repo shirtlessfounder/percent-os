@@ -21,7 +21,7 @@ import { PublicKey, Transaction } from '@solana/web3.js';
 import { BN } from '@coral-xyz/anchor';
 import { VaultType } from '@zcomb/vault-sdk';
 import { getAssociatedTokenAddress, getAccount } from '@solana/spl-token';
-import { createVaultClient, createReadOnlyVaultClient, getConnection } from './utils';
+import { createVaultClient, createReadOnlyVaultClient, getConnection, getTokenProgramForMint } from './utils';
 
 export { VaultType };
 
@@ -223,20 +223,25 @@ export async function fetchUserBalanceForWinningMint(
   const [baseCondMint] = vaultClient.deriveConditionalMint(vaultPDA, VaultType.Base, winningIndex);
   const [quoteCondMint] = vaultClient.deriveConditionalMint(vaultPDA, VaultType.Quote, winningIndex);
 
-  // Get user's token accounts for these mints
-  const baseAta = getAssociatedTokenAddress(baseCondMint, userPublicKey);
-  const quoteAta = getAssociatedTokenAddress(quoteCondMint, userPublicKey);
+  // Detect token programs for conditional mints (supports Token-2022)
+  const [baseProgramId, quoteProgramId] = await Promise.all([
+    getTokenProgramForMint(baseCondMint),
+    getTokenProgramForMint(quoteCondMint),
+  ]);
 
-  // Resolve ATAs in parallel
-  const [baseAtaAddress, quoteAtaAddress] = await Promise.all([baseAta, quoteAta]);
+  // Get user's token accounts for these mints
+  const [baseAtaAddress, quoteAtaAddress] = await Promise.all([
+    getAssociatedTokenAddress(baseCondMint, userPublicKey, false, baseProgramId),
+    getAssociatedTokenAddress(quoteCondMint, userPublicKey, false, quoteProgramId),
+  ]);
 
   // Fetch balances in parallel
   let baseBalance = '0';
   let quoteBalance = '0';
 
   const [baseResult, quoteResult] = await Promise.allSettled([
-    getAccount(connection, baseAtaAddress),
-    getAccount(connection, quoteAtaAddress),
+    getAccount(connection, baseAtaAddress, 'confirmed', baseProgramId),
+    getAccount(connection, quoteAtaAddress, 'confirmed', quoteProgramId),
   ]);
 
   if (baseResult.status === 'fulfilled') {

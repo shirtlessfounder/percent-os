@@ -29,19 +29,21 @@ import { api } from '@/lib/api';
 interface HeaderProps {
   walletAddress: string | null;
   authenticated: boolean;
-  solBalance: number;
+  solBalance: number;  // Quote token balance (SOL, USDC, etc.)
   baseTokenBalance: number; // Dynamic token balance (ZC, OOGWAY, etc.)
   hasWalletBalance?: boolean;
   login?: () => void;
   isPassMode?: boolean;
-  tokenSlug?: string; // NEW: Dynamic token routing
-  tokenSymbol?: string; // NEW: Display symbol (ZC, OOGWAY, etc.)
-  tokenIcon?: string | null; // NEW: Dynamic token icon URL
-  baseMint?: string | null; // NEW: Token mint address for Jupiter links
+  tokenSlug?: string; // Dynamic token routing
+  tokenSymbol?: string; // Display symbol (ZC, OOGWAY, etc.)
+  tokenIcon?: string | null; // Dynamic token icon URL
+  baseMint?: string | null; // Token mint address for Jupiter links
   isCreateAuthorized?: boolean; // Whether user can create (vs propose)
+  quoteSymbol: string; // Quote token symbol (SOL, USDC, etc.)
+  quoteIcon: string | null; // Quote token icon URL
 }
 
-export default function Header({ walletAddress, authenticated, solBalance, baseTokenBalance, login, isPassMode = true, tokenSlug = 'zc', tokenSymbol = 'ZC', tokenIcon = null, baseMint = null, isCreateAuthorized }: HeaderProps) {
+export default function Header({ walletAddress, authenticated, solBalance, baseTokenBalance, login, isPassMode = true, tokenSlug = 'zc', tokenSymbol = 'ZC', tokenIcon = null, baseMint = null, isCreateAuthorized, quoteSymbol, quoteIcon }: HeaderProps) {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -159,7 +161,13 @@ export default function Header({ walletAddress, authenticated, solBalance, baseT
             </div>
             <span className="text-2xl" style={{ color: '#2D2D2D' }}>/</span>
             <div className="flex items-center gap-1.5">
-              <img src="/solana-logo.jpg" alt="SOL" className="w-5 h-5 rounded-full border border-[#191919]" />
+              {quoteIcon ? (
+                <img src={quoteIcon} alt={quoteSymbol} className="w-5 h-5 rounded-full border border-[#191919]" />
+              ) : (
+                <div className="w-5 h-5 rounded-full border border-[#191919] bg-[#2D2D2D] flex items-center justify-center text-xs font-bold" style={{ color: '#DDDDD7' }}>
+                  {quoteSymbol.charAt(0)}
+                </div>
+              )}
               <span className="text-sm font-ibm-plex-mono font-medium" style={{ color: '#DDDDD7', fontFamily: 'IBM Plex Mono, monospace' }}>{solBalance.toFixed(3)}</span>
             </div>
             <span className="text-2xl" style={{ color: '#2D2D2D' }}>/</span>

@@ -20,6 +20,8 @@
 import { Connection, PublicKey, Transaction } from '@solana/web3.js';
 import { AnchorProvider, Wallet } from '@coral-xyz/anchor';
 import { VaultClient } from '@zcomb/vault-sdk';
+import * as futarchy from '@zcomb/programs-sdk';
+import { TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from '@solana/spl-token';
 
 export type SignTransaction = (tx: Transaction) => Promise<Transaction>;
 
@@ -96,4 +98,82 @@ export function createReadOnlyVaultClient(): VaultClient {
   });
 
   return new VaultClient(provider);
+}
+
+// ============================================================================
+// Futarchy SDK Client Creation (for @zcomb/programs-sdk)
+// ============================================================================
+
+/**
+ * Create a FutarchyClient instance for interacting with futarchy programs
+ * (vault, AMM, moderator, proposal)
+ */
+export function createFutarchyClient(
+  userPublicKey: PublicKey,
+  signTransaction: SignTransaction
+): futarchy.FutarchyClient {
+  const provider = createProvider(userPublicKey, signTransaction);
+  return new futarchy.FutarchyClient(provider);
+}
+
+/**
+ * Create a read-only FutarchyClient (for queries only, no signing)
+ */
+export function createReadOnlyFutarchyClient(): futarchy.FutarchyClient {
+  const connection = getConnection();
+
+  // Create a dummy wallet for read-only operations
+  const dummyPublicKey = PublicKey.default;
+  const dummyWallet: Wallet = {
+    publicKey: dummyPublicKey,
+    signTransaction: async () => { throw new Error('Read-only client cannot sign'); },
+    signAllTransactions: async () => { throw new Error('Read-only client cannot sign'); },
+    payer: undefined as any,
+  };
+
+  const provider = new AnchorProvider(connection, dummyWallet, {
+    commitment: 'confirmed',
+  });
+
+  return new futarchy.FutarchyClient(provider);
+}
+
+// ============================================================================
+// Token Program Detection (Token-2022 Support)
+// ============================================================================
+
+// Client-side cache for token program lookups
+const tokenProgramCache = new Map<string, { programId: PublicKey; expiry: number }>();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Detects which token program owns a given mint (TOKEN_PROGRAM_ID or TOKEN_2022_PROGRAM_ID).
+ * Results are cached to minimize RPC calls.
+ */
+export async function getTokenProgramForMint(mint: PublicKey): Promise<PublicKey> {
+  const mintStr = mint.toBase58();
+
+  // Check cache first
+  const cached = tokenProgramCache.get(mintStr);
+  if (cached && cached.expiry > Date.now()) {
+    return cached.programId;
+  }
+
+  const connection = getConnection();
+  const accountInfo = await connection.getAccountInfo(mint);
+
+  if (!accountInfo) {
+    // Default to TOKEN_PROGRAM_ID if mint not found (fallback for safety)
+    return TOKEN_PROGRAM_ID;
+  }
+
+  const programId = accountInfo.owner;
+
+  // Cache the result
+  tokenProgramCache.set(mintStr, {
+    programId,
+    expiry: Date.now() + CACHE_TTL_MS,
+  });
+
+  return programId;
 }

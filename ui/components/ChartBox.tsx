@@ -12,11 +12,15 @@ interface ChartBoxProps {
   trades: Trade[];
   tradesLoading: boolean;
   getTimeAgo: (timestamp: string) => string;
-  getTokenUsed: (isBaseToQuote: boolean, market: number) => string;
+  getTokenUsed: (isBaseToQuote: boolean, market: number) => string | undefined;
   moderatorId?: number;
   className?: string;
   userWalletAddress?: string | null;
   tokenSymbol?: string;  // Token symbol for spot market overlay (e.g., "ZC", "SURF")
+  isFutarchy?: boolean;  // Skip old system API calls for futarchy DAOs
+  proposalPda?: string;  // Required for futarchy mode
+  solPrice?: number | null;  // Quote token price for USD conversion
+  quoteDecimals: number;  // Quote token decimals for volume calculation
 }
 
 export function ChartBox({
@@ -30,7 +34,11 @@ export function ChartBox({
   moderatorId,
   className,
   userWalletAddress,
-  tokenSymbol
+  tokenSymbol,
+  isFutarchy,
+  proposalPda,
+  solPrice,
+  quoteDecimals
 }: ChartBoxProps) {
   // Get display label for the selected market (strip URLs and trim)
   const selectedLabel = marketLabels?.[selectedMarketIndex]?.replace(/(https?:\/\/[^\s]+)/gi, '').trim() || `Coin ${selectedMarketIndex + 1}`;
@@ -39,7 +47,7 @@ export function ChartBox({
   const [showOnlyMyTrades, setShowOnlyMyTrades] = useState(false);
 
   // Fetch volume from API (aggregated server-side, all historical trades)
-  const { volumeByMarket } = useMarketVolume(proposalId, moderatorId);
+  const { volumeByMarket } = useMarketVolume(proposalId, moderatorId, isFutarchy, proposalPda, solPrice, quoteDecimals);
 
   // Get volume for the selected market (matches old behavior, but with all historical data)
   const marketVolume = volumeByMarket.get(selectedMarketIndex) || 0;
@@ -116,11 +124,11 @@ export function ChartBox({
         <div className="bg-[#121212] border border-[#191919] overflow-hidden rounded-[6px] flex-1 flex flex-col">
           {/* Mobile: 400px */}
           <div className="md:hidden">
-            <MarketChart proposalId={proposalId} market={selectedMarketIndex} marketLabel={selectedLabel} height={480} moderatorId={moderatorId} tokenSymbol={tokenSymbol} />
+            <MarketChart proposalId={proposalId} market={selectedMarketIndex} marketLabel={selectedLabel} height={480} moderatorId={moderatorId} tokenSymbol={tokenSymbol} isFutarchy={isFutarchy} proposalPda={proposalPda} />
           </div>
           {/* Desktop: fills available height */}
           <div className="hidden md:flex md:flex-1">
-            <MarketChart proposalId={proposalId} market={selectedMarketIndex} marketLabel={selectedLabel} height="100%" moderatorId={moderatorId} tokenSymbol={tokenSymbol} />
+            <MarketChart proposalId={proposalId} market={selectedMarketIndex} marketLabel={selectedLabel} height="100%" moderatorId={moderatorId} tokenSymbol={tokenSymbol} isFutarchy={isFutarchy} proposalPda={proposalPda} />
           </div>
         </div>
       ) : (
@@ -273,7 +281,7 @@ export function ChartBox({
                     </span>
                   </td>
                   <td className="py-3 w-[140px]">
-                    {/* Mobile: 1 decimal */}
+                    {/* Mobile: compact decimals */}
                     <span className="md:hidden">
                       {(() => {
                         const tokenUsed = getTokenUsed(trade.isBaseToQuote, trade.market);
@@ -283,8 +291,19 @@ export function ChartBox({
                           return num.replace(/\.?0+$/, '');
                         };
 
+                        // Format SOL with appropriate decimals based on size
+                        const formatSolAmount = (val: number): string => {
+                          if (val >= 100) return removeTrailingZeros(val.toFixed(1));
+                          if (val >= 1) return removeTrailingZeros(val.toFixed(2));
+                          if (val >= 0.01) return removeTrailingZeros(val.toFixed(3));
+                          if (val >= 0.0001) return removeTrailingZeros(val.toFixed(4));
+                          if (val === 0) return '0';
+                          return val.toExponential(1);
+                        };
+
                         let formattedAmount;
-                        if (tokenUsed === 'SOL') {
+                        const isQuoteToken = !tokenUsed.startsWith('$'); // Quote tokens don't have $ prefix
+                        if (isQuoteToken) {
                           formattedAmount = removeTrailingZeros(amount.toFixed(1));
                         } else {
                           // Base token formatting with K/M/B notation
@@ -302,7 +321,7 @@ export function ChartBox({
                         return `${formattedAmount} ${tokenUsed.replace('$', '')}`;
                       })()}
                     </span>
-                    {/* Desktop: 3 decimals */}
+                    {/* Desktop: more decimals */}
                     <span className="hidden md:inline">
                       {(() => {
                         const tokenUsed = getTokenUsed(trade.isBaseToQuote, trade.market);
@@ -312,8 +331,19 @@ export function ChartBox({
                           return num.replace(/\.?0+$/, '');
                         };
 
+                        // Format SOL with appropriate decimals based on size
+                        const formatSolAmount = (val: number): string => {
+                          if (val >= 100) return removeTrailingZeros(val.toFixed(2));
+                          if (val >= 1) return removeTrailingZeros(val.toFixed(4));
+                          if (val >= 0.001) return removeTrailingZeros(val.toFixed(5));
+                          if (val >= 0.000001) return removeTrailingZeros(val.toFixed(6));
+                          if (val === 0) return '0';
+                          return val.toExponential(2);
+                        };
+
                         let formattedAmount;
-                        if (tokenUsed === 'SOL') {
+                        const isQuoteToken = !tokenUsed.startsWith('$'); // Quote tokens don't have $ prefix
+                        if (isQuoteToken) {
                           formattedAmount = removeTrailingZeros(amount.toFixed(3));
                         } else {
                           // Base token formatting with K/M/B notation

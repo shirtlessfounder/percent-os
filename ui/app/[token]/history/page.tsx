@@ -6,7 +6,7 @@ import { useWalletBalances } from '@/hooks/useWalletBalances';
 import { useTokenPrices } from '@/hooks/useTokenPrices';
 import { useTransactionSigner } from '@/hooks/useTransactionSigner';
 import Header from '@/components/Header';
-import { useProposals } from '@/hooks/useProposals';
+import { useProposalsWithFutarchy } from '@/hooks/useProposals';
 import { useClaimablePositions } from '@/hooks/useClaimablePositions';
 import { formatNumber } from '@/lib/formatters';
 import toast from 'react-hot-toast';
@@ -21,9 +21,14 @@ import { ProposalVolume } from '@/components/ProposalVolume';
 import { useTokenContext } from '@/providers/TokenContext';
 
 export default function HistoryPage() {
-  const { tokenSlug, poolAddress, baseMint, baseDecimals, tokenSymbol, moderatorId, icon } = useTokenContext();
+  const { tokenSlug, poolAddress, baseMint, baseDecimals, tokenSymbol, moderatorId, icon, isFutarchy, daoPda, quoteMint, quoteDecimals, quoteSymbol, quoteIcon } = useTokenContext();
   const { ready, authenticated, user, walletAddress, login } = usePrivyWallet();
-  const { proposals, loading, refetch } = useProposals(poolAddress || undefined, moderatorId || undefined);
+  const { proposals, loading, refetch } = useProposalsWithFutarchy({
+    poolAddress: poolAddress || undefined,
+    moderatorId: moderatorId ?? undefined,
+    isFutarchy,
+    daoPda: daoPda || undefined,
+  });
   const [hoveredProposalId, setHoveredProposalId] = useState<number | null>(null);
   const [claimingProposalId, setClaimingProposalId] = useState<number | null>(null);
 
@@ -32,22 +37,25 @@ export default function HistoryPage() {
     walletAddress,
     baseMint,
     baseDecimals,
+    quoteMint,
+    quoteDecimals,
   });
 
   // Fetch token prices for USD conversion
-  const { sol: solPrice, baseToken: baseTokenPrice } = useTokenPrices(baseMint);
+  const { sol: solPrice, baseToken: baseTokenPrice } = useTokenPrices(baseMint, quoteMint);
 
   // Get transaction signer
   const { signTransaction } = useTransactionSigner();
 
   // Fetch claimable positions for history view
-  const { positions: claimablePositions, refetch: refetchClaimable } = useClaimablePositions(walletAddress, moderatorId || undefined);
+  const { positions: claimablePositions, refetch: refetchClaimable } = useClaimablePositions(walletAddress, moderatorId || undefined, isFutarchy, daoPda || undefined);
 
   // Handle claim from history card
   const handleClaimFromHistory = useCallback(async (
     proposalId: number,
     winningMarketIndex: number,
-    vaultPDA: string
+    vaultPDA: string,
+    proposalIsFutarchy?: boolean
   ) => {
     if (!authenticated) {
       login();
@@ -74,6 +82,7 @@ export default function HistoryPage() {
         vaultPDA,
         userAddress: walletAddress,
         signTransaction,
+        isFutarchy: proposalIsFutarchy,
       });
 
       // Refresh all balances after successful claim
@@ -86,11 +95,11 @@ export default function HistoryPage() {
     } finally {
       setClaimingProposalId(null);
     }
-  }, [authenticated, ready, login, walletAddress, signTransaction, refetchClaimable, refetchWalletBalances]);
+  }, [authenticated, ready, login, walletAddress, signTransaction, refetchClaimable, refetchWalletBalances, isFutarchy]);
 
-  // Memoize sorted proposals
+  // Memoize sorted proposals - use endsAt for futarchy, finalizedAt for old system
   const sortedProposals = useMemo(() =>
-    [...proposals].sort((a, b) => b.finalizedAt - a.finalizedAt),
+    [...proposals].sort((a, b) => (b.endsAt || b.finalizedAt) - (a.endsAt || a.finalizedAt)),
     [proposals]
   );
 
@@ -112,6 +121,8 @@ export default function HistoryPage() {
           tokenSymbol={tokenSymbol}
           tokenIcon={icon}
           baseMint={baseMint}
+          quoteSymbol={quoteSymbol}
+          quoteIcon={quoteIcon}
         />
 
         <div className="flex-1 flex justify-center overflow-y-auto">
@@ -122,7 +133,7 @@ export default function HistoryPage() {
             {/* Mobile: Simple vertical stack */}
             <div className="md:hidden flex flex-col gap-4 pb-8">
               {sortedProposals
-                .filter(proposal => proposal.status === 'Passed' || proposal.status === 'Failed')
+                .filter(proposal => proposal.status === 'Passed' || proposal.status === 'Failed' || proposal.status === 'Resolved')
                 .map((proposal) => {
                 const proposalContent = getProposalContent(proposal.id, proposal.title, proposal.description, moderatorId?.toString());
                 const isHovered = hoveredProposalId === proposal.id;
@@ -173,7 +184,8 @@ export default function HistoryPage() {
                         handleClaimFromHistory(
                           proposal.id,
                           proposal.winningMarketIndex,
-                          proposal.vaultPDA
+                          proposal.vaultPDA,
+                          isFutarchy
                         );
                       }
                     }}
@@ -191,7 +203,7 @@ export default function HistoryPage() {
                               <CheckCircle2 className="w-3 h-3" />
                             </span>
                           )}
-                          <ProposalVolume proposalId={proposal.id} moderatorId={moderatorId ?? undefined} baseMint={baseMint} />
+                          <ProposalVolume proposalId={proposal.id} moderatorId={moderatorId ?? undefined} baseMint={baseMint} isFutarchy={isFutarchy} proposalPda={proposal.proposalPda} baseDecimals={baseDecimals} quoteDecimals={quoteDecimals} quoteMint={quoteMint} quoteSymbol={quoteSymbol} />
                         </div>
                         <div className="text-sm text-[#B0AFAB]">
                           {new Date(proposal.finalizedAt).toLocaleDateString('en-US', {
@@ -226,15 +238,15 @@ export default function HistoryPage() {
                           {/* Rewards display */}
                           <div className="text-sm" style={{ color: '#BEE8FC' }}>
                             {(() => {
-                              const zcReward = proposalRewards.find(r => r.claimableToken === 'zc');
-                              const solReward = proposalRewards.find(r => r.claimableToken === 'sol');
+                              const baseReward = proposalRewards.find(r => r.claimableToken === 'base');
+                              const quoteReward = proposalRewards.find(r => r.claimableToken === 'quote');
 
                               const parts = [];
-                              if (zcReward) {
-                                parts.push(`${formatNumber(zcReward.claimableAmount, 0)} ${tokenSymbol}`);
+                              if (baseReward) {
+                                parts.push(`${formatNumber(baseReward.claimableAmount, 0)} ${tokenSymbol}`);
                               }
-                              if (solReward) {
-                                parts.push(`${solReward.claimableAmount.toFixed(4)} SOL`);
+                              if (quoteReward) {
+                                parts.push(`${quoteReward.claimableAmount.toFixed(4)} ${quoteSymbol}`);
                               }
 
                               return parts.join(' / ');
@@ -257,7 +269,7 @@ export default function HistoryPage() {
                 style={{ marginLeft: '-16px' }}
               >
                 {sortedProposals
-                  .filter(proposal => proposal.status === 'Passed' || proposal.status === 'Failed')
+                  .filter(proposal => proposal.status === 'Passed' || proposal.status === 'Failed' || proposal.status === 'Resolved')
                   .map((proposal) => {
                   const proposalContent = getProposalContent(proposal.id, proposal.title, proposal.description, moderatorId?.toString());
                   const isHovered = hoveredProposalId === proposal.id;
@@ -308,7 +320,8 @@ export default function HistoryPage() {
                           handleClaimFromHistory(
                             proposal.id,
                             proposal.winningMarketIndex,
-                            proposal.vaultPDA
+                            proposal.vaultPDA,
+                            isFutarchy
                           );
                         }
                       }}
@@ -326,7 +339,7 @@ export default function HistoryPage() {
                                 <CheckCircle2 className="w-3 h-3" />
                               </span>
                             )}
-                            <ProposalVolume proposalId={proposal.id} moderatorId={moderatorId ?? undefined} baseMint={baseMint} />
+                            <ProposalVolume proposalId={proposal.id} moderatorId={moderatorId ?? undefined} baseMint={baseMint} isFutarchy={isFutarchy} proposalPda={proposal.proposalPda} baseDecimals={baseDecimals} quoteDecimals={quoteDecimals} quoteMint={quoteMint} quoteSymbol={quoteSymbol} />
                           </div>
                           <div className="text-sm text-[#B0AFAB]">
                             {new Date(proposal.finalizedAt).toLocaleDateString('en-US', {
@@ -361,15 +374,15 @@ export default function HistoryPage() {
                             {/* Rewards display */}
                             <div className="text-sm" style={{ color: '#BEE8FC' }}>
                               {(() => {
-                                const zcReward = proposalRewards.find(r => r.claimableToken === 'zc');
-                                const solReward = proposalRewards.find(r => r.claimableToken === 'sol');
+                                const baseReward = proposalRewards.find(r => r.claimableToken === 'base');
+                                const quoteReward = proposalRewards.find(r => r.claimableToken === 'quote');
 
                                 const parts = [];
-                                if (zcReward) {
-                                  parts.push(`${formatNumber(zcReward.claimableAmount, 0)} ${tokenSymbol}`);
+                                if (baseReward) {
+                                  parts.push(`${formatNumber(baseReward.claimableAmount, 0)} ${tokenSymbol}`);
                                 }
-                                if (solReward) {
-                                  parts.push(`${solReward.claimableAmount.toFixed(4)} SOL`);
+                                if (quoteReward) {
+                                  parts.push(`${quoteReward.claimableAmount.toFixed(4)} ${quoteSymbol}`);
                                 }
 
                                 return parts.join(' / ');

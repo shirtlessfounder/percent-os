@@ -21,7 +21,7 @@ const API_BASE_URL = process.env.PERCENT_API_URL || 'http://localhost:3000';
 
 // Configuration - can be overridden via CLI args
 const MODERATOR_ID = parseInt(process.argv[2]) || 6;
-const PROPOSAL_ID = parseInt(process.argv[3]) || 9;
+const PROPOSAL_ID = parseInt(process.argv[3]) || 10;
 const FROM_DATE = process.argv[4] || '';  // Empty = show full proposal history
 
 interface TWAPHistoryEntry {
@@ -495,27 +495,6 @@ async function main() {
     borderWidth: 0,
   }));
 
-  // Add 1.5x guarantee vertical line if it was reached
-  const guaranteeLabel = guaranteeIndex !== null ? chartLabels[guaranteeIndex] : null;
-  if (guaranteeLabel) {
-    annotations.push({
-      type: 'line',
-      xMin: guaranteeLabel,
-      xMax: guaranteeLabel,
-      borderColor: '#ef4444', // Red
-      borderWidth: 2,
-      borderDash: [6, 4],
-      label: {
-        display: true,
-        content: '1.5x Guarantee',
-        position: 'start',
-        backgroundColor: '#ef4444',
-        color: '#fff',
-        font: { size: 11, weight: 'bold' },
-        padding: 4,
-      }
-    });
-  }
 
   // Log leader segments
   console.log(`\n${COLORS.bright}Price Leader Segments:${COLORS.reset}`);
@@ -721,39 +700,14 @@ async function main() {
     };
     const marketLabels = ${JSON.stringify(labels)};
 
-    // 1.5x Guarantee line data
-    const guaranteeLabelData = ${guaranteeLabel ? JSON.stringify(guaranteeLabel) : 'null'};
-    const guaranteeAnnotation = guaranteeLabelData ? {
-      type: 'line',
-      xMin: guaranteeLabelData,
-      xMax: guaranteeLabelData,
-      borderColor: '#ef4444',
-      borderWidth: 2,
-      borderDash: [6, 4],
-      label: {
-        display: true,
-        content: '1.5x Guarantee',
-        position: 'start',
-        backgroundColor: '#ef4444',
-        color: '#fff',
-        font: { size: 11, weight: 'bold' },
-        padding: 4,
-      }
-    } : null;
-
     function segmentsToAnnotations(segments) {
-      const boxAnnotations = segments.map(seg => ({
+      return segments.map(seg => ({
         type: 'box',
         xMin: chartLabelsData[seg.startIdx],
         xMax: chartLabelsData[seg.endIdx],
         backgroundColor: seg.color + '25',
         borderWidth: 0,
       }));
-      // Always include the 1.5x guarantee line if it exists
-      if (guaranteeAnnotation) {
-        boxAnnotations.push(guaranteeAnnotation);
-      }
-      return boxAnnotations;
     }
 
     function renderLeaderBar(barId, segments) {

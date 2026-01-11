@@ -32,6 +32,8 @@ import { useWalletBalances } from '@/hooks/useWalletBalances';
 // ZC token constants for balance display
 const ZC_MINT = 'GVvPZpC6ymCoiHzYJ7CWZ8LhVn9tL2AUpRjSAsLh6jZC';
 const ZC_DECIMALS = 6;
+const SOL_MINT = 'So11111111111111111111111111111111111111112';
+const SOL_DECIMALS = 9;
 const ZC_ICON = 'https://pbs.twimg.com/profile_images/1991222874401587200/V0ARKOcE_400x400.jpg';
 
 interface ExploreHeaderProps {
@@ -72,6 +74,8 @@ export default function ExploreHeader({ activeTab: activeTabProp }: ExploreHeade
     walletAddress,
     baseMint: ZC_MINT,
     baseDecimals: ZC_DECIMALS,
+    quoteMint: SOL_MINT,
+    quoteDecimals: SOL_DECIMALS,
   });
   const [isHoveringWallet, setIsHoveringWallet] = useState(false);
   const walletPrefix = walletAddress ? walletAddress.slice(0, 6) : 'N/A';

@@ -26,8 +26,9 @@ import { useTransactionSigner } from '@/hooks/useTransactionSigner';
 import { formatNumber, formatCurrency } from '@/lib/formatters';
 import { openPosition } from '@/lib/trading';
 import { api } from '@/lib/api';
+import { getSwapQuote as getFutarchySwapQuote } from '@/lib/programs/futarchy';
+import { PublicKey } from '@solana/web3.js';
 import toast from 'react-hot-toast';
-import { SOL_MULTIPLIER } from '@/lib/constants/tokens';
 import type { UserBalancesResponse } from '@/lib/programs/vault';
 import { useTokenContext } from '@/providers/TokenContext';
 
@@ -45,6 +46,9 @@ interface TradingInterfaceProps {
   baseMint?: string | null;
   tokenSymbol?: string;
   winningMarketIndex?: number | null;  // For claiming winnings
+  // Futarchy-specific fields (new system)
+  isFutarchy?: boolean;  // Whether this is a futarchy proposal
+  pools?: string[];  // Pool PDAs for each market (index corresponds to market index)
 }
 
 const TradingInterface = memo(({
@@ -60,18 +64,21 @@ const TradingInterface = memo(({
   visualFocusClassName = '',
   baseMint,
   tokenSymbol = 'ZC',
-  winningMarketIndex
+  winningMarketIndex,
+  isFutarchy = false,
+  pools
 }: TradingInterfaceProps) => {
   // Get display label for the selected market (strip URLs and trim)
   const selectedLabel = marketLabels?.[selectedMarketIndex]?.replace(/(https?:\/\/[^\s]+)/gi, '').trim() || `Coin ${selectedMarketIndex + 1}`;
-  const { moderatorId, baseDecimals } = useTokenContext();
+  const { moderatorId, baseDecimals, quoteMint, quoteSymbol, quoteDecimals, quoteDisplayDecimals } = useTokenContext();
   const baseMultiplier = Math.pow(10, baseDecimals);
+  const quoteMultiplier = Math.pow(10, quoteDecimals);
   const { authenticated, walletAddress, login } = usePrivyWallet();
   const isConnected = authenticated;
-  const { sol: solPrice, baseToken: baseTokenPrice } = useTokenPrices(baseMint);
+  const { sol: quotePrice, baseToken: baseTokenPrice } = useTokenPrices(baseMint, quoteMint);
   const [amount, setAmount] = useState('');
   const [percentage, setPercentage] = useState('');
-  const [sellingToken, setSellingToken] = useState<'sol' | 'baseToken'>('sol');
+  const [sellingToken, setSellingToken] = useState<'quote' | 'base'>('quote');
   const [isEditingQuickAmounts, setIsEditingQuickAmounts] = useState(false);
   
   // Load saved values from localStorage or use defaults
@@ -211,7 +218,7 @@ const TradingInterface = memo(({
       try {
         // Convert amount to smallest units
         const amountInSmallestUnits = Math.floor(
-          parseFloat(amount) * (sellingToken === 'sol' ? SOL_MULTIPLIER : baseMultiplier)
+          parseFloat(amount) * (sellingToken === 'quote' ? quoteMultiplier : baseMultiplier)
         );
 
         // Skip if amount is too small (would result in 0 after conversion)
@@ -222,26 +229,51 @@ const TradingInterface = memo(({
         }
 
         // Determine swap direction
-        const isBaseToQuote = sellingToken === 'baseToken';
+        // For futarchy: mintA = SOL (quote), mintB = base
+        // For old system: mintA = base, mintB = SOL (quote)
+        const swapAToB = isFutarchy
+          ? sellingToken === 'quote'      // Futarchy: selling SOL (A) → swapAToB = true
+          : sellingToken === 'base'; // Old: selling base (A) → swapAToB = true
 
-        // Fetch quote from API
-        const quoteData = await api.getSwapQuote(
-          proposalId,
-          selectedMarketIndex,
-          isBaseToQuote,
-          amountInSmallestUnits.toString(),
-          2000, // 20% slippage
-          moderatorId || undefined
-        );
+        // Fetch quote - use SDK for futarchy, API for old system
+        if (isFutarchy && pools?.[selectedMarketIndex]) {
+          // Futarchy: use SDK directly
+          const poolPDA = pools[selectedMarketIndex];
+          const quoteData = await getFutarchySwapQuote(
+            new PublicKey(poolPDA),
+            swapAToB,
+            amountInSmallestUnits.toString()
+          );
 
-        if (quoteData) {
-          setQuote({
-            swapOutAmount: quoteData.swapOutAmount,
-            minSwapOutAmount: quoteData.minSwapOutAmount,
-            priceImpact: quoteData.priceImpact
-          });
+          if (quoteData) {
+            setQuote({
+              swapOutAmount: quoteData.outputAmount,
+              minSwapOutAmount: quoteData.minOutputAmount,
+              priceImpact: quoteData.priceImpact
+            });
+          } else {
+            setQuote(null);
+          }
         } else {
-          setQuote(null);
+          // Old system: use API
+          const quoteData = await api.getSwapQuote(
+            proposalId,
+            selectedMarketIndex,
+            swapAToB,
+            amountInSmallestUnits.toString(),
+            2000, // 20% slippage
+            moderatorId || undefined
+          );
+
+          if (quoteData) {
+            setQuote({
+              swapOutAmount: quoteData.swapOutAmount,
+              minSwapOutAmount: quoteData.minSwapOutAmount,
+              priceImpact: quoteData.priceImpact
+            });
+          } else {
+            setQuote(null);
+          }
         }
       } catch (error) {
         console.error('Error fetching quote:', error);
@@ -257,26 +289,26 @@ const TradingInterface = memo(({
         clearTimeout(quoteTimeoutRef.current);
       }
     };
-  }, [amount, sellingToken, selectedMarketIndex, proposalId]);
+  }, [amount, sellingToken, selectedMarketIndex, proposalId, isFutarchy, pools, moderatorId, baseMultiplier]);
 
   // Handle MAX button click - set amount to user's balance for selected market and token
   const handleMaxClick = useCallback(() => {
     if (!userBalances) return;
 
     // Get balance for the selected market index (0-3)
-    const balance = sellingToken === 'baseToken'
+    const balance = sellingToken === 'base'
       ? userBalances.base.conditionalBalances[selectedMarketIndex] || '0'
       : userBalances.quote.conditionalBalances[selectedMarketIndex] || '0';
 
     // Convert from smallest units to human-readable
-    const maxAmount = parseFloat(balance) / (sellingToken === 'sol' ? SOL_MULTIPLIER : baseMultiplier);
+    const maxAmount = parseFloat(balance) / (sellingToken === 'quote' ? quoteMultiplier : baseMultiplier);
 
     if (maxAmount > 0) {
       setAmount(maxAmount.toString());
     } else {
-      toast.error(`No market ${selectedMarketIndex}-${sellingToken.toUpperCase()} balance available`);
+      toast.error(`No market ${selectedMarketIndex}-${sellingToken === 'quote' ? quoteSymbol : 'base'} balance available`);
     }
-  }, [userBalances, selectedMarketIndex, sellingToken, baseMultiplier]);
+  }, [userBalances, selectedMarketIndex, sellingToken, baseMultiplier, quoteMultiplier, quoteSymbol]);
 
   // Check if amount exceeds available balance
   const balanceError = useMemo(() => {
@@ -286,18 +318,18 @@ const TradingInterface = memo(({
     if (isNaN(inputAmount) || inputAmount <= 0) return null;
 
     // Get balance for the selected market index (0-3)
-    const balance = sellingToken === 'baseToken'
+    const balance = sellingToken === 'base'
       ? userBalances.base.conditionalBalances[selectedMarketIndex] || '0'
       : userBalances.quote.conditionalBalances[selectedMarketIndex] || '0';
 
-    const maxAmount = parseFloat(balance) / (sellingToken === 'sol' ? SOL_MULTIPLIER : baseMultiplier);
+    const maxAmount = parseFloat(balance) / (sellingToken === 'quote' ? quoteMultiplier : baseMultiplier);
 
     if (inputAmount > maxAmount) {
-      return `Insufficient balance. Max: ${formatNumber(maxAmount, sellingToken === 'sol' ? 3 : 0)} ${sellingToken === 'sol' ? 'SOL' : `$${tokenSymbol}`}`;
+      return `Insufficient balance. Max: ${formatNumber(maxAmount, sellingToken === 'quote' ? quoteDisplayDecimals : 0)} ${sellingToken === 'quote' ? quoteSymbol : `$${tokenSymbol}`}`;
     }
 
     return null;
-  }, [amount, userBalances, selectedMarketIndex, sellingToken, baseMultiplier]);
+  }, [amount, userBalances, selectedMarketIndex, sellingToken, baseMultiplier, quoteMultiplier, quoteSymbol, quoteDisplayDecimals]);
 
   const handleTrade = useCallback(async () => {
     if (!isConnected) {
@@ -326,7 +358,12 @@ const TradingInterface = memo(({
         userAddress: walletAddress,
         signTransaction,
         baseDecimals,
-        moderatorId: moderatorId || undefined
+        quoteDecimals,
+        tokenSymbol,
+        quoteSymbol,
+        moderatorId: moderatorId || undefined,
+        isFutarchy,
+        poolPDA: pools?.[selectedMarketIndex]  // Pool PDA for this market
       });
 
       // Clear the amount after successful trade
@@ -345,11 +382,11 @@ const TradingInterface = memo(({
     } finally {
       setIsTrading(false);
     }
-  }, [isConnected, login, walletAddress, amount, proposalId, selectedMarketIndex, sellingToken, signTransaction, refetchBalances, onTradeSuccess]);
+  }, [isConnected, login, walletAddress, amount, proposalId, selectedMarketIndex, sellingToken, signTransaction, refetchBalances, onTradeSuccess, baseDecimals, moderatorId, isFutarchy, pools]);
 
   // Quick amount buttons - depends on selling token
   const quickAmounts = useMemo(() => {
-    if (sellingToken === 'sol') {
+    if (sellingToken === 'quote') {
       return isEditingQuickAmounts ? tempSolAmounts : solQuickAmounts;
     } else {
       return isEditingQuickAmounts ? tempPercentAmounts : percentQuickAmounts;
@@ -358,7 +395,7 @@ const TradingInterface = memo(({
 
   // Format quick amount for display (show % for percentages)
   const formatQuickAmountDisplay = (val: string): string => {
-    if (sellingToken === 'baseToken') {
+    if (sellingToken === 'base') {
       return val + '%';
     }
     return val;
@@ -389,7 +426,7 @@ const TradingInterface = memo(({
   const handleQuickAmountChange = useCallback((index: number, value: string) => {
     // Only allow numbers and decimal points
     if (value === '' || /^\d*\.?\d*$/.test(value)) {
-      if (sellingToken === 'sol') {
+      if (sellingToken === 'quote') {
         const newAmounts = [...tempSolAmounts];
         newAmounts[index] = value;
         setTempSolAmounts(newAmounts);
@@ -424,15 +461,15 @@ const TradingInterface = memo(({
     }
   }, [userBalances, selectedMarketIndex, baseMultiplier, tokenSymbol]);
 
-  // Handle SOL quick amount click (with auto-cap to max balance)
+  // Handle quote token quick amount click (with auto-cap to max balance)
   const handleSolQuickAmountClick = useCallback((quickValue: string) => {
     if (!userBalances) return;
 
-    // Get the SOL balance based on selectedMarketIndex (0-3)
+    // Get the quote token balance based on selectedMarketIndex (0-3)
     const balance = userBalances.quote.conditionalBalances[selectedMarketIndex] || '0';
 
-    // Convert from smallest units to decimal (SOL is always 9 decimals)
-    const maxAmount = parseFloat(balance) / SOL_MULTIPLIER;
+    // Convert from smallest units to decimal using quote token decimals
+    const maxAmount = parseFloat(balance) / quoteMultiplier;
 
     // Parse the quick value
     const requestedAmount = parseFloat(quickValue);
@@ -446,7 +483,7 @@ const TradingInterface = memo(({
     } else {
       setAmount(quickValue); // If no balance, still allow setting the value
     }
-  }, [userBalances, selectedMarketIndex]);
+  }, [userBalances, selectedMarketIndex, quoteMultiplier]);
 
   return (
     <div>
@@ -455,16 +492,16 @@ const TradingInterface = memo(({
       <div className="flex flex-row flex-1 min-h-[40px] max-h-[40px] gap-[2px] p-[3px] justify-center items-center rounded-[6px] mb-2 border border-[#191919]">
         <button
           onClick={() => {
-            setSellingToken('sol');
+            setSellingToken('quote');
             setAmount('');
             setPercentage('');
           }}
           className={`flex flex-row flex-1 min-h-[34px] max-h-[34px] px-4 justify-center items-center rounded-[6px] transition cursor-pointer ${
-            sellingToken === 'sol'
+            sellingToken === 'quote'
               ? 'text-[#181818] font-bold'
               : 'bg-transparent text-[#6B6E71] font-medium'
           }`}
-          style={sellingToken === 'sol' ? { backgroundColor: '#6ECC94', fontFamily: 'IBM Plex Mono, monospace' } : { fontFamily: 'IBM Plex Mono, monospace' }}
+          style={sellingToken === 'quote' ? { backgroundColor: '#6ECC94', fontFamily: 'IBM Plex Mono, monospace' } : { fontFamily: 'IBM Plex Mono, monospace' }}
         >
           <span className="text-[12px] leading-[16px]">
             BUY
@@ -472,16 +509,16 @@ const TradingInterface = memo(({
         </button>
         <button
           onClick={() => {
-            setSellingToken('baseToken');
+            setSellingToken('base');
             setAmount('');
             setPercentage('');
           }}
           className={`flex flex-row flex-1 min-h-[34px] max-h-[34px] px-4 justify-center items-center rounded-[6px] transition cursor-pointer ${
-            sellingToken === 'baseToken'
+            sellingToken === 'base'
               ? 'text-[#181818] font-bold'
               : 'bg-transparent text-[#6B6E71] font-medium'
           }`}
-          style={sellingToken === 'baseToken' ? { backgroundColor: '#FF6F94', fontFamily: 'IBM Plex Mono, monospace' } : { fontFamily: 'IBM Plex Mono, monospace' }}
+          style={sellingToken === 'base' ? { backgroundColor: '#FF6F94', fontFamily: 'IBM Plex Mono, monospace' } : { fontFamily: 'IBM Plex Mono, monospace' }}
         >
           <span className="text-[12px] leading-[16px]">
             SELL
@@ -500,11 +537,11 @@ const TradingInterface = memo(({
             data-form-type="other"
             data-lpignore="true"
             data-1p-ignore="true"
-            value={sellingToken === 'baseToken' ? percentage : amount}
+            value={sellingToken === 'base' ? percentage : amount}
             onChange={(e) => {
               const value = e.target.value;
               if (value === '' || /^\d*\.?\d*$/.test(value)) {
-                if (sellingToken === 'baseToken') {
+                if (sellingToken === 'base') {
                   // Update percentage and calculate amount
                   setPercentage(value);
                   if (value && userBalances) {
@@ -530,7 +567,7 @@ const TradingInterface = memo(({
           {/* Token Label */}
           <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
             <span className="flex items-center justify-center px-2 h-7 text-xs font-semibold text-[#AFAFAF]">
-              {sellingToken === 'sol' ? 'SOL' : '%'}
+              {sellingToken === 'quote' ? quoteSymbol : '%'}
             </span>
           </div>
         </div>
@@ -542,7 +579,7 @@ const TradingInterface = memo(({
           <button
             key={index}
             onClick={(isEditingQuickAmounts || hasZeroBalances || isMarketCompleted) ? undefined : () => {
-              if (sellingToken === 'baseToken') {
+              if (sellingToken === 'base') {
                 handlePercentageClick(val);
               } else {
                 handleSolQuickAmountClick(val);
@@ -611,9 +648,9 @@ const TradingInterface = memo(({
                 <span style={{ color: '#DDDDD7' }}>Expected Output:</span>
                 <span className="font-medium" style={{ color: '#DDDDD7' }}>
                   ~{formatNumber(
-                    parseFloat(quote.swapOutAmount) / (sellingToken === 'baseToken' ? SOL_MULTIPLIER : baseMultiplier),
-                    sellingToken === 'baseToken' ? 4 : 2
-                  )} {sellingToken === 'baseToken' ? 'SOL' : `$${tokenSymbol}`}
+                    parseFloat(quote.swapOutAmount) / (sellingToken === 'base' ? quoteMultiplier : baseMultiplier),
+                    sellingToken === 'base' ? quoteDisplayDecimals : 2
+                  )} {sellingToken === 'base' ? quoteSymbol : `$${tokenSymbol}`}
                 </span>
               </div>
 
@@ -666,7 +703,7 @@ const TradingInterface = memo(({
         style={
           amount && parseFloat(amount) > 0 && !balanceError && !isTrading
             ? {
-                backgroundColor: sellingToken === 'sol' ? '#6ECC94' : '#FF6F94',
+                backgroundColor: sellingToken === 'quote' ? '#6ECC94' : '#FF6F94',
                 color: '#161616',
                 fontFamily: 'IBM Plex Mono, monospace',
                 letterSpacing: '0em'
@@ -679,13 +716,13 @@ const TradingInterface = memo(({
         ) : (
           <span>
             {(() => {
-              const action = sellingToken === 'sol' ? 'BUY' : 'SELL';
+              const action = sellingToken === 'quote' ? 'BUY' : 'SELL';
               const coinLabel = `"${selectedLabel.toUpperCase()}"`;
-              const token = sellingToken === 'sol' ? 'SOL' : tokenSymbol;
+              const token = sellingToken === 'quote' ? quoteSymbol : tokenSymbol;
 
               // Format amount with K/M notation for ZC
               let formattedAmount = amount;
-              if (sellingToken === 'baseToken' && amount) {
+              if (sellingToken === 'base' && amount) {
                 const num = parseFloat(amount);
                 if (!isNaN(num)) {
                   if (num >= 1000000) {

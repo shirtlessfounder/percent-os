@@ -25,6 +25,10 @@ export interface ExploreProposal extends ProposalListItem {
   moderatorId: number;
   tokenTicker: string;
   tokenIcon: string | null;
+  // Futarchy-specific fields
+  isFutarchy?: boolean;
+  daoPda?: string;
+  daoName?: string;
 }
 
 /**
@@ -44,6 +48,38 @@ export function useAllProposals() {
       setError(null);
     } catch (err) {
       console.error('[useAllProposals] Error:', err);
+      setError('Failed to fetch proposals');
+      setProposals([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchProposals();
+  }, [fetchProposals]);
+
+  return { proposals, loading, error, refetch: fetchProposals };
+}
+
+/**
+ * Hook to fetch only old system proposals (ZC, OOGWAY, SURF)
+ * Used by projects page where futarchy DAOs use stats from /dao endpoint
+ * This avoids the expensive /dao/proposals/all fetch for futarchy
+ */
+export function useOldSystemProposals() {
+  const [proposals, setProposals] = useState<ExploreProposal[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchProposals = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await api.getOldSystemProposals();
+      setProposals(data);
+      setError(null);
+    } catch (err) {
+      console.error('[useOldSystemProposals] Error:', err);
       setError('Failed to fetch proposals');
       setProposals([]);
     } finally {

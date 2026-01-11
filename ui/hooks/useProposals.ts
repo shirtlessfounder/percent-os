@@ -21,6 +21,14 @@ import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
 import type { ProposalListItem, ProposalDetailResponse } from '@/types/api';
 
+interface UseProposalsOptions {
+  poolAddress?: string;
+  moderatorId?: number | string;
+  // Futarchy-specific options (new system)
+  isFutarchy?: boolean;
+  daoPda?: string;
+}
+
 export function useProposals(poolAddress?: string, moderatorId?: number | string) {
   const [proposals, setProposals] = useState<ProposalListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,6 +66,63 @@ export function useProposals(poolAddress?: string, moderatorId?: number | string
   return { proposals, loading, error, refetch: fetchProposals };
 }
 
+/**
+ * Hook to fetch proposals with futarchy support.
+ * For futarchy DAOs, fetches from zcombinator API.
+ * For old system DAOs, fetches from os-percent API.
+ */
+export function useProposalsWithFutarchy(options: UseProposalsOptions) {
+  const { poolAddress, moderatorId, isFutarchy, daoPda } = options;
+  const [proposals, setProposals] = useState<ProposalListItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchProposals = useCallback(async () => {
+    try {
+      setLoading(true);
+
+      let data: ProposalListItem[];
+
+      if (isFutarchy && daoPda) {
+        // Fetch from zcombinator API for futarchy DAOs
+        data = await api.getZcombinatorProposals(daoPda);
+      } else if (moderatorId != null) {
+        // Fetch from old system API
+        data = await api.getProposals(poolAddress, moderatorId);
+
+        // Server already filters by moderatorId, client-side filter only for legacy proposal exclusion
+        const modId = moderatorId?.toString();
+        if (modId === '2') {
+          data = data.filter(p => ![0, 1, 2, 6, 7].includes(p.id));
+        }
+      } else {
+        // No valid identifier, return empty
+        data = [];
+      }
+
+      setProposals(data);
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching proposals:', err);
+      setError('Failed to fetch proposals');
+      setProposals([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [poolAddress, moderatorId, isFutarchy, daoPda]);
+
+  useEffect(() => {
+    // For futarchy, we need daoPda; for old system, we need moderatorId
+    if ((isFutarchy && daoPda) || (!isFutarchy && moderatorId != null)) {
+      fetchProposals();
+    } else {
+      setLoading(false);
+    }
+  }, [fetchProposals, isFutarchy, daoPda, moderatorId]);
+
+  return { proposals, loading, error, refetch: fetchProposals };
+}
+
 export function useProposal(id: number, moderatorId?: number | string) {
   const [proposal, setProposal] = useState<ProposalDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -83,3 +148,67 @@ export function useProposal(id: number, moderatorId?: number | string) {
 
   return { proposal, loading, error };
 }
+
+/**
+ * Hook to fetch the live (Pending) proposal for a futarchy DAO.
+ * Uses the optimized /dao/:daoPda/proposal/live endpoint which returns
+ * full proposal detail in a single request.
+ *
+ * This replaces the two-request pattern (getProposals + getProposal)
+ * for the live proposal page.
+ */
+export function useLiveProposal(daoPda: string | undefined) {
+  const [proposal, setProposal] = useState<{
+    id: number;
+    proposalPda: string;
+    title: string;
+    description: string;
+    options: string[];
+    status: 'Pending';
+    winningIndex: null;
+    numOptions: number;
+    createdAt: number;
+    endsAt: number;
+    warmupEndsAt: number;
+    vault: string;
+    pools: string[];
+    metadataCid: string | null;
+    baseDecimals: number;
+    quoteDecimals: number;
+    config: {
+      length: number;
+      warmupDuration: number;
+      marketBias: number;
+      fee: number;
+    };
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchLiveProposal = useCallback(async () => {
+    if (!daoPda) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const data = await api.getZcombinatorLiveProposal(daoPda);
+      setProposal(data);
+      setError(null);
+    } catch (err) {
+      console.error('[useLiveProposal] Error:', err);
+      setError('Failed to fetch live proposal');
+      setProposal(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [daoPda]);
+
+  useEffect(() => {
+    fetchLiveProposal();
+  }, [fetchLiveProposal]);
+
+  return { proposal, loading, error, refetch: fetchLiveProposal };
+}
+

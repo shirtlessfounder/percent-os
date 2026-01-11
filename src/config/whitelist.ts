@@ -1,5 +1,5 @@
 import { Connection, PublicKey } from '@solana/web3.js';
-import { getAssociatedTokenAddress, getAccount } from '@solana/spl-token';
+import { getAssociatedTokenAddress, getAccount, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 
 /**
  * Whitelist configuration for multi-token decision markets
@@ -107,7 +107,10 @@ export async function getTokenBalance(
   try {
     const wallet = new PublicKey(walletAddress);
     const mint = new PublicKey(mintAddress);
-    const ata = await getAssociatedTokenAddress(mint, wallet);
+    // Detect token program for Token-2022 support
+    const mintInfo = await connection.getAccountInfo(mint);
+    const programId = mintInfo?.owner ?? TOKEN_PROGRAM_ID;
+    const ata = await getAssociatedTokenAddress(mint, wallet, false, programId);
     const account = await getAccount(connection, ata);
     return Number(account.amount) / Math.pow(10, decimals);
   } catch {

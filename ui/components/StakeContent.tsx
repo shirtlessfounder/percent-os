@@ -50,11 +50,13 @@ interface Staker {
 export function StakeContent({ useExploreHeader = true }: StakeContentProps) {
   const { ready, authenticated, walletAddress, login } = usePrivyWallet();
   const { signTransaction } = useTransactionSigner();
-  const { tokenSlug, baseMint, baseDecimals, tokenSymbol, icon } = useTokenContext();
+  const { tokenSlug, baseMint, baseDecimals, tokenSymbol, icon, quoteMint, quoteDecimals, quoteSymbol } = useTokenContext();
   const { sol: solBalance, baseToken: baseTokenBalance } = useWalletBalances({
     walletAddress,
     baseMint,
     baseDecimals,
+    quoteMint,
+    quoteDecimals,
   });
 
   const [loading, setLoading] = useState(false);
@@ -1019,14 +1021,15 @@ export function StakeContent({ useExploreHeader = true }: StakeContentProps) {
                             stakerTrades.map((trade) => {
                               const isBuy = !trade.isBaseToQuote;
                               const amount = parseFloat(trade.amountIn);
-                              const tokenUsed = trade.isBaseToQuote ? trade.ticker : 'SOL';
+                              const tokenUsed = trade.isBaseToQuote ? trade.ticker : quoteSymbol;
+                              const isQuoteToken = !trade.isBaseToQuote;
 
                               const removeTrailingZeros = (num: string): string => {
                                 return num.replace(/\.?0+$/, '');
                               };
 
                               let formattedAmount;
-                              if (tokenUsed === 'SOL') {
+                              if (isQuoteToken) {
                                 formattedAmount = removeTrailingZeros(amount.toFixed(3));
                               } else {
                                 if (amount >= 1000000000) {

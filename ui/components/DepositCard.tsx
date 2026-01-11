@@ -6,31 +6,35 @@ import { useTransactionSigner } from '@/hooks/useTransactionSigner';
 import { PublicKey } from '@solana/web3.js';
 import toast from 'react-hot-toast';
 import { formatNumber } from '@/lib/formatters';
-import { deposit, withdraw, VaultType, type UserBalancesResponse } from '@/lib/programs/vault';
+import { deposit as depositOld, withdraw as withdrawOld, VaultType, type UserBalancesResponse } from '@/lib/programs/vault';
+import { deposit as depositFutarchy, withdraw as withdrawFutarchy } from '@/lib/programs/futarchy';
 import { claimWinnings } from '@/lib/trading';
 
-const SOL_DECIMALS = 9;
-const SOL_GAS_RESERVE = 0.02; // Reserve for transaction fees
+const SOL_GAS_RESERVE = 0.02; // Reserve for transaction fees when quote is SOL
 
 interface DepositCardProps {
   proposalId: number;
   vaultPDA: string;
-  solBalance: number | null;
+  solBalance: number | null; // Quote token balance (SOL, USDC, etc.)
   baseTokenBalance: number | null;
   userBalances: UserBalancesResponse | null;
   onDepositSuccess: () => void;
   tokenSymbol?: string;
   baseDecimals: number; // Required - token decimals for base token
+  quoteDecimals: number; // Required - quote token decimals
+  quoteSymbol: string; // Required - quote token symbol (SOL, USDC, etc.)
+  isQuoteSol?: boolean; // Whether quote token is native SOL (for gas reserve)
   proposalStatus?: 'Pending' | 'Passed' | 'Failed';
   winningMarketIndex?: number | null;
+  isFutarchy?: boolean; // Whether this is a futarchy (new system) proposal
 }
 
-export function DepositCard({ proposalId, vaultPDA, solBalance, baseTokenBalance, userBalances, onDepositSuccess, tokenSymbol = 'ZC', baseDecimals, proposalStatus = 'Pending', winningMarketIndex }: DepositCardProps) {
+export function DepositCard({ proposalId, vaultPDA, solBalance, baseTokenBalance, userBalances, onDepositSuccess, tokenSymbol = 'ZC', baseDecimals, quoteDecimals, quoteSymbol, isQuoteSol = true, proposalStatus = 'Pending', winningMarketIndex, isFutarchy = false }: DepositCardProps) {
   const { ready, authenticated, walletAddress, login } = usePrivyWallet();
   const { signTransaction } = useTransactionSigner();
   const [mode, setMode] = useState<'deposit' | 'withdraw'>('deposit');
   const [amount, setAmount] = useState('');
-  const [selectedToken, setSelectedToken] = useState<'sol' | 'zc'>('sol');
+  const [selectedToken, setSelectedToken] = useState<'quote' | 'base'>('quote');
   const [isDepositing, setIsDepositing] = useState(false);
 
   // Check if market is completed (Passed or Failed)
@@ -40,12 +44,12 @@ export function DepositCard({ proposalId, vaultPDA, solBalance, baseTokenBalance
   const claimableBalance = useMemo(() => {
     if (!isMarketCompleted || winningMarketIndex === null || winningMarketIndex === undefined || !userBalances) return 0;
 
-    const decimals = selectedToken === 'sol' ? SOL_DECIMALS : baseDecimals;
-    const vault = selectedToken === 'sol' ? userBalances.quote : userBalances.base;
+    const decimals = selectedToken === 'quote' ? quoteDecimals : baseDecimals;
+    const vault = selectedToken === 'quote' ? userBalances.quote : userBalances.base;
     const balance = parseFloat(vault.conditionalBalances[winningMarketIndex] || '0');
 
     return balance / Math.pow(10, decimals);
-  }, [isMarketCompleted, winningMarketIndex, userBalances, selectedToken, baseDecimals]);
+  }, [isMarketCompleted, winningMarketIndex, userBalances, selectedToken, baseDecimals, quoteDecimals]);
 
   // Check if user has ANY claimable tokens (either vault)
   const hasAnyClaimable = useMemo(() => {
@@ -60,15 +64,15 @@ export function DepositCard({ proposalId, vaultPDA, solBalance, baseTokenBalance
   // Calculate max balance
   const maxBalance = useMemo(() => {
     if (mode === 'deposit') {
-      const balance = selectedToken === 'sol' ? (solBalance || 0) : (baseTokenBalance || 0);
-      // Reserve gas for SOL deposits
-      return selectedToken === 'sol' ? Math.max(0, balance - SOL_GAS_RESERVE) : balance;
+      const balance = selectedToken === 'quote' ? (solBalance || 0) : (baseTokenBalance || 0);
+      // Reserve gas for SOL deposits (only when quote token is native SOL)
+      return selectedToken === 'quote' && isQuoteSol ? Math.max(0, balance - SOL_GAS_RESERVE) : balance;
     } else {
       // Withdraw mode: can only merge min of ALL conditional token balances
       if (!userBalances) return 0;
 
-      const decimals = selectedToken === 'sol' ? SOL_DECIMALS : baseDecimals;
-      const vault = selectedToken === 'sol' ? userBalances.quote : userBalances.base;
+      const decimals = selectedToken === 'quote' ? quoteDecimals : baseDecimals;
+      const vault = selectedToken === 'quote' ? userBalances.quote : userBalances.base;
 
       // Find minimum across all conditional balances (supports 2-4 coins)
       const balances = vault.conditionalBalances.map(b => parseFloat(b));
@@ -86,8 +90,8 @@ export function DepositCard({ proposalId, vaultPDA, solBalance, baseTokenBalance
     if (isNaN(inputAmount) || inputAmount <= 0) return null;
 
     if (inputAmount > maxBalance) {
-      const decimals = selectedToken === 'sol' ? 3 : 0;
-      return `Insufficient balance. Max: ${formatNumber(maxBalance, decimals)} ${selectedToken === 'sol' ? 'SOL' : tokenSymbol}`;
+      const decimals = selectedToken === 'quote' ? 3 : 0;
+      return `Insufficient balance. Max: ${formatNumber(maxBalance, decimals)} ${selectedToken === 'quote' ? quoteSymbol : tokenSymbol}`;
     }
     return null;
   }, [amount, maxBalance, selectedToken, tokenSymbol]);
@@ -97,7 +101,7 @@ export function DepositCard({ proposalId, vaultPDA, solBalance, baseTokenBalance
     if (maxBalance > 0) {
       setAmount(maxBalance.toString());
     } else {
-      toast.error(`No ${selectedToken === 'sol' ? 'SOL' : tokenSymbol} balance available`);
+      toast.error(`No ${selectedToken === 'quote' ? quoteSymbol : tokenSymbol} balance available`);
     }
   }, [maxBalance, selectedToken, tokenSymbol]);
 
@@ -129,18 +133,19 @@ export function DepositCard({ proposalId, vaultPDA, solBalance, baseTokenBalance
     }
 
     setIsDepositing(true);
-    const toastId = toast.loading(`Depositing ${amount} ${selectedToken === 'sol' ? 'SOL' : tokenSymbol}...`);
+    const toastId = toast.loading(`Depositing ${amount} ${selectedToken === 'quote' ? quoteSymbol : tokenSymbol}...`);
 
     try {
       // Convert amount to smallest units
-      const decimals = selectedToken === 'sol' ? SOL_DECIMALS : baseDecimals;
+      const decimals = selectedToken === 'quote' ? quoteDecimals : baseDecimals;
       const amountInSmallestUnits = Math.floor(parseFloat(amount) * Math.pow(10, decimals));
 
       // Determine vault type based on token type
-      const vaultType = selectedToken === 'zc' ? VaultType.Base : VaultType.Quote;
+      const vaultType = selectedToken === 'base' ? VaultType.Base : VaultType.Quote;
 
-      // Execute deposit (split) using client-side SDK
-      await deposit(
+      // Execute deposit (split) using appropriate SDK
+      const depositFn = isFutarchy ? depositFutarchy : depositOld;
+      await depositFn(
         new PublicKey(vaultPDA),
         vaultType,
         amountInSmallestUnits,
@@ -149,7 +154,7 @@ export function DepositCard({ proposalId, vaultPDA, solBalance, baseTokenBalance
       );
 
       // Success
-      toast.success(`Successfully deposited ${amount} ${selectedToken === 'sol' ? 'SOL' : tokenSymbol}!`, { id: toastId, duration: 5000 });
+      toast.success(`Successfully deposited ${amount} ${selectedToken === 'quote' ? quoteSymbol : tokenSymbol}!`, { id: toastId, duration: 5000 });
       setAmount('');
       onDepositSuccess();
 
@@ -162,7 +167,7 @@ export function DepositCard({ proposalId, vaultPDA, solBalance, baseTokenBalance
     } finally {
       setIsDepositing(false);
     }
-  }, [authenticated, ready, walletAddress, amount, balanceError, selectedToken, baseDecimals, signTransaction, vaultPDA, login, onDepositSuccess]);
+  }, [authenticated, ready, walletAddress, amount, balanceError, selectedToken, baseDecimals, signTransaction, vaultPDA, login, onDepositSuccess, isFutarchy]);
 
   // Handle withdraw
   const handleWithdraw = useCallback(async () => {
@@ -192,18 +197,19 @@ export function DepositCard({ proposalId, vaultPDA, solBalance, baseTokenBalance
     }
 
     setIsDepositing(true);
-    const toastId = toast.loading(`Withdrawing ${amount} ${selectedToken === 'sol' ? 'SOL' : tokenSymbol}...`);
+    const toastId = toast.loading(`Withdrawing ${amount} ${selectedToken === 'quote' ? quoteSymbol : tokenSymbol}...`);
 
     try {
       // Convert amount to smallest units
-      const decimals = selectedToken === 'sol' ? SOL_DECIMALS : baseDecimals;
+      const decimals = selectedToken === 'quote' ? quoteDecimals : baseDecimals;
       const amountInSmallestUnits = Math.floor(parseFloat(amount) * Math.pow(10, decimals));
 
       // Determine vault type based on token type
-      const vaultType = selectedToken === 'zc' ? VaultType.Base : VaultType.Quote;
+      const vaultType = selectedToken === 'base' ? VaultType.Base : VaultType.Quote;
 
-      // Execute withdraw (merge) using client-side SDK
-      await withdraw(
+      // Execute withdraw (merge) using appropriate SDK
+      const withdrawFn = isFutarchy ? withdrawFutarchy : withdrawOld;
+      await withdrawFn(
         new PublicKey(vaultPDA),
         vaultType,
         amountInSmallestUnits,
@@ -212,7 +218,7 @@ export function DepositCard({ proposalId, vaultPDA, solBalance, baseTokenBalance
       );
 
       // Success
-      toast.success(`Successfully withdrew ${amount} ${selectedToken === 'sol' ? 'SOL' : tokenSymbol}!`, { id: toastId, duration: 5000 });
+      toast.success(`Successfully withdrew ${amount} ${selectedToken === 'quote' ? quoteSymbol : tokenSymbol}!`, { id: toastId, duration: 5000 });
       setAmount('');
       onDepositSuccess();
 
@@ -225,7 +231,7 @@ export function DepositCard({ proposalId, vaultPDA, solBalance, baseTokenBalance
     } finally {
       setIsDepositing(false);
     }
-  }, [authenticated, ready, walletAddress, amount, balanceError, selectedToken, baseDecimals, signTransaction, vaultPDA, login, onDepositSuccess]);
+  }, [authenticated, ready, walletAddress, amount, balanceError, selectedToken, baseDecimals, signTransaction, vaultPDA, login, onDepositSuccess, isFutarchy]);
 
   // Handle claim (for completed markets)
   const handleClaim = useCallback(async () => {
@@ -253,6 +259,7 @@ export function DepositCard({ proposalId, vaultPDA, solBalance, baseTokenBalance
         vaultPDA,
         userAddress: walletAddress,
         signTransaction,
+        isFutarchy,
       });
 
       onDepositSuccess();
@@ -262,7 +269,7 @@ export function DepositCard({ proposalId, vaultPDA, solBalance, baseTokenBalance
     } finally {
       setIsDepositing(false);
     }
-  }, [authenticated, ready, walletAddress, winningMarketIndex, proposalId, vaultPDA, signTransaction, login, onDepositSuccess]);
+  }, [authenticated, ready, walletAddress, winningMarketIndex, proposalId, vaultPDA, signTransaction, login, onDepositSuccess, isFutarchy]);
 
   return (
     <div className="bg-[#121212] border border-[#191919] rounded-[9px] pt-2.5 pb-4 px-5 transition-all duration-300">
@@ -322,7 +329,7 @@ export function DepositCard({ proposalId, vaultPDA, solBalance, baseTokenBalance
             data-form-type="other"
             data-lpignore="true"
             data-1p-ignore="true"
-            value={isMarketCompleted ? (claimableBalance > 0 ? formatNumber(claimableBalance, selectedToken === 'sol' ? 4 : 0) : '0') : amount}
+            value={isMarketCompleted ? (claimableBalance > 0 ? formatNumber(claimableBalance, selectedToken === 'quote' ? 4 : 0) : '0') : amount}
             onChange={isMarketCompleted ? undefined : (e) => {
               const value = e.target.value;
               if (value === '' || /^\d*\.?\d*$/.test(value)) {
@@ -352,13 +359,13 @@ export function DepositCard({ proposalId, vaultPDA, solBalance, baseTokenBalance
                 MAX
               </button>
             )}
-            {/* Keep SOL/ZC toggle - user can switch to view different claimable amounts */}
+            {/* Toggle between quote/base token - user can switch to view different claimable amounts */}
             <button
-              onClick={() => setSelectedToken(selectedToken === 'sol' ? 'zc' : 'sol')}
+              onClick={() => setSelectedToken(selectedToken === 'quote' ? 'base' : 'quote')}
               className="flex items-center justify-center px-2 h-7 bg-[#333] rounded hover:bg-[#404040] transition cursor-pointer"
             >
-              {selectedToken === 'sol' ? (
-                <span className="text-xs text-[#AFAFAF] font-bold">SOL</span>
+              {selectedToken === 'quote' ? (
+                <span className="text-xs text-[#AFAFAF] font-bold">{quoteSymbol}</span>
               ) : (
                 <span className="text-xs text-[#AFAFAF] font-bold">{tokenSymbol}</span>
               )}

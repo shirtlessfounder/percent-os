@@ -20,23 +20,26 @@
 import { PublicKey, Transaction } from '@solana/web3.js';
 import toast from 'react-hot-toast';
 import { buildApiUrl } from './api-utils';
-import { fetchUserBalanceForWinningMint, redeemWinnings, VaultType } from './programs/vault';
+import { fetchUserBalanceForWinningMint as fetchUserBalanceOld, redeemWinnings as redeemWinningsOld, VaultType } from './programs/vault';
+import { fetchUserBalanceForWinningMint as fetchUserBalanceFutarchy, redeemWinnings as redeemWinningsFutarchy, executeSwapWithSlippage } from './programs/futarchy';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
-
-// SOL mint address (quote token)
-const SOL_MINT = 'So11111111111111111111111111111111111111112';
-const SOL_DECIMALS = 9;
 
 export interface OpenPositionConfig {
   proposalId: number;
   market: number;  // Which AMM market to trade on (0-3 for quantum markets)
-  inputToken: 'sol' | 'baseToken';  // Which conditional token we're selling
+  inputToken: 'quote' | 'base';  // Which conditional token we're selling
   inputAmount: string;  // Amount of conditional tokens to sell
   userAddress: string;
   signTransaction: (transaction: Transaction) => Promise<Transaction>;
   baseDecimals: number;  // Required - decimals for the base token
+  quoteDecimals: number; // Required - decimals for the quote token
+  tokenSymbol: string;  // Display symbol for the base token (e.g., 'ZC')
+  quoteSymbol: string;  // Display symbol for the quote token (e.g., 'SOL', 'USDC')
   moderatorId?: number;  // Moderator ID for multi-moderator support
+  // Futarchy-specific fields (new system)
+  isFutarchy?: boolean;  // Whether this is a futarchy proposal
+  poolPDA?: string;  // Pool PDA for futarchy swaps (from proposal.pools[market])
 }
 
 /**
@@ -44,35 +47,49 @@ export interface OpenPositionConfig {
  * Swaps conditional tokens: e.g., Pass-ZC → Pass-SOL or Fail-SOL → Fail-ZC
  */
 export async function openPosition(config: OpenPositionConfig): Promise<void> {
-  const { proposalId, market, inputToken, inputAmount, userAddress, signTransaction, baseDecimals, moderatorId } = config;
+  const { proposalId, market, inputToken, inputAmount, userAddress, signTransaction, baseDecimals, quoteDecimals, tokenSymbol, quoteSymbol, moderatorId, isFutarchy, poolPDA } = config;
 
-  // Determine swap direction based on inputToken
-  // inputToken 'baseToken' means we're selling base conditional for quote (SOL conditional)
-  // inputToken 'sol' means we're selling quote (SOL conditional) for base conditional
-  const isBaseToQuote = inputToken === 'baseToken';
+  // Determine swap direction based on inputToken and system type
+  // Futarchy pools: mintA = quote, mintB = base
+  // Old system pools: mintA = base, mintB = quote
+  const swapAToB = isFutarchy
+    ? inputToken === 'quote'      // Futarchy: selling quote (A) → swapAToB = true
+    : inputToken === 'base';      // Old: selling base (A) → swapAToB = true
 
   const toastId = toast.loading(`Swapping ${market}-${inputToken.toUpperCase()}...`);
 
   try {
     // Convert decimal amount to smallest units using dynamic decimals
-    const decimals = inputToken === 'baseToken' ? baseDecimals : SOL_DECIMALS;
+    const decimals = inputToken === 'base' ? baseDecimals : quoteDecimals;
     const amountInSmallestUnits = Math.floor(parseFloat(inputAmount) * Math.pow(10, decimals)).toString();
 
-    // Execute the swap on the selected market
-    await executeMarketSwap(
-      proposalId,
-      market,
-      isBaseToQuote,
-      amountInSmallestUnits,
-      userAddress,
-      signTransaction,
-      moderatorId
-    );
+    if (isFutarchy && poolPDA) {
+      // Futarchy: use SDK directly
+      await executeFutarchySwap(
+        poolPDA,
+        swapAToB,
+        amountInSmallestUnits,
+        userAddress,
+        signTransaction
+      );
+    } else {
+      // Old system: use API
+      await executeMarketSwap(
+        proposalId,
+        market,
+        swapAToB,
+        amountInSmallestUnits,
+        userAddress,
+        signTransaction,
+        moderatorId
+      );
+    }
 
     // Success message
-    const outputToken = inputToken === 'baseToken' ? 'SOL' : 'BASE';
+    const inputSymbol = inputToken === 'base' ? tokenSymbol : quoteSymbol;
+    const outputSymbol = inputToken === 'base' ? quoteSymbol : tokenSymbol;
     toast.success(
-      `Successfully swapped ${market}-${inputToken.toUpperCase()} → ${market}-${outputToken}!`,
+      `Successfully swapped ${inputSymbol} → ${outputSymbol}!`,
       { id: toastId, duration: 5000 }
     );
 
@@ -97,15 +114,20 @@ export async function claimWinnings(config: {
   vaultPDA: string;
   userAddress: string;
   signTransaction: (transaction: Transaction) => Promise<Transaction>;
+  isFutarchy?: boolean;  // Whether this is a futarchy proposal
 }): Promise<void> {
-  const { proposalId, winningMarketIndex, vaultPDA, userAddress, signTransaction } = config;
+  const { proposalId, winningMarketIndex, vaultPDA, userAddress, signTransaction, isFutarchy = false } = config;
 
   const toastId = toast.loading('Claiming winnings from both vaults...');
 
   try {
+    // Use appropriate SDK based on system
+    const fetchBalanceFn = isFutarchy ? fetchUserBalanceFutarchy : fetchUserBalanceOld;
+    const redeemFn = isFutarchy ? redeemWinningsFutarchy : redeemWinningsOld;
+
     // Get user balances for the winning market only
     // Uses Promise.allSettled internally to gracefully handle network errors
-    const winningBalances = await fetchUserBalanceForWinningMint(
+    const winningBalances = await fetchBalanceFn(
       new PublicKey(vaultPDA),
       new PublicKey(userAddress),
       winningMarketIndex
@@ -123,9 +145,9 @@ export async function claimWinnings(config: {
       throw new Error('No winning tokens to claim');
     }
 
-    // Redeem from each vault type that has tokens using client-side SDK
+    // Redeem from each vault type that has tokens using appropriate SDK
     for (const vaultType of vaultTypesToRedeem) {
-      await redeemWinnings(
+      await redeemFn(
         new PublicKey(vaultPDA),
         vaultType,
         new PublicKey(userAddress),
@@ -151,7 +173,30 @@ export async function claimWinnings(config: {
 }
 
 /**
- * Execute a swap on a specific market (0-3 for quantum markets)
+ * Execute a swap on a futarchy AMM pool using the SDK directly
+ */
+async function executeFutarchySwap(
+  poolPDA: string,
+  swapAToB: boolean,  // A = base conditional, B = quote conditional (SOL)
+  amountIn: string,
+  userAddress: string,
+  signTransaction: (transaction: Transaction) => Promise<Transaction>
+): Promise<void> {
+  // Default to 20% slippage for large swaps (2000 bps)
+  const slippageBps = 2000;
+
+  await executeSwapWithSlippage(
+    new PublicKey(poolPDA),
+    swapAToB,
+    amountIn,
+    slippageBps,
+    new PublicKey(userAddress),
+    signTransaction
+  );
+}
+
+/**
+ * Execute a swap on a specific market (0-3 for quantum markets) via API (old system)
  */
 async function executeMarketSwap(
   proposalId: number,
