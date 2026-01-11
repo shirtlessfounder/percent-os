@@ -285,20 +285,11 @@ export function ChartBox({
                     <span className="md:hidden">
                       {(() => {
                         const tokenUsed = getTokenUsed(trade.isBaseToQuote, trade.market);
+                        if (!tokenUsed) return '-';
                         const amount = parseFloat(trade.amountIn);
 
                         const removeTrailingZeros = (num: string): string => {
                           return num.replace(/\.?0+$/, '');
-                        };
-
-                        // Format SOL with appropriate decimals based on size
-                        const formatSolAmount = (val: number): string => {
-                          if (val >= 100) return removeTrailingZeros(val.toFixed(1));
-                          if (val >= 1) return removeTrailingZeros(val.toFixed(2));
-                          if (val >= 0.01) return removeTrailingZeros(val.toFixed(3));
-                          if (val >= 0.0001) return removeTrailingZeros(val.toFixed(4));
-                          if (val === 0) return '0';
-                          return val.toExponential(1);
                         };
 
                         let formattedAmount;
@@ -325,20 +316,11 @@ export function ChartBox({
                     <span className="hidden md:inline">
                       {(() => {
                         const tokenUsed = getTokenUsed(trade.isBaseToQuote, trade.market);
+                        if (!tokenUsed) return '-';
                         const amount = parseFloat(trade.amountIn);
 
                         const removeTrailingZeros = (num: string): string => {
                           return num.replace(/\.?0+$/, '');
-                        };
-
-                        // Format SOL with appropriate decimals based on size
-                        const formatSolAmount = (val: number): string => {
-                          if (val >= 100) return removeTrailingZeros(val.toFixed(2));
-                          if (val >= 1) return removeTrailingZeros(val.toFixed(4));
-                          if (val >= 0.001) return removeTrailingZeros(val.toFixed(5));
-                          if (val >= 0.000001) return removeTrailingZeros(val.toFixed(6));
-                          if (val === 0) return '0';
-                          return val.toExponential(2);
                         };
 
                         let formattedAmount;
