@@ -77,7 +77,11 @@ export interface FutarchyChartDataPoint {
  * Build URL with optional date query parameters
  */
 function buildUrl(path: string, params?: { from?: Date; to?: Date; limit?: number; interval?: string }): string {
-  const url = new URL(path, MONITOR_URL);
+  // Note: new URL(path, base) replaces the base path if path starts with '/'
+  // So we need to manually concatenate to preserve the /cmb prefix
+  const baseUrl = MONITOR_URL.endsWith('/') ? MONITOR_URL.slice(0, -1) : MONITOR_URL;
+  const fullPath = path.startsWith('/') ? path : `/${path}`;
+  const url = new URL(`${baseUrl}${fullPath}`);
 
   if (params?.from) {
     url.searchParams.set('from', params.from.toISOString());
