@@ -17,10 +17,10 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { PublicKey, Transaction } from '@solana/web3.js';
+import { PublicKey, Transaction, TransactionInstruction } from '@solana/web3.js';
 import { BN } from '@coral-xyz/anchor';
 import { VaultType } from '@zcomb/vault-sdk';
-import { getAssociatedTokenAddress, getAccount } from '@solana/spl-token';
+import { getAssociatedTokenAddress, getAccount, createAssociatedTokenAccountInstruction, ASSOCIATED_TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { createVaultClient, createReadOnlyVaultClient, getConnection, getTokenProgramForMint } from './utils';
 
 export { VaultType };
@@ -46,10 +46,47 @@ export async function deposit(
   signTransaction: SignTransaction
 ): Promise<string> {
   const vaultClient = createVaultClient(userPublicKey, signTransaction);
+  const connection = getConnection();
 
   const amountBN = BN.isBN(amount) ? amount : new BN(amount.toString());
 
+  // Pre-create ATAs for conditional mints if they don't exist (needed for external wallets)
+  const preInstructions: TransactionInstruction[] = [];
+
+  // Fetch vault to get number of options
+  const vault = await vaultClient.fetchVault(vaultPDA);
+  const numOptions = vault.numOptions;
+
+  // Create ATAs for all conditional mints
+  for (let i = 0; i < numOptions; i++) {
+    const [condMint] = vaultClient.deriveConditionalMint(vaultPDA, vaultType, i);
+    const programId = await getTokenProgramForMint(condMint);
+    const ata = await getAssociatedTokenAddress(condMint, userPublicKey, false, programId);
+
+    try {
+      await getAccount(connection, ata, 'confirmed', programId);
+    } catch {
+      // Account doesn't exist, create it
+      preInstructions.push(
+        createAssociatedTokenAccountInstruction(
+          userPublicKey,
+          ata,
+          userPublicKey,
+          condMint,
+          programId,
+          ASSOCIATED_TOKEN_PROGRAM_ID
+        )
+      );
+    }
+  }
+
   const builder = await vaultClient.deposit(userPublicKey, vaultPDA, vaultType, amountBN);
+
+  // Add pre-instructions if any ATAs need to be created
+  if (preInstructions.length > 0) {
+    builder.preInstructions(preInstructions);
+  }
+
   const signature = await builder.rpc();
 
   return signature;

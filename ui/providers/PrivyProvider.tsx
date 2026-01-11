@@ -13,8 +13,8 @@ const MAINNET_WS_URL = MAINNET_RPC_URL.replace('https://', 'wss://').replace('ht
 
 // Initialize Solana wallet connectors
 const solanaConnectors = toSolanaWalletConnectors({
-  // Disable auto-connect to prevent wallet pop-ups on page load
-  shouldAutoConnect: false,
+  // Enable auto-connect so external wallets reconnect and appear in useSolanaWallets()
+  shouldAutoConnect: true,
 });
 
 export default function PrivyProviderWrapper({ children }: { children: React.ReactNode }) {

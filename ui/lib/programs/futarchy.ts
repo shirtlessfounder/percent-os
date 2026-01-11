@@ -22,10 +22,10 @@
  * Uses @zcomb/programs-sdk for vault and AMM operations
  */
 
-import { PublicKey, Transaction } from '@solana/web3.js';
+import { PublicKey, Transaction, TransactionInstruction } from '@solana/web3.js';
 import { BN } from '@coral-xyz/anchor';
 import { FutarchyClient, VaultType } from '@zcomb/programs-sdk';
-import { getAssociatedTokenAddress, getAccount } from '@solana/spl-token';
+import { getAssociatedTokenAddress, getAccount, createAssociatedTokenAccountInstruction, ASSOCIATED_TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { createFutarchyClient, createReadOnlyFutarchyClient, getConnection, getTokenProgramForMint } from './utils';
 
 // Re-export VaultType from programs-sdk
@@ -49,9 +49,46 @@ export async function deposit(
   signTransaction: SignTransaction
 ): Promise<string> {
   const client = createFutarchyClient(userPublicKey, signTransaction);
+  const connection = getConnection();
   const amountBN = BN.isBN(amount) ? amount : new BN(amount.toString());
 
+  // Pre-create ATAs for conditional mints if they don't exist (needed for external wallets)
+  const preInstructions: TransactionInstruction[] = [];
+
+  // Fetch vault to get number of options
+  const vault = await client.vault.fetchVault(vaultPDA);
+  const numOptions = vault.numOptions;
+
+  // Create ATAs for all conditional mints
+  for (let i = 0; i < numOptions; i++) {
+    const [condMint] = client.vault.deriveConditionalMint(vaultPDA, vaultType, i);
+    const programId = await getTokenProgramForMint(condMint);
+    const ata = await getAssociatedTokenAddress(condMint, userPublicKey, false, programId);
+
+    try {
+      await getAccount(connection, ata, 'confirmed', programId);
+    } catch {
+      // Account doesn't exist, create it
+      preInstructions.push(
+        createAssociatedTokenAccountInstruction(
+          userPublicKey,
+          ata,
+          userPublicKey,
+          condMint,
+          programId,
+          ASSOCIATED_TOKEN_PROGRAM_ID
+        )
+      );
+    }
+  }
+
   const builder = await client.vault.deposit(userPublicKey, vaultPDA, vaultType, amountBN);
+
+  // Add pre-instructions if any ATAs need to be created
+  if (preInstructions.length > 0) {
+    builder.preInstructions(preInstructions);
+  }
+
   const signature = await builder.rpc();
 
   return signature;
@@ -69,9 +106,42 @@ export async function withdraw(
   signTransaction: SignTransaction
 ): Promise<string> {
   const client = createFutarchyClient(userPublicKey, signTransaction);
+  const connection = getConnection();
   const amountBN = BN.isBN(amount) ? amount : new BN(amount.toString());
 
+  // Pre-create ATA for underlying mint if it doesn't exist (needed for external wallets)
+  const preInstructions: TransactionInstruction[] = [];
+
+  // Fetch vault to get underlying mint
+  const vault = await client.vault.fetchVault(vaultPDA);
+  const mintInfo = vaultType === VaultType.Base ? vault.baseMint : vault.quoteMint;
+  const underlyingMint = 'address' in mintInfo ? mintInfo.address : mintInfo as PublicKey;
+  const programId = await getTokenProgramForMint(underlyingMint);
+  const ata = await getAssociatedTokenAddress(underlyingMint, userPublicKey, false, programId);
+
+  try {
+    await getAccount(connection, ata, 'confirmed', programId);
+  } catch {
+    // Account doesn't exist, create it
+    preInstructions.push(
+      createAssociatedTokenAccountInstruction(
+        userPublicKey,
+        ata,
+        userPublicKey,
+        underlyingMint,
+        programId,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      )
+    );
+  }
+
   const builder = await client.vault.withdraw(userPublicKey, vaultPDA, vaultType, amountBN);
+
+  // Add pre-instructions if ATA needs to be created
+  if (preInstructions.length > 0) {
+    builder.preInstructions(preInstructions);
+  }
+
   const signature = await builder.rpc();
 
   return signature;
@@ -87,8 +157,41 @@ export async function redeemWinnings(
   signTransaction: SignTransaction
 ): Promise<string> {
   const client = createFutarchyClient(userPublicKey, signTransaction);
+  const connection = getConnection();
+
+  // Pre-create ATA for underlying mint if it doesn't exist (needed for external wallets)
+  const preInstructions: TransactionInstruction[] = [];
+
+  // Fetch vault to get underlying mint
+  const vault = await client.vault.fetchVault(vaultPDA);
+  const mintInfo = vaultType === VaultType.Base ? vault.baseMint : vault.quoteMint;
+  const underlyingMint = 'address' in mintInfo ? mintInfo.address : mintInfo as PublicKey;
+  const programId = await getTokenProgramForMint(underlyingMint);
+  const ata = await getAssociatedTokenAddress(underlyingMint, userPublicKey, false, programId);
+
+  try {
+    await getAccount(connection, ata, 'confirmed', programId);
+  } catch {
+    // Account doesn't exist, create it
+    preInstructions.push(
+      createAssociatedTokenAccountInstruction(
+        userPublicKey,
+        ata,
+        userPublicKey,
+        underlyingMint,
+        programId,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      )
+    );
+  }
 
   const builder = await client.vault.redeemWinnings(userPublicKey, vaultPDA, vaultType);
+
+  // Add pre-instructions if ATA needs to be created
+  if (preInstructions.length > 0) {
+    builder.preInstructions(preInstructions);
+  }
+
   const signature = await builder.rpc();
 
   return signature;
