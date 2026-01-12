@@ -333,6 +333,7 @@ export default function HomePage() {
             baseMint={baseMint}
             quoteSymbol={quoteSymbol}
             quoteIcon={quoteIcon}
+            isFutarchy={isFutarchy}
           />
 
           {/* Empty state */}
@@ -365,6 +366,7 @@ export default function HomePage() {
           baseMint={baseMint}
           quoteSymbol={quoteSymbol}
           quoteIcon={quoteIcon}
+          isFutarchy={isFutarchy}
         />
 
         {/* Content Area */}

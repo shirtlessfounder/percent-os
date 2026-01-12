@@ -21,7 +21,7 @@ const WALLETS = [
   { address: '7rajfxUQBHRXiSrQWQo9FZ2zBbLy4Xvh9yYfa7tkvj4U', label: '7raj' },
 ];
 const SURF_TOKEN = 'SurfwRjQQFV6P7JdhxSptf4CjWU8sb88rUiaLCystar';
-const DAYS_BACK = 25; // Start from Dec 11 (when Birdeye volume data begins)
+const DAYS_BACK = 31; // Start from Dec 11 (when Birdeye volume data begins)
 const MIN_SOL_AMOUNT = 0.01; // Ignore spam below this
 
 // ANSI colors for console

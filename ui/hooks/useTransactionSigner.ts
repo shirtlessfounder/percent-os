@@ -22,7 +22,7 @@ import { useConnectedStandardWallets } from '@privy-io/react-auth/solana';
 import { Transaction } from '@solana/web3.js';
 
 /**
- * Hook that provides transaction signing using Privy's wallet standard interface.
+ * Hook that provides transaction and message signing using Privy's wallet standard interface.
  * Works with both embedded wallets and external wallets (Phantom via wallet-connect).
  *
  * IMPORTANT: Uses `useConnectedStandardWallets` (not `useSolanaWallets`) because:
@@ -55,5 +55,23 @@ export function useTransactionSigner() {
     [wallets]
   );
 
-  return { signTransaction };
+  const signMessage = useCallback(
+    async (message: Uint8Array): Promise<Uint8Array> => {
+      const wallet = wallets[0];
+
+      if (!wallet) {
+        throw new Error('No Solana wallet found. Please connect a wallet.');
+      }
+
+      // Sign the message using the standard wallet interface
+      const result = await wallet.signMessage({ message });
+
+      return result.signature;
+    },
+    [wallets]
+  );
+
+  const hasWallet = wallets.length > 0;
+
+  return { signTransaction, signMessage, hasWallet };
 }

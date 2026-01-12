@@ -34,6 +34,14 @@ export const VISIBILITY_THRESHOLD = parseInt(process.env.NEXT_PUBLIC_VISIBILITY_
 /**
  * DAO data returned from zcombinator API
  */
+export interface ZcombinatorProposer {
+  id: number;
+  dao_id: number;
+  proposer_wallet: string;
+  added_by: string;
+  created_at: string;
+}
+
 export interface ZcombinatorDAO {
   id: number;
   dao_pda: string;
@@ -49,7 +57,7 @@ export interface ZcombinatorDAO {
   parent_dao_id: number | null;
   dao_type: 'parent' | 'child';
   created_at: string;
-  proposer_token_threshold: number | null;
+  proposer_token_threshold: string | null; // Raw token units as string
   withdrawal_percentage: number;
   treasury_vault: string;
   mint_vault: string;
@@ -64,6 +72,8 @@ export interface ZcombinatorDAO {
   // Visibility level for filtering: 0=hidden, 1=test, 2=production
   visibility?: number;
   icon?: string;
+  // Proposers list (returned by GET /dao/:daoPda)
+  proposers?: ZcombinatorProposer[];
 }
 
 class GovernanceAPI {
@@ -698,6 +708,100 @@ class GovernanceAPI {
       console.error('Error creating proposal:', error);
       throw error;
     }
+  }
+
+  /**
+   * Create a parent DAO via the zcombinator API.
+   *
+   * @param params - DAO creation parameters including signed_hash
+   * @returns Created DAO details including PDAs and vaults
+   */
+  async createParentDao(params: {
+    wallet: string;
+    name: string;
+    token_mint: string;
+    pool_address: string;
+    treasury_cosigner: string;
+    funding_signature: string;
+    signed_hash: string;
+  }): Promise<{
+    dao_pda: string;
+    moderator_pda: string;
+    treasury_vault: string;
+    mint_vault: string;
+    admin_wallet: string;
+    pool_type: 'damm' | 'dlmm';
+    quote_mint: string;
+    transaction: string;
+  }> {
+    const response = await fetch(`${ZCOMBINATOR_API_URL}/dao/parent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || error.message || 'Failed to create DAO');
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Get a single DAO by its PDA address.
+   * Includes all fields needed for readiness checking.
+   */
+  async getZcombinatorDaoByPda(daoPda: string): Promise<ZcombinatorDAO | null> {
+    try {
+      const response = await fetch(`${ZCOMBINATOR_API_URL}/dao/${daoPda}`);
+      if (!response.ok) {
+        if (response.status === 404) {
+          return null;
+        }
+        throw new Error('Failed to fetch DAO');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('[getZcombinatorDaoByPda] Error:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Create a proposal for a futarchy DAO via the zcombinator API.
+   * Requires signed_hash authentication.
+   *
+   * @param params - Proposal creation parameters including signed_hash
+   * @returns Created proposal details
+   */
+  async createFutarchyProposal(params: {
+    dao_pda: string;
+    title: string;
+    description: string;
+    length_secs: number;
+    warmup_secs: number;
+    options: string[];
+    wallet: string;
+    signed_hash: string;
+  }): Promise<{
+    proposal_pda: string;
+    proposal_id: number;
+    metadata_cid: string;
+    dao_pda: string;
+  }> {
+    const response = await fetch(`${ZCOMBINATOR_API_URL}/dao/proposal`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || error.message || 'Failed to create proposal');
+    }
+
+    return response.json();
   }
 }
 

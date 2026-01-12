@@ -24,6 +24,7 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import ExploreHeader from '@/components/ExploreHeader';
 import { useOldSystemProposals } from '@/hooks/useAllProposals';
+import { usePrivyWallet } from '@/hooks/usePrivyWallet';
 import { api, ZcombinatorDAO, VISIBILITY_THRESHOLD } from '@/lib/api';
 
 interface Project {
@@ -52,6 +53,7 @@ function getTokenSlug(moderatorId: number): string {
 
 export default function ProjectsPage() {
   const router = useRouter();
+  const { walletAddress } = usePrivyWallet();
   // Only fetch old system proposals - futarchy DAOs use stats from /dao endpoint
   const { proposals, loading: oldSystemLoading, error: oldSystemError } = useOldSystemProposals();
 

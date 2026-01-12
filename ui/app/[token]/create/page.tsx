@@ -1,14 +1,17 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { usePrivyWallet } from '@/hooks/usePrivyWallet';
-import { useSolanaWallets } from '@privy-io/react-auth/solana';
 import { useWalletBalances } from '@/hooks/useWalletBalances';
+import { useTransactionSigner } from '@/hooks/useTransactionSigner';
 import { useTokenContext } from '@/providers/TokenContext';
+import { useDaoReadiness } from '@/hooks/useDaoReadiness';
 import { api } from '@/lib/api';
+import { createSignedHash } from '@/lib/dao-utils';
 import Header from '@/components/Header';
 import EditableFlipCard from '@/components/EditableFlipCard';
+import DaoSetupBlockers from '@/components/DaoSetupBlockers';
 import toast from 'react-hot-toast';
 import bs58 from 'bs58';
 import { handleMarkdownKeyDown } from '@/lib/renderMarkdown';
@@ -16,8 +19,24 @@ import { handleMarkdownKeyDown } from '@/lib/renderMarkdown';
 export default function CreatePage() {
   const searchParams = useSearchParams();
   const { ready, authenticated, user, walletAddress, login } = usePrivyWallet();
-  const { wallets } = useSolanaWallets();
-  const { tokenSlug, poolAddress, poolMetadata, baseMint, baseDecimals, tokenSymbol, moderatorId, icon, isLoading: poolLoading, quoteMint, quoteDecimals, quoteSymbol, quoteIcon } = useTokenContext();
+  const { signMessage: standardSignMessage, hasWallet } = useTransactionSigner();
+  const { tokenSlug, poolAddress, poolMetadata, baseMint, baseDecimals, tokenSymbol, moderatorId, icon, isLoading: poolLoading, quoteMint, quoteDecimals, quoteSymbol, quoteIcon, isFutarchy, daoPda, poolType } = useTokenContext();
+
+  // Check DAO readiness for futarchy DAOs
+  const {
+    loading: readinessLoading,
+    daoData,
+    mintAuthorityReady,
+    lpPositionReady,
+    mintVault,
+    adminWallet,
+    ownerWallet,
+    refetch: refetchReadiness,
+  } = useDaoReadiness(daoPda, baseMint, poolAddress, poolType, walletAddress);
+
+  // Check if current user is the DAO owner and needs to complete setup
+  const isOwner = ownerWallet && walletAddress && ownerWallet === walletAddress;
+  const needsSetup = isFutarchy && isOwner && (!mintAuthorityReady || !lpPositionReady);
   const { sol: solBalance, baseToken: baseTokenBalance } = useWalletBalances({
     walletAddress,
     baseMint,
@@ -33,6 +52,7 @@ export default function CreatePage() {
   const [selectedChoiceIndex, setSelectedChoiceIndex] = useState(0); // 0 = "No", 1+ = custom choices
   const [isChoiceInputFocused, setIsChoiceInputFocused] = useState(false);
   const [proposalLengthHours, setProposalLengthHours] = useState('24');
+  const [warmupHours, setWarmupHours] = useState('2'); // Default to 2 hours
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
@@ -99,6 +119,10 @@ export default function CreatePage() {
   const firstDigitRef = useRef<HTMLInputElement>(null);
   const secondDigitRef = useRef<HTMLInputElement>(null);
   const thirdDigitRef = useRef<HTMLInputElement>(null);
+  // Warmup flip card refs (for futarchy DAOs)
+  const warmupFirstDigitRef = useRef<HTMLInputElement>(null);
+  const warmupSecondDigitRef = useRef<HTMLInputElement>(null);
+  const warmupThirdDigitRef = useRef<HTMLInputElement>(null);
 
   // Ref for choice input to maintain focus when navigating
   const choiceInputRef = useRef<HTMLInputElement>(null);
@@ -115,9 +139,17 @@ export default function CreatePage() {
     }
   }, [selectedChoiceIndex, choices]);
 
-  // Check if wallet is authorized for THIS specific pool
+  // Check if wallet is authorized for THIS specific pool (old system only)
+  // Skip for futarchy DAOs - they use the new zcombinator API
   useEffect(() => {
     const checkAuth = async () => {
+      // Skip old system check for futarchy DAOs
+      if (isFutarchy) {
+        setIsAuthorized(false);
+        setAuthLoading(false);
+        return;
+      }
+
       if (!walletAddress || !poolAddress) {
         setIsAuthorized(false);
         setAuthLoading(false);
@@ -136,7 +168,24 @@ export default function CreatePage() {
     };
 
     checkAuth();
-  }, [walletAddress, poolAddress, tokenSlug]);
+  }, [walletAddress, poolAddress, tokenSlug, isFutarchy]);
+
+  // Check if wallet is authorized for futarchy DAOs (client-side using DAO data)
+  // Authorization: wallet is owner OR wallet is in proposers list OR meets token threshold
+  const futarchyAuthorized = useMemo(() => {
+    if (!isFutarchy || !walletAddress || !daoData) return false;
+    // Owner can always propose
+    if (daoData.owner_wallet === walletAddress) return true;
+    // Check if in proposers whitelist
+    if (daoData.proposers?.some(p => p.proposer_wallet === walletAddress)) return true;
+    // Check token threshold (client-side balance check)
+    if (daoData.proposer_token_threshold && baseTokenBalance !== undefined) {
+      const thresholdRaw = BigInt(daoData.proposer_token_threshold);
+      const balanceRaw = BigInt(Math.floor(baseTokenBalance * Math.pow(10, daoData.token_decimals)));
+      if (balanceRaw >= thresholdRaw) return true;
+    }
+    return false;
+  }, [isFutarchy, walletAddress, daoData, baseTokenBalance]);
 
   const hasPermission = isAuthorized;
   // For /zc/, logged-in users can propose even if not whitelisted
@@ -146,7 +195,11 @@ export default function CreatePage() {
   const poolName = poolMetadata?.ticker?.toUpperCase() || tokenSlug.toUpperCase();
 
   // Check if form is valid (title, description, at least first custom choice, and duration filled)
-  const isFormInvalid = !title.trim() || !description.trim() || !choices[0]?.trim() || parseFloat(proposalLengthHours) <= 0;
+  // For futarchy DAOs, also validate warmup
+  const durationHours = parseFloat(proposalLengthHours);
+  const warmupHoursVal = parseFloat(warmupHours);
+  const isFormInvalid = !title.trim() || !description.trim() || !choices[0]?.trim() || durationHours <= 0 ||
+    (isFutarchy && (warmupHoursVal <= 0 || warmupHoursVal > durationHours * 0.8));
 
   // Handle proposal submission for non-whitelisted users
   const handlePropose = async () => {
@@ -159,9 +212,8 @@ export default function CreatePage() {
     const toastId = toast.loading('Sign the message in your wallet...');
 
     try {
-      // Get wallet for signing
-      const wallet = wallets[0];
-      if (!wallet) {
+      // Check wallet availability using standard wallet interface
+      if (!hasWallet) {
         toast.error('No Solana wallet found', { id: toastId });
         setIsSubmitting(false);
         return;
@@ -175,11 +227,11 @@ export default function CreatePage() {
       };
       const message = JSON.stringify(messageObj);
 
-      // Request user to sign message
+      // Request user to sign message using standard wallet interface (works with both embedded and external wallets)
       let signatureBytes: Uint8Array;
       try {
         const messageBytes = new TextEncoder().encode(message);
-        signatureBytes = await wallet.signMessage(messageBytes);
+        signatureBytes = await standardSignMessage(messageBytes);
       } catch (signError) {
         console.error('Signature rejected:', signError);
         toast.error('Signature rejected by user', { id: toastId });
@@ -281,9 +333,8 @@ export default function CreatePage() {
     const toastId = toast.loading('Sign the attestation in your wallet...');
 
     try {
-      // Get wallet for signing
-      const wallet = wallets[0];
-      if (!wallet) {
+      // Check wallet availability using standard wallet interface
+      if (!hasWallet) {
         toast.error('No Solana wallet found', { id: toastId });
         setIsSubmitting(false);
         return;
@@ -298,11 +349,11 @@ export default function CreatePage() {
       };
       const attestationMessage = JSON.stringify(attestation);
 
-      // Request user to sign attestation
+      // Request user to sign attestation using standard wallet interface (works with both embedded and external wallets)
       let signatureBytes: Uint8Array;
       try {
         const messageBytes = new TextEncoder().encode(attestationMessage);
-        signatureBytes = await wallet.signMessage(messageBytes);
+        signatureBytes = await standardSignMessage(messageBytes);
       } catch (signError) {
         console.error('Signature rejected:', signError);
         toast.error('Signature rejected by user', { id: toastId });
@@ -373,7 +424,125 @@ export default function CreatePage() {
     }
   };
 
-  const stillLoading = !ready || poolLoading || (walletAddress && authLoading);
+  // Handle proposal submission for futarchy DAOs (new system)
+  const handleFutarchySubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Validation
+    if (!title.trim()) {
+      toast.error('Title is required');
+      return;
+    }
+    if (!description.trim()) {
+      toast.error('Description is required');
+      return;
+    }
+    if (!choices[0]?.trim()) {
+      toast.error('At least one custom choice is required (Choice 2)');
+      return;
+    }
+    const hours = parseFloat(proposalLengthHours);
+    if (!hours || hours <= 0) {
+      toast.error('Proposal length must be a positive number');
+      return;
+    }
+    const warmup = parseFloat(warmupHours);
+    if (!warmup || warmup <= 0) {
+      toast.error('Warmup duration must be a positive number');
+      return;
+    }
+    // Validate warmup <= 80% of duration
+    const maxWarmupHours = hours * 0.8;
+    if (warmup > maxWarmupHours) {
+      toast.error(`Warmup cannot exceed 80% of duration (max: ${maxWarmupHours.toFixed(1)} hours)`);
+      return;
+    }
+    if (!daoPda) {
+      toast.error('DAO not loaded');
+      return;
+    }
+    if (!walletAddress) {
+      toast.error('Wallet not connected');
+      return;
+    }
+
+    setIsSubmitting(true);
+    const toastId = toast.loading('Sign the message to verify ownership...');
+
+    try {
+      // Check wallet availability using standard wallet interface
+      if (!hasWallet) {
+        toast.error('No Solana wallet found', { id: toastId });
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Convert hours to seconds
+      // For test DAOs, hardcode short durations for testing
+      const isTestUi = tokenSlug === 'testui';
+      const isTestExt = tokenSlug === 'testext1';
+      const length_secs = (isTestUi || isTestExt) ? 7 * 60 : Math.floor(hours * 3600);
+      const warmup_secs = isTestUi ? 2 * 60 : isTestExt ? 3 * 60 : Math.floor(warmup * 3600);
+
+      // Build options array: "No" + all custom choices
+      const options = ['No', ...choices.filter(c => c.trim()).map(c => c.trim())];
+
+      // Build request body (without signed_hash)
+      const requestBody = {
+        dao_pda: daoPda,
+        title: title.trim(),
+        description: description.trim(),
+        length_secs,
+        warmup_secs,
+        options,
+        wallet: walletAddress,
+      };
+
+      // Sign the request body using standard wallet interface (works with both embedded and external wallets)
+      let signedHash: string;
+      try {
+        signedHash = await createSignedHash(requestBody, standardSignMessage);
+      } catch (signError) {
+        console.error('Signature rejected:', signError);
+        toast.error('Signature rejected by user', { id: toastId });
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Update loading message
+      toast.loading('Creating Quantum Market...', { id: toastId });
+
+      // Call the API
+      const result = await api.createFutarchyProposal({
+        ...requestBody,
+        signed_hash: signedHash,
+      });
+
+      toast.success(
+        `Proposal created successfully!`,
+        { id: toastId }
+      );
+
+      // Reset form
+      setTitle('');
+      setDescription('');
+      setChoices(['']);
+      setSelectedChoiceIndex(0);
+      setProposalLengthHours('24');
+      setWarmupHours('2');
+
+    } catch (error) {
+      console.error('Create QM failed:', error);
+      toast.error(
+        `Failed to create QM: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        { id: toastId }
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const stillLoading = !ready || poolLoading || (walletAddress && authLoading) || (isFutarchy && readinessLoading);
 
   return (
     <div className="flex h-screen" style={{ backgroundColor: '#0a0a0a' }}>
@@ -393,6 +562,7 @@ export default function CreatePage() {
           isCreateAuthorized={tokenSlug !== 'zc' || isAuthorized}
           quoteSymbol={quoteSymbol}
           quoteIcon={quoteIcon}
+          isFutarchy={isFutarchy}
         />
 
         {/* Content Area */}
@@ -409,8 +579,19 @@ export default function CreatePage() {
                 <div className="flex items-center justify-center py-16">
                   <p style={{ color: '#6B6E71' }}>Checking permissions...</p>
                 </div>
+              ) : needsSetup ? (
+                <DaoSetupBlockers
+                  mintAuthorityReady={mintAuthorityReady}
+                  lpPositionReady={lpPositionReady}
+                  mintVault={mintVault}
+                  adminWallet={adminWallet}
+                  tokenMint={baseMint}
+                  poolAddress={poolAddress}
+                  poolType={poolType}
+                  onTransferComplete={refetchReadiness}
+                />
               ) : (
-              <form onSubmit={handleSubmit}>
+              <form onSubmit={isFutarchy ? handleFutarchySubmit : handleSubmit}>
                 <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                   {/* Left Column (3/5 width) */}
                   <div className="md:col-span-3 flex flex-col gap-4 md:pb-12">
@@ -420,20 +601,22 @@ export default function CreatePage() {
                         <span className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] uppercase" style={{ color: '#DDDDD7' }}>
                           Proposal*
                         </span>
-                        {/* Report Staker Toggle */}
-                        <div
-                          onClick={handleReportStakerToggle}
-                          className="flex items-center p-[3px] border border-[#191919] rounded-full cursor-pointer"
-                        >
-                          <span
-                            className={`px-3 py-1 rounded-full text-xs font-medium font-ibm-plex-mono ${
-                              isReportStaker ? 'bg-[#DDDDD7]' : 'bg-transparent'
-                            }`}
-                            style={{ color: isReportStaker ? '#161616' : '#6B6E71', fontFamily: 'IBM Plex Mono, monospace' }}
+                        {/* Report Staker Toggle - only show for main ZC DAO (old system) */}
+                        {tokenSlug === 'zc' && !isFutarchy && (
+                          <div
+                            onClick={handleReportStakerToggle}
+                            className="flex items-center p-[3px] border border-[#191919] rounded-full cursor-pointer"
                           >
-                            Report Staker
-                          </span>
-                        </div>
+                            <span
+                              className={`px-3 py-1 rounded-full text-xs font-medium font-ibm-plex-mono ${
+                                isReportStaker ? 'bg-[#DDDDD7]' : 'bg-transparent'
+                              }`}
+                              style={{ color: isReportStaker ? '#161616' : '#6B6E71', fontFamily: 'IBM Plex Mono, monospace' }}
+                            >
+                              Report Staker
+                            </span>
+                          </div>
+                        )}
                       </div>
                       <input
                         id="title"
@@ -690,6 +873,71 @@ export default function CreatePage() {
                       </div>
                     </div>
 
+                    {/* Warmup Duration Card - Only for futarchy DAOs */}
+                    {isFutarchy && (
+                      <div className="bg-[#121212] border border-[#191919] rounded-[9px] py-4 px-5">
+                        <span className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] uppercase mb-4 block text-center" style={{ color: '#DDDDD7' }}>
+                          Warmup*
+                        </span>
+
+                        {/* Bordered Container for Flip Cards */}
+                        <div className="border border-[#191919] rounded-[6px] py-6 px-4">
+                          {/* Flip Cards - 3 digits for up to 999 hours */}
+                          <div className="flex items-center justify-center gap-2">
+                            <EditableFlipCard
+                              ref={warmupFirstDigitRef}
+                              digit={warmupHours.padStart(3, '0')[0]}
+                              onChange={(val) => {
+                                const padded = warmupHours.padStart(3, '0');
+                                const newHours = parseInt(val + padded[1] + padded[2]) || 0;
+                                setWarmupHours(newHours.toString());
+                              }}
+                              onValueEntered={() => {
+                                if (warmupSecondDigitRef.current) {
+                                  warmupSecondDigitRef.current.focus();
+                                  warmupSecondDigitRef.current.select();
+                                }
+                              }}
+                              disabled={isSubmitting}
+                              size="small"
+                            />
+                            <EditableFlipCard
+                              ref={warmupSecondDigitRef}
+                              digit={warmupHours.padStart(3, '0')[1]}
+                              onChange={(val) => {
+                                const padded = warmupHours.padStart(3, '0');
+                                const newHours = parseInt(padded[0] + val + padded[2]) || 0;
+                                setWarmupHours(newHours.toString());
+                              }}
+                              onValueEntered={() => {
+                                if (warmupThirdDigitRef.current) {
+                                  warmupThirdDigitRef.current.focus();
+                                  warmupThirdDigitRef.current.select();
+                                }
+                              }}
+                              disabled={isSubmitting}
+                              size="small"
+                            />
+                            <EditableFlipCard
+                              ref={warmupThirdDigitRef}
+                              digit={warmupHours.padStart(3, '0')[2]}
+                              onChange={(val) => {
+                                const padded = warmupHours.padStart(3, '0');
+                                const newHours = parseInt(padded[0] + padded[1] + val) || 0;
+                                setWarmupHours(newHours.toString());
+                              }}
+                              disabled={isSubmitting}
+                              size="small"
+                            />
+                          </div>
+
+                          <p className="text-sm text-center mt-4" style={{ color: '#6B6E71', fontFamily: 'IBM Plex Mono, monospace' }}>
+                            Trading warmup period (max 80% of duration).
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Submit Button Card */}
                     <div className="bg-[#121212] border border-[#191919] rounded-[9px] py-4 px-5">
                       {/* Bordered Container for Button */}
@@ -697,9 +945,9 @@ export default function CreatePage() {
                         <button
                           type={canPropose ? 'button' : 'submit'}
                           onClick={canPropose ? handlePropose : undefined}
-                          disabled={(!hasPermission && !canPropose) || isSubmitting || isFormInvalid || proposalSubmitted}
+                          disabled={(!hasPermission && !canPropose && !(isFutarchy && futarchyAuthorized)) || isSubmitting || isFormInvalid || proposalSubmitted}
                           className={`w-full h-[56px] rounded-full font-semibold transition flex items-center justify-center gap-1 uppercase font-ibm-plex-mono ${
-                            (!hasPermission && !canPropose) || isSubmitting || isFormInvalid || proposalSubmitted
+                            (!hasPermission && !canPropose && !(isFutarchy && futarchyAuthorized)) || isSubmitting || isFormInvalid || proposalSubmitted
                               ? 'bg-[#414346] cursor-not-allowed text-[#181818]'
                               : 'bg-[#DDDDD7] text-[#161616] cursor-pointer'
                           }`}
@@ -710,6 +958,22 @@ export default function CreatePage() {
                               ? `${showProposeText ? 'Proposing' : 'Creating'} ${poolName} QM...`
                               : `${showProposeText ? 'PROPOSE' : 'CREATE'} ${poolName} QM`}
                         </button>
+                        {/* Show token requirement message for futarchy DAOs when not authorized */}
+                        {isFutarchy && !futarchyAuthorized && daoData?.proposer_token_threshold && walletAddress && (
+                          <p className="text-sm text-center mt-4" style={{ color: '#6B6E71' }}>
+                            You need at least{' '}
+                            <span className="font-semibold" style={{ color: '#DDDDD7' }}>
+                              {(Number(daoData.proposer_token_threshold) / Math.pow(10, daoData.token_decimals)).toLocaleString()}{' '}
+                              {tokenSymbol || daoData.dao_name}
+                            </span>{' '}
+                            tokens to create proposals.
+                            {baseTokenBalance !== undefined && (
+                              <span className="block mt-1">
+                                Your balance: {baseTokenBalance.toLocaleString()} {tokenSymbol || daoData.dao_name}
+                              </span>
+                            )}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>

@@ -24,6 +24,8 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Wallet, FileText, Code } from 'lucide-react';
 import { useSolanaWallets } from '@privy-io/react-auth/solana';
 import Image from 'next/image';
+import toast from 'react-hot-toast';
+import { usePrivyWallet } from '@/hooks/usePrivyWallet';
 import { api } from '@/lib/api';
 
 interface HeaderProps {
@@ -41,9 +43,10 @@ interface HeaderProps {
   isCreateAuthorized?: boolean; // Whether user can create (vs propose)
   quoteSymbol: string; // Quote token symbol (SOL, USDC, etc.)
   quoteIcon: string | null; // Quote token icon URL
+  isFutarchy?: boolean; // Whether this is a futarchy DAO (shows Info tab)
 }
 
-export default function Header({ walletAddress, authenticated, solBalance, baseTokenBalance, login, isPassMode = true, tokenSlug = 'zc', tokenSymbol = 'ZC', tokenIcon = null, baseMint = null, isCreateAuthorized, quoteSymbol, quoteIcon }: HeaderProps) {
+export default function Header({ walletAddress, authenticated, solBalance, baseTokenBalance, login, isPassMode = true, tokenSlug = 'zc', tokenSymbol = 'ZC', tokenIcon = null, baseMint = null, isCreateAuthorized, quoteSymbol, quoteIcon, isFutarchy = false }: HeaderProps) {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -54,8 +57,12 @@ export default function Header({ walletAddress, authenticated, solBalance, baseT
       ? 'stake'
       : pathname.includes('/create')
         ? 'create'
-        : 'live';
+        : pathname.includes('/info')
+          ? 'info'
+          : 'live';
   const { exportWallet } = useSolanaWallets();
+  const { walletType } = usePrivyWallet();
+  const isEmbeddedWallet = walletType === 'embedded';
   const [isHoveringWallet, setIsHoveringWallet] = useState(false);
   const walletPrefix = walletAddress ? walletAddress.slice(0, 6) : 'N/A';
 
@@ -147,7 +154,16 @@ export default function Header({ walletAddress, authenticated, solBalance, baseT
               className="flex items-center gap-1.5 cursor-pointer transition-colors"
               onMouseEnter={() => setIsHoveringWallet(true)}
               onMouseLeave={() => setIsHoveringWallet(false)}
-              onClick={() => exportWallet()}
+              onClick={() => {
+                if (isEmbeddedWallet) {
+                  // Embedded wallet: show export modal
+                  exportWallet();
+                } else {
+                  // External wallet: just copy address to clipboard
+                  navigator.clipboard.writeText(walletAddress);
+                  toast.success('Address copied to clipboard');
+                }
+              }}
             >
               <div className="w-5 h-5 rounded-full flex items-center justify-center border border-[#191919]" style={{ backgroundColor: '#121212' }}>
                 <Wallet className="w-3 h-3 transition-colors" style={{ color: isHoveringWallet ? '#BEE8FC' : '#ffffff' }} />
@@ -156,7 +172,7 @@ export default function Header({ walletAddress, authenticated, solBalance, baseT
                 className="text-sm font-ibm-plex-mono font-medium transition-colors"
                 style={{ color: isHoveringWallet ? '#BEE8FC' : '#DDDDD7', fontFamily: 'IBM Plex Mono, monospace' }}
               >
-                {isHoveringWallet ? 'Export or copy' : walletPrefix}
+                {isHoveringWallet ? (isEmbeddedWallet ? 'Export or copy' : 'Copy address') : walletPrefix}
               </span>
             </div>
             <span className="text-2xl" style={{ color: '#2D2D2D' }}>/</span>
@@ -309,6 +325,20 @@ export default function Header({ walletAddress, authenticated, solBalance, baseT
             )}
             {canCreate ? 'Create' : 'Propose'}
           </button>
+          {isFutarchy && (
+            <button
+              onClick={() => router.push(`/${tokenSlug}/info`)}
+              className="text-sm py-1 px-4 transition-all duration-200 ease-in-out cursor-pointer my-0.5 hover:bg-white/10 hover:rounded relative"
+              style={activeTab === 'info' ? { color: '#DDDDD7' } : { color: '#6B6E71' }}
+              onMouseEnter={(e) => { if (activeTab !== 'info') e.currentTarget.style.color = '#9B9E9F'; }}
+              onMouseLeave={(e) => { if (activeTab !== 'info') e.currentTarget.style.color = '#6B6E71'; }}
+            >
+              {activeTab === 'info' && (
+                <div className="absolute -bottom-[4px] left-0 right-0 h-[2px] z-10" style={{ backgroundColor: '#DDDDD7' }} />
+              )}
+              Info
+            </button>
+          )}
           {tokenSlug === 'zc' && (
             <button
               onClick={() => router.push(`/${tokenSlug}/stake`)}

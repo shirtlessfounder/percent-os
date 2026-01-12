@@ -23,8 +23,9 @@ export default function SettingsModal({
   solPrice = 0,
   zcPrice = 0
 }: SettingsModalProps) {
-  const { authenticated, walletAddress, logout, login } = usePrivyWallet();
+  const { authenticated, walletAddress, walletType, logout, login } = usePrivyWallet();
   const { exportWallet } = useSolanaWallets();
+  const isEmbeddedWallet = walletType === 'embedded';
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(() => {
@@ -128,7 +129,7 @@ export default function SettingsModal({
                         )}
                       </button>
                     </div>
-                    {authenticated && (
+                    {authenticated && isEmbeddedWallet && (
                       <button
                         onClick={() => exportWallet()}
                         className="px-3 py-2 bg-orange-400 hover:bg-orange-500 text-[#181818] text-xs font-semibold rounded transition-colors cursor-pointer flex items-center gap-2"

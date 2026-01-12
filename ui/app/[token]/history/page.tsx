@@ -123,6 +123,7 @@ export default function HistoryPage() {
           baseMint={baseMint}
           quoteSymbol={quoteSymbol}
           quoteIcon={quoteIcon}
+          isFutarchy={isFutarchy}
         />
 
         <div className="flex-1 flex justify-center overflow-y-auto">

@@ -37,7 +37,7 @@ const SOL_DECIMALS = 9;
 const ZC_ICON = 'https://pbs.twimg.com/profile_images/1991222874401587200/V0ARKOcE_400x400.jpg';
 
 interface ExploreHeaderProps {
-  activeTab?: 'markets' | 'projects' | 'stake';
+  activeTab?: 'markets' | 'projects' | 'stake' | 'launch';
 }
 
 // Format token balance with K, M, B abbreviations
@@ -65,11 +65,13 @@ export default function ExploreHeader({ activeTab: activeTabProp }: ExploreHeade
   const activeTab = activeTabProp ?? (
     pathname.includes('/projects') ? 'projects'
     : pathname.includes('/stake') ? 'stake'
+    : pathname.includes('/launch') ? 'launch'
     : 'markets'
   );
 
-  const { authenticated, walletAddress, login } = usePrivyWallet();
+  const { authenticated, walletAddress, walletType, login } = usePrivyWallet();
   const { exportWallet } = useSolanaWallets();
+  const isEmbeddedWallet = walletType === 'embedded';
   const { baseToken: zcBalance } = useWalletBalances({
     walletAddress,
     baseMint: ZC_MINT,
@@ -126,7 +128,16 @@ export default function ExploreHeader({ activeTab: activeTabProp }: ExploreHeade
                 className="flex items-center gap-1.5 cursor-pointer transition-colors"
                 onMouseEnter={() => setIsHoveringWallet(true)}
                 onMouseLeave={() => setIsHoveringWallet(false)}
-                onClick={() => exportWallet()}
+                onClick={() => {
+                  if (isEmbeddedWallet) {
+                    // Embedded wallet: show export modal
+                    exportWallet();
+                  } else {
+                    // External wallet: just copy address to clipboard
+                    navigator.clipboard.writeText(walletAddress);
+                    toast.success('Address copied to clipboard');
+                  }
+                }}
               >
                 <div className="w-5 h-5 rounded-full flex items-center justify-center border border-[#191919]" style={{ backgroundColor: '#121212' }}>
                   <Wallet className="w-3 h-3 transition-colors" style={{ color: isHoveringWallet ? '#BEE8FC' : '#ffffff' }} />
@@ -135,7 +146,7 @@ export default function ExploreHeader({ activeTab: activeTabProp }: ExploreHeade
                   className="text-sm font-ibm-plex-mono font-medium transition-colors"
                   style={{ color: isHoveringWallet ? '#BEE8FC' : '#DDDDD7', fontFamily: 'IBM Plex Mono, monospace' }}
                 >
-                  {isHoveringWallet ? 'Export or copy' : walletPrefix}
+                  {isHoveringWallet ? (isEmbeddedWallet ? 'Export or copy' : 'Copy address') : walletPrefix}
                 </span>
               </div>
               <span className="text-2xl" style={{ color: '#2D2D2D' }}>/</span>
@@ -262,21 +273,16 @@ export default function ExploreHeader({ activeTab: activeTabProp }: ExploreHeade
             )}
             Stake
           </Link>
-          <button
-            onClick={() => toast(
-              <span>
-                Please reach out to @handsdiff on{' '}
-                <a href="https://x.com/handsdiff" target="_blank" rel="noopener noreferrer" className="underline text-[#BEE8FC]">X</a>
-                {' '}or{' '}
-                <a href="https://t.me/handsdiff" target="_blank" rel="noopener noreferrer" className="underline text-[#BEE8FC]">Telegram</a>
-                {' '}to discuss launching a QM-enabled token.
-              </span>
-            )}
-            className="text-sm py-1 px-4 relative transition-colors cursor-pointer"
-            style={{ color: '#6B6E71' }}
+          <Link
+            href="/launch"
+            className="text-sm py-1 px-4 relative transition-colors"
+            style={{ color: activeTab === 'launch' ? '#DDDDD7' : '#6B6E71' }}
           >
+            {activeTab === 'launch' && (
+              <div className="absolute -bottom-[1px] left-0 right-0 h-[2px] z-10" style={{ backgroundColor: '#DDDDD7' }} />
+            )}
             Launch
-          </button>
+          </Link>
         </div>
       </div>
     </div>

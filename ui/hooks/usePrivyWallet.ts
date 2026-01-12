@@ -28,26 +28,28 @@ export function usePrivyWallet() {
   // Both Privy SDK and Solana wallets must be ready for transactions
   const ready = privyReady && solanaWalletsReady;
 
-  // Detect wallet type: embedded takes priority (protects existing users)
+  // Detect wallet type based on walletClientType
+  // - Embedded wallets have walletClientType: 'privy'
+  // - External wallets have walletClientType: 'phantom', 'solflare', etc.
   const walletType = useMemo((): 'embedded' | 'external' | null => {
     if (!user) return null;
 
-    // Check for embedded Solana wallet first (protects existing users)
-    if (user.wallet?.address) {
+    // Check if user has a wallet
+    if (!user.wallet?.address) {
+      return null;
+    }
+
+    // Check walletClientType to determine if embedded or external
+    const walletClientType = (user.wallet as { walletClientType?: string })?.walletClientType;
+
+    if (walletClientType === 'privy') {
       return 'embedded';
+    } else if (walletClientType) {
+      return 'external';
     }
 
-    // Check for external Solana wallet
-    if (user.linkedAccounts) {
-      const externalWallet = user.linkedAccounts.find(
-        account => account.type === 'wallet' && account.chainType === 'solana'
-      );
-      if (externalWallet && 'address' in externalWallet) {
-        return 'external';
-      }
-    }
-
-    return null;
+    // Fallback: if no walletClientType, assume embedded (legacy behavior)
+    return 'embedded';
   }, [user]);
 
   const walletAddress = useMemo(() => {
