@@ -450,7 +450,11 @@ const TradingInterface = memo(({
 
     // Calculate percentage
     const percent = parseFloat(percentValue);
-    const calculatedAmount = (maxAmount * percent) / 100;
+
+    // For 100%, use exact max amount to avoid floating point errors
+    const calculatedAmount = percent === 100
+      ? maxAmount
+      : (maxAmount * percent) / 100;
 
     // Set the percentage for display and amount for calculations
     if (calculatedAmount > 0) {
