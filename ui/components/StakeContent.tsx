@@ -50,7 +50,7 @@ interface Staker {
 export function StakeContent({ useExploreHeader = true }: StakeContentProps) {
   const { ready, authenticated, walletAddress, login } = usePrivyWallet();
   const { signTransaction } = useTransactionSigner();
-  const { tokenSlug, baseMint, baseDecimals, tokenSymbol, icon, quoteMint, quoteDecimals, quoteSymbol } = useTokenContext();
+  const { tokenSlug, baseMint, baseDecimals, tokenSymbol, icon, quoteMint, quoteDecimals, quoteSymbol, quoteIcon } = useTokenContext();
   const { sol: solBalance, baseToken: baseTokenBalance } = useWalletBalances({
     walletAddress,
     baseMint,
@@ -830,6 +830,8 @@ export function StakeContent({ useExploreHeader = true }: StakeContentProps) {
             tokenSymbol={tokenSymbol}
             tokenIcon={icon}
             baseMint={baseMint}
+            quoteSymbol={quoteSymbol}
+            quoteIcon={quoteIcon}
           />
         )}
 

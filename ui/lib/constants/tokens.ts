@@ -16,7 +16,7 @@ export const TOKEN_MINTS = {
 } as const;
 
 /** Set of stablecoin mint addresses */
-export const STABLECOIN_MINTS = new Set([
+export const STABLECOIN_MINTS: Set<string> = new Set([
   TOKEN_MINTS.USDC,
   TOKEN_MINTS.USDT,
 ]);
