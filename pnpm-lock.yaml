@@ -36,8 +36,8 @@ importers:
         specifier: ^8.15.5
         version: 8.15.5
       '@zcomb/programs-sdk':
-        specifier: ^1.5.0
-        version: 1.5.0(bufferutil@4.0.9)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.2)(utf-8-validate@5.0.10)
+        specifier: ^1.5.1
+        version: 1.5.1(bufferutil@4.0.9)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.2)(utf-8-validate@5.0.10)
       '@zcomb/vault-sdk':
         specifier: ^0.1.4
         version: 0.1.4(bufferutil@4.0.9)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.2)(utf-8-validate@5.0.10)
@@ -795,8 +795,8 @@ packages:
   '@vitest/utils@3.2.4':
     resolution: {integrity: sha512-fB2V0JFrQSMsCo9HiSq3Ezpdv4iYaXRG1Sx8edX3MwxfyNn83mKiGzOcH+Fkxt4MHxr3y42fQi1oeAInqgX2QA==}
 
-  '@zcomb/programs-sdk@1.5.0':
-    resolution: {integrity: sha512-1do2zSIwTwQ02OaSSRwHAYFA7ulUfrpOddl2EMYZr3NfAnXs5Nu5HLlVJn98f5b9oeC+DeAoh2w2c68xMJcpOA==}
+  '@zcomb/programs-sdk@1.5.1':
+    resolution: {integrity: sha512-zF3IhE97jjxKFWiMJ9HAsJStZ92ImO3DDzyU/c9bfKwB1BlChiZArhF5QDH4u7exLstbMliML6KICfv2mOn8Yw==}
 
   '@zcomb/vault-sdk@0.1.4':
     resolution: {integrity: sha512-BglweUO8KRhj0ONd8mYF2/s3OhXmu11rwNn6R5s/cAYCujDEeAj88PZzwZ8QjS2YA4svtLVlUDb8tjQOyk3wlA==}
@@ -3311,7 +3311,7 @@ snapshots:
       loupe: 3.2.1
       tinyrainbow: 2.0.0
 
-  '@zcomb/programs-sdk@1.5.0(bufferutil@4.0.9)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.2)(utf-8-validate@5.0.10)':
+  '@zcomb/programs-sdk@1.5.1(bufferutil@4.0.9)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.2)(utf-8-validate@5.0.10)':
     dependencies:
       '@coral-xyz/anchor': 0.32.1(bufferutil@4.0.9)(typescript@5.9.2)(utf-8-validate@5.0.10)
       '@solana/spl-token': 0.4.14(@solana/web3.js@1.98.4(bufferutil@4.0.9)(typescript@5.9.2)(utf-8-validate@5.0.10))(bufferutil@4.0.9)(fastestsmallesttextencoderdecoder@1.0.22)(typescript@5.9.2)(utf-8-validate@5.0.10)
