@@ -17,28 +17,42 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-import { useCallback, useMemo } from 'react';
-import { useSignTransaction } from '@privy-io/react-auth/solana';
+import { useCallback } from 'react';
+import { useConnectedStandardWallets } from '@privy-io/react-auth/solana';
 import { Transaction } from '@solana/web3.js';
-import { getConnection } from '@/lib/programs/utils';
 
 /**
- * Hook that wraps Privy's useSignTransaction to provide a simple transaction signing function
- * compatible with our vault SDK's SignTransaction type.
+ * Hook that provides transaction signing using Privy's wallet standard interface.
+ * Works with both embedded wallets and external wallets (Phantom via wallet-connect).
+ *
+ * IMPORTANT: Uses `useConnectedStandardWallets` (not `useSolanaWallets`) because:
+ * - `useSolanaWallets` is DEPRECATED and only supports embedded wallets
+ * - `useConnectedStandardWallets` supports BOTH embedded AND external wallets
  */
 export function useTransactionSigner() {
-  const { signTransaction: privySignTransaction } = useSignTransaction();
-  const connection = useMemo(() => getConnection(), []);
+  const { wallets } = useConnectedStandardWallets();
 
   const signTransaction = useCallback(
     async (transaction: Transaction): Promise<Transaction> => {
-      const signed = await privySignTransaction({
-        transaction,
-        connection,
-      });
-      return signed as Transaction;
+      // Get the first available wallet
+      const wallet = wallets[0];
+
+      if (!wallet) {
+        throw new Error('No Solana wallet found. Please connect a wallet.');
+      }
+
+      // Serialize the transaction to Uint8Array
+      const serializedTx = transaction.serialize({ requireAllSignatures: false });
+
+      // Sign the transaction using the standard wallet interface
+      const result = await wallet.signTransaction({ transaction: serializedTx });
+
+      // Deserialize the signed transaction back to a Transaction object
+      const signedTransaction = Transaction.from(result.signedTransaction);
+
+      return signedTransaction;
     },
-    [privySignTransaction, connection]
+    [wallets]
   );
 
   return { signTransaction };
