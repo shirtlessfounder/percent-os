@@ -47,8 +47,7 @@ const startServer = async () => {
     await router.loadModerators();
 
     // Recover and reschedule tasks for pending proposals
-    // DISABLED: Prevent writes to production qm_* tables during local testing of new futarchy system
-    // await router.recoverPendingProposals();
+    await router.recoverPendingProposals();
 
     app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);

@@ -1197,7 +1197,7 @@ export function StakeContent({ useExploreHeader = true }: StakeContentProps) {
                                   <span className="hidden md:inline">{formatTradeAddress(staker.address)}</span>
                                   <button
                                     onClick={() => navigator.clipboard.writeText(staker.address)}
-                                    className="text-[#6B6E71] hover:text-theme-text transition-colors ml-1 inline"
+                                    className="text-[#6B6E71] hover:text-[#DDDDD7] transition-colors ml-1 inline cursor-pointer"
                                     title="Copy address"
                                   >
                                     <svg
@@ -1219,7 +1219,7 @@ export function StakeContent({ useExploreHeader = true }: StakeContentProps) {
                                     href={`https://solscan.io/account/${staker.address}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-[#6B6E71] hover:text-theme-text transition-colors ml-1 inline"
+                                    className="text-[#6B6E71] hover:text-[#DDDDD7] transition-colors ml-1 inline cursor-pointer"
                                     title="View on Solscan"
                                   >
                                     <svg

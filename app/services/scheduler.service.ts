@@ -26,6 +26,8 @@ import { AMMState } from '../types/amm.interface';
 import { Decimal } from 'decimal.js';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { CpAmm, getPriceFromSqrtPrice, getTokenDecimals } from '@meteora-ag/cp-amm-sdk';
+import DLMM from '@meteora-ag/dlmm';
+import { POOL_METADATA } from '../../src/config/pools';
 
 /**
  * Scheduler service for managing automatic TWAP cranking and proposal finalization
@@ -171,6 +173,9 @@ export class SchedulerService implements ISchedulerService {
       spotPoolAddress,
       taskId
     });
+
+    // Run immediately instead of waiting for first interval
+    this.recordSpotPriceForProposal(moderatorId, proposalId, spotPoolAddress);
   }
 
   /**
@@ -396,26 +401,41 @@ export class SchedulerService implements ISchedulerService {
         'confirmed'
       );
 
-      // Fetch spot pool state
-      const cpAmm = new CpAmm(connection);
       const poolPubkey = new PublicKey(spotPoolAddress);
-      const poolState = await cpAmm.fetchPoolState(poolPubkey);
 
-      // Get token decimals from the mints
-      const tokenAMint = poolState.tokenAMint;
-      const tokenBMint = poolState.tokenBMint;
-      const [tokenADecimal, tokenBDecimal] = await Promise.all([
-        getTokenDecimals(connection, tokenAMint),
-        getTokenDecimals(connection, tokenBMint),
-      ]);
+      // Detect pool type from metadata (DLMM vs CP-AMM)
+      const poolMetadata = POOL_METADATA[spotPoolAddress];
+      const poolType = poolMetadata?.poolType || 'damm';
 
-      // Calculate price from sqrt price
-      const priceDecimal = getPriceFromSqrtPrice(
-        poolState.sqrtPrice,
-        tokenADecimal,
-        tokenBDecimal
-      );
-      const spotPriceInSol = priceDecimal.toNumber();
+      let spotPriceInSol: number;
+
+      if (poolType === 'dlmm') {
+        // DLMM pool - use DLMM SDK
+        const dlmmPool = await DLMM.create(connection, poolPubkey);
+        const activeBin = await dlmmPool.getActiveBin();
+        // fromPricePerLamport converts the bin price to actual token price
+        spotPriceInSol = dlmmPool.fromPricePerLamport(Number(activeBin.price));
+      } else {
+        // CP-AMM pool - use existing CpAmm SDK
+        const cpAmm = new CpAmm(connection);
+        const poolState = await cpAmm.fetchPoolState(poolPubkey);
+
+        // Get token decimals from the mints
+        const tokenAMint = poolState.tokenAMint;
+        const tokenBMint = poolState.tokenBMint;
+        const [tokenADecimal, tokenBDecimal] = await Promise.all([
+          getTokenDecimals(connection, tokenAMint),
+          getTokenDecimals(connection, tokenBMint),
+        ]);
+
+        // Calculate price from sqrt price
+        const priceDecimal = getPriceFromSqrtPrice(
+          poolState.sqrtPrice,
+          tokenADecimal,
+          tokenBDecimal
+        );
+        spotPriceInSol = priceDecimal.toNumber();
+      }
 
       // Get SOL/USD price
       const solPriceService = SolPriceService.getInstance();
