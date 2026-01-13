@@ -102,7 +102,7 @@ const PRODUCTION_MODERATOR_IDS = [2, 6]; // ZC, SURF
  */
 router.get('/all', async (_req, res, next) => {
   try {
-    logger.info('[GET /all] Fetching all proposals from production pools');
+    logger.debug('[GET /all] Fetching all proposals from production pools');
 
     const allProposals: Array<{
       id: number;
@@ -162,7 +162,7 @@ router.get('/all', async (_req, res, next) => {
     // Sort by creation time (newest first)
     allProposals.sort((a, b) => b.createdAt - a.createdAt);
 
-    logger.info('[GET /all] Fetched all proposals successfully', {
+    logger.debug('[GET /all] Fetched all proposals successfully', {
       count: allProposals.length,
       moderatorIds: PRODUCTION_MODERATOR_IDS
     });
@@ -184,7 +184,7 @@ router.get('/', async (req, res, next) => {
     const { poolAddress } = req.query;
     const persistenceService = new PersistenceService(moderatorId, logger.createChild('persistence'));
 
-    logger.info('[GET /] Fetching proposals', { moderatorId, poolAddress: poolAddress || 'all' });
+    logger.debug('[GET /] Fetching proposals', { moderatorId, poolAddress: poolAddress || 'all' });
 
     const proposals = await persistenceService.loadAllProposals();
 
@@ -216,7 +216,7 @@ router.get('/', async (req, res, next) => {
       };
     });
 
-    logger.info('[GET /] Fetched proposals successfully', {
+    logger.debug('[GET /] Fetched proposals successfully', {
       moderatorId,
       count: publicProposals.length,
       poolFilter: poolAddress || 'none'
