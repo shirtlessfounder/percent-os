@@ -357,7 +357,7 @@ router.get('/:id', async (req, res, next) => {
       vaultPDA: proposal.deriveVaultPDA(VaultType.Base).toBase58(),
     };
 
-    logger.info('[GET /:id] Fetched proposal details', {
+    logger.debug('[GET /:id] Fetched proposal details', {
       proposalId: id,
       moderatorId,
       status: statusInfo.status
