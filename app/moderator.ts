@@ -31,6 +31,7 @@ import { DammService } from './services/damm.service';
 import { DlmmService } from './services/dlmm.service';
 import { POOL_METADATA } from '../src/config/whitelist';
 import { normalizeWithdrawConfirmResponse, calculateMarketPriceFromAmounts } from './utils/pool-api.utils';
+import { recordSlashIfApplicable } from './services/slash.service';
 //import { BlockEngineUrl, JitoService } from '@slateos/jito';
 
 /**
@@ -420,6 +421,16 @@ export class Moderator implements IModerator {
 
       // Handle deposit-back for proposals with DAMM withdrawals
       await this.handleDepositBack(id);
+
+      // Record slash if this is a slash proposal
+      try {
+        await recordSlashIfApplicable(this.id, id, proposal);
+      } catch (slashError) {
+        this.logger.error('Failed to record slash', {
+          proposalId: id,
+          error: slashError instanceof Error ? slashError.message : String(slashError)
+        });
+      }
     }
     return [status, winningIndex];
   }
