@@ -21,7 +21,7 @@ const API_BASE_URL = process.env.PERCENT_API_URL || 'http://localhost:3000';
 
 // Configuration - can be overridden via CLI args
 const MODERATOR_ID = parseInt(process.argv[2]) || 6;
-const PROPOSAL_ID = parseInt(process.argv[3]) || 10;
+const PROPOSAL_ID = parseInt(process.argv[3]) || 9;
 const FROM_DATE = process.argv[4] || '';  // Empty = show full proposal history
 
 interface TWAPHistoryEntry {
@@ -679,7 +679,7 @@ async function main() {
           },
           y: {
             min: -20,
-            max: 40,
+            max: 50,
             grid: { color: '#333' },
             ticks: {
               color: '#888',
