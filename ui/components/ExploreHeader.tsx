@@ -37,7 +37,7 @@ const SOL_DECIMALS = 9;
 const ZC_ICON = 'https://pbs.twimg.com/profile_images/1991222874401587200/V0ARKOcE_400x400.jpg';
 
 interface ExploreHeaderProps {
-  activeTab?: 'markets' | 'projects' | 'stake' | 'launch';
+  activeTab?: 'markets' | 'projects' | 'stake' | 'launch' | 'stats';
 }
 
 // Format token balance with K, M, B abbreviations
@@ -66,6 +66,7 @@ export default function ExploreHeader({ activeTab: activeTabProp }: ExploreHeade
     pathname.includes('/projects') ? 'projects'
     : pathname.includes('/stake') ? 'stake'
     : pathname.includes('/launch') ? 'launch'
+    : pathname.includes('/stats') ? 'stats'
     : 'markets'
   );
 
@@ -262,6 +263,16 @@ export default function ExploreHeader({ activeTab: activeTabProp }: ExploreHeade
               <div className="absolute -bottom-[1px] left-0 right-0 h-[2px] z-10" style={{ backgroundColor: '#DDDDD7' }} />
             )}
             Projects
+          </Link>
+          <Link
+            href="/stats"
+            className="text-sm py-1 px-4 relative transition-colors"
+            style={{ color: activeTab === 'stats' ? '#DDDDD7' : '#6B6E71' }}
+          >
+            {activeTab === 'stats' && (
+              <div className="absolute -bottom-[1px] left-0 right-0 h-[2px] z-10" style={{ backgroundColor: '#DDDDD7' }} />
+            )}
+            Stats
           </Link>
           <Link
             href="/stake"

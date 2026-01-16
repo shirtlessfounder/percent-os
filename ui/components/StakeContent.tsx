@@ -949,7 +949,7 @@ export function StakeContent({ useExploreHeader = true }: StakeContentProps) {
                             </p>
                           </div>
                           <p className="text-sm text-center mt-2" style={{ color: '#6B6E71', fontFamily: 'IBM Plex Mono, monospace' }}>
-                            Total Value Locked (ZC)
+                            TVL (ZC) · {zcTotalSupply > 0 ? ((vaultBalance / zcTotalSupply) * 100).toFixed(1) : '0'}% Supply
                           </p>
                         </div>
                         {/* Exchange Rate Box */}
@@ -987,7 +987,7 @@ export function StakeContent({ useExploreHeader = true }: StakeContentProps) {
                             </p>
                           </div>
                           <p className="text-sm text-center mt-2" style={{ color: '#6B6E71', fontFamily: 'IBM Plex Mono, monospace' }}>
-                            Total QM Volume
+                            Total Futarchy Vol
                           </p>
                         </div>
                       </div>
@@ -1162,7 +1162,7 @@ export function StakeContent({ useExploreHeader = true }: StakeContentProps) {
                                 className="py-3 text-right font-medium cursor-pointer hover:text-[#DDDDD7] transition-colors select-none"
                                 onClick={() => toggleStakersSort('volume')}
                               >
-                                QM Vol
+                                Futarchy Vol
                               </th>
                               <th
                                 className="py-3 pr-3 text-right font-medium cursor-pointer hover:text-[#DDDDD7] transition-colors select-none"

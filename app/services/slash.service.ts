@@ -58,9 +58,17 @@ export async function recordSlashIfApplicable(
 ): Promise<void> {
   const title = proposal.config.title;
 
+  // Entry log to confirm function is called
+  logger.info('[recordSlash] Called', {
+    moderatorId,
+    proposalId,
+    title
+  });
+
   // Check if this is a slash proposal (contains "slash" and a Solana address)
   if (!title.toLowerCase().includes('slash')) {
-    return; // Not a slash proposal
+    logger.info('[recordSlash] Not a slash proposal, skipping', { proposalId, title });
+    return;
   }
 
   // Extract Solana wallet address (32-44 base58 characters)

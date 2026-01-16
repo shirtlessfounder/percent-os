@@ -363,6 +363,128 @@ body {
   font-size: 90px;
 }
 
+/* Display-only Flip Digit (for stats cards) - matches EditableFlipCard design */
+.flip-digit-container {
+  position: relative;
+  width: 110px;
+  height: 154px;
+  perspective: 2000px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 78px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: default;
+}
+
+.flip-digit-upper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 50%;
+  overflow: hidden;
+  background: #121212;
+  border: 1px solid #191919;
+  border-radius: 18px 18px 0 0;
+  border-bottom: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 4px;
+}
+
+.flip-digit-lower {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 50%;
+  overflow: hidden;
+  background: #121212;
+  border: 1px solid #191919;
+  border-radius: 0 0 18px 18px;
+  border-top: 0.5px solid #2A2A2A;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 4px;
+}
+
+.flip-digit-text {
+  color: #DDDDD7;
+  user-select: none;
+  pointer-events: none;
+}
+
+.flip-digit-upper .flip-digit-text {
+  transform: translateY(calc(50% + 4px));
+}
+
+.flip-digit-lower .flip-digit-text {
+  transform: translateY(calc(-50% - 4px));
+}
+
+/* Mini Flip Digit for metric cards - medium version (40px × 56px) */
+.flip-digit-mini-container {
+  position: relative;
+  width: 40px;
+  height: 56px;
+  perspective: 600px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: default;
+}
+
+.flip-digit-mini-upper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 50%;
+  overflow: hidden;
+  background: #121212;
+  border: 1px solid #191919;
+  border-radius: 6px 6px 0 0;
+  border-bottom: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 1px;
+}
+
+.flip-digit-mini-lower {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 50%;
+  overflow: hidden;
+  background: #121212;
+  border: 1px solid #191919;
+  border-radius: 0 0 6px 6px;
+  border-top: 0.5px solid #2A2A2A;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 1px;
+}
+
+.flip-digit-mini-text {
+  color: #DDDDD7;
+  user-select: none;
+  pointer-events: none;
+}
+
+.flip-digit-mini-upper .flip-digit-mini-text {
+  transform: translateY(calc(50% + 1px));
+}
+
+.flip-digit-mini-lower .flip-digit-mini-text {
+  transform: translateY(calc(-50% - 1px));
+}
+
 .description-links a:hover {
   text-decoration: underline !important;
 }

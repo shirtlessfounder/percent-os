@@ -27,6 +27,7 @@ import leaderboardRoutes from './leaderboard';
 import whitelistRoutes from './whitelist';
 import stakersRoutes from './stakers';
 import proposalRequestsRoutes from './proposal-requests';
+import statsRoutes from './stats';
 import { SolPriceService } from '../../app/services/sol-price.service';
 
 const router = Router();
@@ -56,5 +57,6 @@ router.use('/leaderboard', leaderboardRoutes);
 router.use('/whitelist', whitelistRoutes);
 router.use('/stakers', stakersRoutes);
 router.use('/proposal-requests', proposalRequestsRoutes);
+router.use('/stats', statsRoutes);
 
 export default router;
