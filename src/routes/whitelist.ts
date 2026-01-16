@@ -146,7 +146,7 @@ router.get('/check', async (req, res, next) => {
       authMethod,
     }));
 
-    logger.info('[GET /check] Authorization check completed', {
+    logger.debug('[GET /check] Authorization check completed', {
       wallet,
       isWhitelisted,
       poolCount: authorizedPools.length,
@@ -179,7 +179,7 @@ router.get('/pools', async (req, res, next) => {
   try {
     const pools = Object.values(POOL_METADATA);
 
-    logger.info('[GET /pools] Fetched pool list', {
+    logger.debug('[GET /pools] Fetched pool list', {
       poolCount: pools.length,
     });
 
@@ -253,7 +253,7 @@ router.get('/pool/:name', async (req, res, next) => {
       authMethod = result.authMethod;
     }
 
-    logger.info('[GET /pool/:name] Pool lookup completed', {
+    logger.debug('[GET /pool/:name] Pool lookup completed', {
       name,
       poolAddress: pool.poolAddress,
       wallet: wallet || null,

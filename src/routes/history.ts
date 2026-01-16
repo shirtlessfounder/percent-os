@@ -74,7 +74,7 @@ router.get('/:id/twap', async (req, res, next) => {
       toDate
     );
 
-    logger.info('[GET /:id/twap] TWAP history retrieved', {
+    logger.debug('[GET /:id/twap] TWAP history retrieved', {
       proposalId,
       moderatorId,
       count: twapData.length,
@@ -168,7 +168,7 @@ router.get('/:id/trades', async (req, res, next) => {
     const solPriceService = SolPriceService.getInstance();
     const solPrice = await solPriceService.getSolPrice();
 
-    logger.info('[GET /:id/trades] Trade history retrieved', {
+    logger.debug('[GET /:id/trades] Trade history retrieved', {
       proposalId,
       moderatorId,
       count: trades.length,
@@ -259,7 +259,7 @@ router.get('/:id/volume', async (req, res, next) => {
     const solPriceService = SolPriceService.getInstance();
     const solPrice = await solPriceService.getSolPrice();
 
-    logger.info('[GET /:id/volume] Volume data retrieved', {
+    logger.debug('[GET /:id/volume] Volume data retrieved', {
       proposalId,
       moderatorId,
       totalVolume: volumeData.totalVolume.toString(),
@@ -415,7 +415,7 @@ router.get('/:id/chart', async (req, res, next) => {
       };
     });
 
-    logger.info('[GET /:id/chart] Chart data retrieved', {
+    logger.debug('[GET /:id/chart] Chart data retrieved', {
       proposalId,
       moderatorId,
       interval,
