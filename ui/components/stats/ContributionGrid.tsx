@@ -189,8 +189,8 @@ export default function ContributionGrid({ data, loading = false, startDate }: C
                       setTooltip({
                         date: dayData.dateStr,
                         count,
-                        x: rect.left + window.scrollX,
-                        y: rect.top + window.scrollY,
+                        x: rect.left,
+                        y: rect.top,
                       });
                     }}
                     onMouseLeave={() => setTooltip(null)}

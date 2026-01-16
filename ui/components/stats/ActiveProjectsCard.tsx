@@ -19,6 +19,8 @@
 
 'use client';
 
+import { useState, useEffect, useCallback } from 'react';
+
 interface Project {
   moderatorId: number;
   name: string;
@@ -41,10 +43,25 @@ export default function ActiveProjectsCard({
   timeframe,
   percentChange,
 }: ActiveProjectsCardProps) {
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+
   const formatPercentChange = (change: number) => {
     const sign = change >= 0 ? '+' : '';
     return `${sign}${change.toFixed(1)}%`;
   };
+
+  const handleEscape = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      setSelectedProject(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (selectedProject) {
+      document.addEventListener('keydown', handleEscape);
+      return () => document.removeEventListener('keydown', handleEscape);
+    }
+  }, [selectedProject, handleEscape]);
 
   return (
     <div
@@ -80,7 +97,38 @@ export default function ActiveProjectsCard({
           </div>
         ) : (
           <div className="border border-[#191919] rounded-lg p-4 w-full h-full flex flex-col justify-center overflow-hidden">
-            {projects.length > 0 ? (
+            {selectedProject ? (
+              // Show enlarged selected project
+              <>
+                <div
+                  className="flex items-center justify-center flex-1 cursor-pointer"
+                  onClick={() => setSelectedProject(null)}
+                >
+                  <div
+                    className="w-32 h-32 rounded-lg flex items-center justify-center overflow-hidden"
+                    style={{ backgroundColor: '#292929' }}
+                  >
+                    {selectedProject.logo ? (
+                      <img
+                        src={selectedProject.logo}
+                        alt={selectedProject.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span
+                        className="text-4xl font-bold"
+                        style={{ color: '#DDDDD7' }}
+                      >
+                        {selectedProject.ticker?.charAt(0) || selectedProject.name?.charAt(0) || '?'}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <p className="text-xs font-ibm-plex-mono text-center mt-4" style={{ color: '#6B6E71' }}>
+                  $2.4M TVL Secured  ·  $18M MCap Secured  ·  $12K Rev Generated
+                </p>
+              </>
+            ) : projects.length > 0 ? (
               <>
                 <div className="grid gap-3 justify-center content-center flex-1"
                   style={{
@@ -90,9 +138,10 @@ export default function ActiveProjectsCard({
                   {projects.map((project) => (
                     <div
                       key={project.moderatorId}
-                      className="w-16 h-16 rounded-lg flex items-center justify-center overflow-hidden"
+                      className="w-16 h-16 rounded-lg flex items-center justify-center overflow-hidden cursor-pointer transition-transform hover:scale-105"
                       style={{ backgroundColor: '#292929' }}
                       title={`${project.name} (${project.ticker})`}
+                      onClick={() => setSelectedProject(project)}
                     >
                       {project.logo ? (
                         <img
