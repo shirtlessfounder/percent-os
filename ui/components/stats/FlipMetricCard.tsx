@@ -150,7 +150,7 @@ export default function FlipMetricCard({
           </span>
         )}
       </div>
-      <div className="flex flex-col items-center justify-center pt-6 pb-4">
+      <div className="flex flex-col items-center justify-center pt-6 pb-3">
         {loading ? (
           <div className="h-14 rounded animate-pulse" style={{ backgroundColor: '#292929', width: '340px' }} />
         ) : (

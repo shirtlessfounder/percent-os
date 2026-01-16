@@ -293,7 +293,7 @@ export default function StatsPage() {
                 timeframe={timeframe}
               />
               <FlipMetricCard
-                label="Revenue"
+                label="Revenue Generated"
                 value={summary?.averages.volumePerQM || 0}
                 loading={loading}
                 prefix="$"
