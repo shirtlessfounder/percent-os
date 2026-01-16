@@ -125,7 +125,7 @@ export default function ActiveProjectsCard({
                   </div>
                 </div>
                 <p className="text-xs font-ibm-plex-mono text-center mt-4" style={{ color: '#6B6E71' }}>
-                  $2.4M TVL Secured  ·  $18M MCap Secured  ·  $12K Rev Generated
+                  $2.4M TVL Secured  ·  $18M MCap  ·  $12K Revenue Generated
                 </p>
               </>
             ) : projects.length > 0 ? (
@@ -161,7 +161,7 @@ export default function ActiveProjectsCard({
                   ))}
                 </div>
                 <p className="text-xs font-ibm-plex-mono text-center mt-4" style={{ color: '#6B6E71' }}>
-                  $2.4M TVL Secured  ·  $18M MCap Secured  ·  $12K Rev Generated
+                  $2.4M TVL Secured  ·  $18M Combined MCap
                 </p>
               </>
             ) : (

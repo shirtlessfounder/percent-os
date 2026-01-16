@@ -74,6 +74,32 @@ function getTimeframeDate(timeframe: Timeframe): Date {
   }
 }
 
+// Get the previous timeframe's date range (for % change calculation)
+function getPreviousTimeframeDates(timeframe: Timeframe): { from: Date; to: Date } | null {
+  if (timeframe === 'all') return null;
+
+  const now = new Date();
+  switch (timeframe) {
+    case '1d':
+      return {
+        from: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000),
+        to: new Date(now.getTime() - 24 * 60 * 60 * 1000),
+      };
+    case '1w':
+      return {
+        from: new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000),
+        to: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000),
+      };
+    case '1m':
+      return {
+        from: new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000),
+        to: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
+      };
+    default:
+      return null;
+  }
+}
+
 export default function StatsPage() {
   const [timeframe, setTimeframe] = useState<Timeframe>('all');
   const [summary, setSummary] = useState<StatsSummary | null>(null);
@@ -134,6 +160,33 @@ export default function StatsPage() {
   const totalQMs = useMemo(() => {
     return contributions.reduce((sum, c) => sum + c.count, 0);
   }, [contributions]);
+
+  // Previous timeframe QM count (for % change calculation)
+  const previousQMs = useMemo(() => {
+    const prevDates = getPreviousTimeframeDates(timeframe);
+    if (!prevDates) return null;
+
+    let count = 0;
+    for (const proposal of proposals) {
+      if (proposal.status === 'Pending') continue;
+
+      const date = new Date(proposal.finalizedAt);
+      if (date >= prevDates.from && date < prevDates.to) {
+        count++;
+      }
+    }
+    return count;
+  }, [proposals, timeframe]);
+
+  // Calculate % change between current and previous timeframe
+  const qmPercentChange = useMemo(() => {
+    if (timeframe === 'all' || previousQMs === null) return undefined;
+    if (previousQMs === 0) {
+      // If previous was 0 and current > 0, show as positive (avoid division by zero)
+      return totalQMs > 0 ? 100 : 0;
+    }
+    return ((totalQMs - previousQMs) / previousQMs) * 100;
+  }, [totalQMs, previousQMs, timeframe]);
 
   // Extract unique active projects from proposals with QMs in the selected timeframe
   const activeProjects = useMemo(() => {
@@ -258,7 +311,7 @@ export default function StatsPage() {
                     value={totalQMs}
                     loading={loading}
                     timeframe={timeframe}
-                    percentChange={0}
+                    percentChange={qmPercentChange}
                   />
                 </div>
                 <div className="col-span-2">
@@ -293,7 +346,7 @@ export default function StatsPage() {
                 timeframe={timeframe}
               />
               <FlipMetricCard
-                label="Revenue Generated"
+                label="Revenue"
                 value={summary?.averages.volumePerQM || 0}
                 loading={loading}
                 prefix="$"
