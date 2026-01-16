@@ -190,6 +190,14 @@ export default function VolumeChartCard({ data, loading = false }: VolumeChartCa
       className="rounded-[9px] border flex flex-col"
       style={{ backgroundColor: '#121212', borderColor: '#191919' }}
     >
+      {/* Chart container */}
+      <div className="px-4 pt-4">
+        <div
+          ref={chartContainerRef}
+          className="w-full h-[480px] rounded-lg border border-[#191919]"
+        />
+      </div>
+
       {/* Title and Toggle */}
       <div className="px-5 pt-4 pb-4 flex items-center justify-between">
         <span
@@ -238,14 +246,6 @@ export default function VolumeChartCard({ data, loading = false }: VolumeChartCa
             ZC MCap
           </button>
         </div>
-      </div>
-
-      {/* Chart container */}
-      <div className="px-4 pb-4">
-        <div
-          ref={chartContainerRef}
-          className="w-full h-[480px] rounded-lg border border-[#191919]"
-        />
       </div>
     </div>
   );

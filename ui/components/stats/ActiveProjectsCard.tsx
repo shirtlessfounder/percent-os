@@ -54,6 +54,24 @@ export default function ActiveProjectsCard({
         borderColor: '#191919',
       }}
     >
+      {/* Title and Percent Change - Top */}
+      <div className="flex items-center justify-between mb-3">
+        <span
+          className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] uppercase"
+          style={{ color: '#DDDDD7' }}
+        >
+          Active Projects
+        </span>
+        {percentChange !== undefined && (
+          <span
+            className="text-xs font-ibm-plex-mono"
+            style={{ color: percentChange > 0 ? '#BEE8FC' : '#6B6E71' }}
+          >
+            {formatPercentChange(percentChange)}
+          </span>
+        )}
+      </div>
+
       {/* Grid Area with inner border */}
       <div className="flex-1 flex items-center justify-center">
         {loading ? (
@@ -113,24 +131,6 @@ export default function ActiveProjectsCard({
               />
             )}
           </div>
-        )}
-      </div>
-
-      {/* Title and Percent Change - Bottom */}
-      <div className="flex items-center justify-between mt-7">
-        <span
-          className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] uppercase"
-          style={{ color: '#DDDDD7' }}
-        >
-          Active Projects
-        </span>
-        {percentChange !== undefined && (
-          <span
-            className="text-xs font-ibm-plex-mono"
-            style={{ color: percentChange > 0 ? '#BEE8FC' : '#6B6E71' }}
-          >
-            {formatPercentChange(percentChange)}
-          </span>
         )}
       </div>
     </div>
