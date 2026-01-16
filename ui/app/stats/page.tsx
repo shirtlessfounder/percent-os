@@ -133,18 +133,13 @@ export default function StatsPage() {
     return `${year}-${month}-${day}`;
   }, []);
 
-  // Aggregate proposals by finalization date (matches what's displayed on markets page)
+  // Aggregate ALL proposals by finalization date (for grid display - no timeframe filter)
   const contributions = useMemo(() => {
     const countByDate: Record<string, number> = {};
 
     for (const proposal of proposals) {
       // Only count finalized proposals (not pending/live ones)
       if (proposal.status === 'Pending') continue;
-
-      const date = new Date(proposal.finalizedAt);
-
-      // Apply timeframe filter
-      if (date < fromDate) continue;
 
       // Use local date string to match markets page display
       const dateStr = getLocalDateStr(proposal.finalizedAt);
@@ -154,12 +149,20 @@ export default function StatsPage() {
     return Object.entries(countByDate)
       .map(([date, count]) => ({ date, count }))
       .sort((a, b) => a.date.localeCompare(b.date));
-  }, [proposals, fromDate, getLocalDateStr]);
+  }, [proposals, getLocalDateStr]);
 
-  // Total QMs count (same filtering as contributions)
+  // Total QMs count (filtered by timeframe for the card display)
   const totalQMs = useMemo(() => {
-    return contributions.reduce((sum, c) => sum + c.count, 0);
-  }, [contributions]);
+    let count = 0;
+    for (const proposal of proposals) {
+      if (proposal.status === 'Pending') continue;
+      const date = new Date(proposal.finalizedAt);
+      if (date >= fromDate) {
+        count++;
+      }
+    }
+    return count;
+  }, [proposals, fromDate]);
 
   // Previous timeframe QM count (for % change calculation)
   const previousQMs = useMemo(() => {
@@ -181,10 +184,8 @@ export default function StatsPage() {
   // Calculate % change between current and previous timeframe
   const qmPercentChange = useMemo(() => {
     if (timeframe === 'all' || previousQMs === null) return undefined;
-    if (previousQMs === 0) {
-      // If previous was 0 and current > 0, show as positive (avoid division by zero)
-      return totalQMs > 0 ? 100 : 0;
-    }
+    // Don't show % change if previous timeframe has no data
+    if (previousQMs === 0) return undefined;
     return ((totalQMs - previousQMs) / previousQMs) * 100;
   }, [totalQMs, previousQMs, timeframe]);
 
