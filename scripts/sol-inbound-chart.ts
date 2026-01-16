@@ -20,9 +20,13 @@ const WALLETS = [
   { address: 'FEEnkcCNE2623LYCPtLf63LFzXpCFigBLTu4qZovRGZC', label: 'FEE' },
   { address: '7rajfxUQBHRXiSrQWQo9FZ2zBbLy4Xvh9yYfa7tkvj4U', label: '7raj' },
 ];
-const SURF_TOKEN = 'SurfwRjQQFV6P7JdhxSptf4CjWU8sb88rUiaLCystar';
-const DAYS_BACK = 31; // Start from Dec 11 (when Birdeye volume data begins)
+// Volume tokens for smoothing
+const SURF_TOKEN = 'SurfwRjQQFV6P7JdhxSptf4CjWU8sb88rUiaLCystar'; // For SOL fee smoothing
+const STAR_TOKEN = 'StargWr5r6r8gZSjmEKGZ1dmvKWkj79r2z1xqjFstar'; // For USDC fee smoothing
+const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+const START_DATE = new Date('2025-12-01T00:00:00Z');
 const MIN_SOL_AMOUNT = 0.01; // Ignore spam below this
+const MIN_USDC_AMOUNT = 0.01; // Ignore spam below this
 
 // ANSI colors for console
 const COLORS = {
@@ -37,12 +41,21 @@ const COLORS = {
 interface DailyData {
   date: string;
   solInbound: number;
+  usdcInbound: number;
   txCount: number;
 }
 
 interface DailyVolume {
   date: string;
   volume: number;
+}
+
+interface InboundResult {
+  dailySol: Map<string, number>;
+  dailyUsdc: Map<string, number>;
+  totalSol: number;
+  totalUsdc: number;
+  txCount: number;
 }
 
 /**
@@ -143,9 +156,12 @@ async function fetchDailyVolumeFromDexScreener(tokenAddress: string, days: numbe
 
 /**
  * Smooth fee data by distributing large chunks backwards to the previous chunk
- * proportionally based on trading volume
+ * proportionally based on trading volume.
+ *
+ * Only distributes to days that have actual volume data - days without volume
+ * data are left at 0 to avoid misleading equal distribution.
  */
-const CHUNK_THRESHOLD = 5; // Anything above this SOL is considered a "batch claim" to redistribute
+const CHUNK_THRESHOLD = 5; // Anything above this is considered a "batch claim" to redistribute
 
 function smoothFeeData(dates: string[], dailyInbound: number[], volumeMap: Map<string, number>): number[] {
   const smoothed = [...dailyInbound];
@@ -158,6 +174,11 @@ function smoothFeeData(dates: string[], dailyInbound: number[], volumeMap: Map<s
     }
   }
 
+  if (chunkIndices.length === 0) {
+    console.log(`  No chunks found (threshold: ${CHUNK_THRESHOLD}), returning raw data`);
+    return smoothed;
+  }
+
   // For each chunk, distribute it back to the previous chunk (or start of data)
   for (let c = 0; c < chunkIndices.length; c++) {
     const chunkIdx = chunkIndices[c];
@@ -167,7 +188,7 @@ function smoothFeeData(dates: string[], dailyInbound: number[], volumeMap: Map<s
     const rangeStart = c === 0 ? 0 : chunkIndices[c - 1] + 1;
     const rangeEnd = chunkIdx; // Include the chunk day itself
 
-    console.log(`  Chunk ${c + 1}: ${chunk.toFixed(2)} SOL on ${dates[chunkIdx]}, distributing to ${dates[rangeStart]} - ${dates[rangeEnd]}`);
+    console.log(`  Chunk ${c + 1}: ${chunk.toFixed(2)} on ${dates[chunkIdx]}, distributing to ${dates[rangeStart]} - ${dates[rangeEnd]}`);
 
     // Sum up all small inflows in this range (we'll redistribute the total)
     let totalToDistribute = chunk;
@@ -176,42 +197,63 @@ function smoothFeeData(dates: string[], dailyInbound: number[], volumeMap: Map<s
       smoothed[j] = 0; // Clear these, we'll redistribute
     }
 
-    // Calculate total volume over the range
-    let totalVolume = 0;
-    let volumeDebug: string[] = [];
+    // Find days with actual volume data in this range
+    const daysWithVolume: { idx: number; vol: number }[] = [];
     for (let j = rangeStart; j <= rangeEnd; j++) {
-      const vol = volumeMap.get(dates[j]) || 1;
-      totalVolume += vol;
-      volumeDebug.push(`${dates[j]}:$${vol.toFixed(0)}`);
+      const vol = volumeMap.get(dates[j]);
+      if (vol !== undefined && vol > 0) {
+        daysWithVolume.push({ idx: j, vol });
+      }
     }
 
-    console.log(`  Volume data: ${volumeDebug.slice(0, 5).join(', ')}${volumeDebug.length > 5 ? ` ... (${volumeDebug.length} days)` : ''}`);
+    const totalDaysInRange = rangeEnd - rangeStart + 1;
+    const coveragePercent = ((daysWithVolume.length / totalDaysInRange) * 100).toFixed(0);
+    console.log(`  Volume coverage: ${daysWithVolume.length}/${totalDaysInRange} days (${coveragePercent}%)`);
 
-    // Distribute proportionally based on volume
-    let distributionDebug: string[] = [];
-    for (let j = rangeStart; j <= rangeEnd; j++) {
-      const dayVolume = volumeMap.get(dates[j]) || 1;
-      smoothed[j] = totalToDistribute * (dayVolume / totalVolume);
-      distributionDebug.push(`${dates[j].slice(5)}:${smoothed[j].toFixed(2)}`);
+    if (daysWithVolume.length === 0) {
+      // No volume data at all - just put everything on the chunk day
+      console.log(`  WARNING: No volume data in range, keeping on chunk day`);
+      smoothed[chunkIdx] = totalToDistribute;
+      continue;
     }
-    console.log(`  Distribution: ${distributionDebug.slice(0, 8).join(', ')}${distributionDebug.length > 8 ? ` ...` : ''}`);
+
+    // Calculate total volume over days that have data
+    const totalVolume = daysWithVolume.reduce((sum, d) => sum + d.vol, 0);
+
+    // Show volume data sample
+    const volumeDebug = daysWithVolume.slice(0, 5).map(d => `${dates[d.idx]}:$${(d.vol / 1e6).toFixed(1)}M`);
+    console.log(`  Volume data: ${volumeDebug.join(', ')}${daysWithVolume.length > 5 ? ` ... (${daysWithVolume.length} days)` : ''}`);
+
+    // Distribute proportionally based on volume (only to days with volume data)
+    smoothed[chunkIdx] = 0; // Clear chunk day, will be set below if it has volume
+    for (const { idx, vol } of daysWithVolume) {
+      smoothed[idx] = totalToDistribute * (vol / totalVolume);
+    }
+
+    // Show distribution sample (first 5 and last 5)
+    const first5 = daysWithVolume.slice(0, 5).map(d => `${dates[d.idx].slice(5)}:${smoothed[d.idx].toFixed(2)}`);
+    const last5 = daysWithVolume.slice(-5).map(d => `${dates[d.idx].slice(5)}:${smoothed[d.idx].toFixed(2)}`);
+    console.log(`  Distribution (first 5): ${first5.join(', ')}`);
+    console.log(`  Distribution (last 5): ${last5.join(', ')}`);
   }
 
   return smoothed;
 }
 
-async function getSOLInboundForToken(
+async function getInboundForWallet(
   connection: Connection,
-  tokenAddress: string,
+  walletAddress: string,
   startTime: number,
   endTime: number
-): Promise<{ daily: Map<string, number>; total: number; txCount: number }> {
-  const pubkey = new PublicKey(tokenAddress);
-  const daily = new Map<string, number>();
-  let total = 0;
+): Promise<InboundResult> {
+  const pubkey = new PublicKey(walletAddress);
+  const dailySol = new Map<string, number>();
+  const dailyUsdc = new Map<string, number>();
+  let totalSol = 0;
+  let totalUsdc = 0;
   let txCount = 0;
 
-  console.log(`  Fetching signatures for ${tokenAddress.slice(0, 8)}...`);
+  console.log(`  Fetching signatures for ${walletAddress.slice(0, 8)}...`);
 
   // Fetch all signatures in the time range
   let signatures: { signature: string; blockTime: number | null }[] = [];
@@ -261,13 +303,21 @@ async function getSOLInboundForToken(
       const sig = batch[j];
       if (!tx || !sig.blockTime) continue;
 
-      // Look for SOL transfers TO this address
-      const solInbound = calculateSOLInbound(tx, tokenAddress);
+      const date = new Date(sig.blockTime * 1000).toISOString().split('T')[0];
 
+      // Look for SOL transfers TO this address
+      const solInbound = calculateSOLInbound(tx, walletAddress);
       if (solInbound >= MIN_SOL_AMOUNT) {
-        const date = new Date(sig.blockTime * 1000).toISOString().split('T')[0];
-        daily.set(date, (daily.get(date) || 0) + solInbound);
-        total += solInbound;
+        dailySol.set(date, (dailySol.get(date) || 0) + solInbound);
+        totalSol += solInbound;
+        txCount++;
+      }
+
+      // Look for USDC transfers TO this address
+      const usdcInbound = calculateUSDCInbound(tx, walletAddress);
+      if (usdcInbound >= MIN_USDC_AMOUNT) {
+        dailyUsdc.set(date, (dailyUsdc.get(date) || 0) + usdcInbound);
+        totalUsdc += usdcInbound;
         txCount++;
       }
     }
@@ -281,7 +331,7 @@ async function getSOLInboundForToken(
     await new Promise(r => setTimeout(r, 50));
   }
 
-  return { daily, total, txCount };
+  return { dailySol, dailyUsdc, totalSol, totalUsdc, txCount };
 }
 
 function calculateSOLInbound(tx: ParsedTransactionWithMeta, targetAddress: string): number {
@@ -307,17 +357,50 @@ function calculateSOLInbound(tx: ParsedTransactionWithMeta, targetAddress: strin
   return diff > 0 ? diff / 1e9 : 0;
 }
 
+function calculateUSDCInbound(tx: ParsedTransactionWithMeta, targetAddress: string): number {
+  if (!tx.meta) return 0;
+
+  // Look through token balance changes for USDC transfers to target
+  const preTokenBalances = tx.meta.preTokenBalances || [];
+  const postTokenBalances = tx.meta.postTokenBalances || [];
+
+  // Find USDC token accounts owned by target address
+  let totalUsdcInbound = 0;
+
+  for (const postBalance of postTokenBalances) {
+    // Check if this is USDC and owned by target
+    if (postBalance.mint !== USDC_MINT) continue;
+    if (postBalance.owner !== targetAddress) continue;
+
+    // Find matching pre-balance
+    const preBalance = preTokenBalances.find(
+      pre => pre.accountIndex === postBalance.accountIndex
+    );
+
+    const preAmount = preBalance?.uiTokenAmount?.uiAmount || 0;
+    const postAmount = postBalance.uiTokenAmount?.uiAmount || 0;
+    const diff = postAmount - preAmount;
+
+    if (diff > 0) {
+      totalUsdcInbound += diff;
+    }
+  }
+
+  return totalUsdcInbound;
+}
+
 async function main() {
-  console.log(`\n${COLORS.bright}=== SOL Inbound Chart Generator ===${COLORS.reset}`);
+  console.log(`\n${COLORS.bright}=== SOL & USDC Inbound Chart Generator ===${COLORS.reset}`);
   console.log(`Wallets: ${WALLETS.map(t => t.label).join(', ')}`);
-  console.log(`Days: ${DAYS_BACK}`);
-  console.log(`Min SOL: ${MIN_SOL_AMOUNT}\n`);
+  console.log(`Start date: ${START_DATE.toISOString().split('T')[0]}`);
+  console.log(`Min SOL: ${MIN_SOL_AMOUNT}, Min USDC: ${MIN_USDC_AMOUNT}\n`);
 
   const rpcUrl = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
   const connection = new Connection(rpcUrl, 'confirmed');
 
+  const startTime = START_DATE.getTime();
   const endTime = Date.now();
-  const startTime = endTime - DAYS_BACK * 24 * 60 * 60 * 1000;
+  const daysBack = Math.ceil((endTime - startTime) / (24 * 60 * 60 * 1000));
 
   // Generate all dates in range
   const allDates: string[] = [];
@@ -325,10 +408,14 @@ async function main() {
     allDates.push(d.toISOString().split('T')[0]);
   }
 
-  // Fetch volume data for smoothing
-  console.log(`${COLORS.bright}Fetching SURF volume data...${COLORS.reset}`);
-  const volumeMap = await fetchDailyVolume(SURF_TOKEN, DAYS_BACK);
-  console.log(`  Got volume data for ${volumeMap.size} days\n`);
+  // Fetch volume data for smoothing (SURF for SOL fees, STAR for USDC fees)
+  console.log(`${COLORS.bright}Fetching SURF volume data (for SOL smoothing)...${COLORS.reset}`);
+  const surfVolumeMap = await fetchDailyVolume(SURF_TOKEN, daysBack);
+  console.log(`  Got volume data for ${surfVolumeMap.size} days\n`);
+
+  console.log(`${COLORS.bright}Fetching STAR volume data (for USDC smoothing)...${COLORS.reset}`);
+  const starVolumeMap = await fetchDailyVolume(STAR_TOKEN, daysBack);
+  console.log(`  Got volume data for ${starVolumeMap.size} days\n`);
 
   // Fetch SOL price for USD conversion
   console.log(`${COLORS.bright}Fetching SOL price...${COLORS.reset}`);
@@ -336,51 +423,55 @@ async function main() {
   console.log(`  SOL price: $${solPrice.toFixed(2)}\n`);
 
   // Fetch data for each wallet
-  const walletData: { label: string; daily: Map<string, number>; total: number; txCount: number }[] = [];
+  const walletData: { label: string; dailySol: Map<string, number>; dailyUsdc: Map<string, number>; totalSol: number; totalUsdc: number; txCount: number }[] = [];
 
   for (const wallet of WALLETS) {
     console.log(`${COLORS.bright}Processing ${wallet.label}:${COLORS.reset}`);
     try {
-      const data = await getSOLInboundForToken(connection, wallet.address, startTime, endTime);
+      const data = await getInboundForWallet(connection, wallet.address, startTime, endTime);
       walletData.push({ label: wallet.label, ...data });
-      console.log(`  ${COLORS.green}Total: ${data.total.toFixed(2)} SOL (${data.txCount} txs)${COLORS.reset}\n`);
+      console.log(`  ${COLORS.green}Total: ${data.totalSol.toFixed(2)} SOL, ${data.totalUsdc.toFixed(2)} USDC (${data.txCount} txs)${COLORS.reset}\n`);
     } catch (error) {
       console.error(`  ${COLORS.red}Error: ${error}${COLORS.reset}\n`);
-      walletData.push({ label: wallet.label, daily: new Map(), total: 0, txCount: 0 });
+      walletData.push({ label: wallet.label, dailySol: new Map(), dailyUsdc: new Map(), totalSol: 0, totalUsdc: 0, txCount: 0 });
     }
   }
 
-  // Combine data from all wallets
-  const combinedDailyRaw = allDates.map(date =>
-    walletData.reduce((sum, wallet) => sum + (wallet.daily.get(date) || 0), 0)
+  // Combine SOL data from all wallets
+  const combinedSolRaw = allDates.map(date =>
+    walletData.reduce((sum, wallet) => sum + (wallet.dailySol.get(date) || 0), 0)
+  );
+
+  // Combine USDC data from all wallets
+  const combinedUsdcRaw = allDates.map(date =>
+    walletData.reduce((sum, wallet) => sum + (wallet.dailyUsdc.get(date) || 0), 0)
   );
 
   // Apply smoothing to distribute fee chunks based on volume
-  console.log(`${COLORS.bright}Applying volume-based smoothing...${COLORS.reset}`);
-  const combinedDaily = smoothFeeData(allDates, combinedDailyRaw, volumeMap);
-  console.log(`  Smoothing complete\n`);
+  console.log(`${COLORS.bright}Applying volume-based smoothing for SOL...${COLORS.reset}`);
+  const combinedSol = smoothFeeData(allDates, combinedSolRaw, surfVolumeMap);
+  console.log(`  SOL smoothing complete\n`);
 
-  // Calculate cumulative totals
-  let cumulative = 0;
-  const cumulativeData = combinedDaily.map(daily => {
-    cumulative += daily;
-    return cumulative;
-  });
+  console.log(`${COLORS.bright}Applying volume-based smoothing for USDC...${COLORS.reset}`);
+  const combinedUsdc = smoothFeeData(allDates, combinedUsdcRaw, starVolumeMap);
+  console.log(`  USDC smoothing complete\n`);
 
-  const grandTotal = walletData.reduce((sum, t) => sum + t.total, 0);
+
+  const grandTotalSol = walletData.reduce((sum, t) => sum + t.totalSol, 0);
+  const grandTotalUsdc = walletData.reduce((sum, t) => sum + t.totalUsdc, 0);
   const totalTxCount = walletData.reduce((sum, t) => sum + t.txCount, 0);
 
-  console.log(`${COLORS.bright}Combined Total: ${grandTotal.toFixed(2)} SOL (${totalTxCount} txs)${COLORS.reset}`);
+  console.log(`${COLORS.bright}Combined Total: ${grandTotalSol.toFixed(2)} SOL, ${grandTotalUsdc.toFixed(2)} USDC (${totalTxCount} txs)${COLORS.reset}`);
 
-  // Debug: show chart data
-  console.log(`\n${COLORS.dim}Chart data (first 10 days):${COLORS.reset}`);
-  for (let i = 0; i < Math.min(10, allDates.length); i++) {
-    console.log(`  ${allDates[i]}: ${combinedDaily[i].toFixed(2)} SOL`);
-  }
+  // Combined daily in USD (SOL converted + USDC)
+  const combinedDailyUsd = combinedSol.map((sol, i) => sol * solPrice + combinedUsdc[i]);
+  const cumulativeUsd = combinedDailyUsd.reduce((acc: number[], daily, i) => {
+    acc.push((acc[i - 1] || 0) + daily);
+    return acc;
+  }, []);
 
-  // Calculate USD values
-  const combinedDailyUsd = combinedDaily.map(v => v * solPrice);
-  const cumulativeDataUsd = cumulativeData.map(v => v * solPrice);
+  // SOL in USD for stacking
+  const solInUsd = combinedSol.map(v => v * solPrice);
 
   // Generate HTML
   const htmlPath = '/tmp/sol-inbound-chart.html';
@@ -402,7 +493,8 @@ async function main() {
     .container { max-width: 1400px; margin: 0 auto; }
     .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
     h1 { font-size: 24px; margin: 0; }
-    .toggle-container { display: flex; gap: 8px; }
+    .stats { font-size: 14px; color: #888; margin-top: 4px; }
+    .toggle-container { display: flex; gap: 8px; flex-wrap: wrap; }
     .toggle-btn {
       padding: 8px 16px;
       border: 1px solid #333;
@@ -432,11 +524,12 @@ async function main() {
 <body>
   <div class="container">
     <div class="header">
-      <h1>Combinator Fees</h1>
+      <div>
+        <h1>Combinator Fees</h1>
+        <div class="stats">Total: ${grandTotalSol.toFixed(2)} SOL + ${grandTotalUsdc.toFixed(2)} USDC = $${(grandTotalSol * solPrice + grandTotalUsdc).toFixed(0)} USD</div>
+      </div>
       <div class="toggle-container">
-        <button class="toggle-btn active" id="sol-btn" onclick="setMode('sol')">SOL</button>
-        <button class="toggle-btn" id="usd-btn" onclick="setMode('usd')">USD</button>
-        <button class="toggle-btn" id="profit-btn" onclick="toggleLine('profit')" style="margin-left: 16px; border-color: #f97316;">Profitability</button>
+        <button class="toggle-btn" id="profit-btn" onclick="toggleLine('profit')" style="border-color: #f97316;">Profitability</button>
         <button class="toggle-btn" id="private-btn" onclick="toggleLine('private')" style="border-color: #ef4444;">Target</button>
       </div>
     </div>
@@ -447,21 +540,20 @@ async function main() {
   </div>
 
   <script>
-    const solData = ${JSON.stringify(combinedDaily)};
-    const solCumulative = ${JSON.stringify(cumulativeData)};
-    const usdData = ${JSON.stringify(combinedDailyUsd)};
-    const usdCumulative = ${JSON.stringify(cumulativeDataUsd)};
+    // SOL data in USD for stacking
+    const solInUsd = ${JSON.stringify(solInUsd)};
+    // USDC data (already in USD)
+    const usdcData = ${JSON.stringify(combinedUsdc)};
+    // Combined cumulative
+    const combinedUsdCumulative = ${JSON.stringify(cumulativeUsd)};
+
     const solPrice = ${solPrice};
-    let currentMode = 'sol';
     let showProfitLine = false;
     let showPrivateLine = false;
 
     // Target lines in USD
     const TARGET_HIGH_USD = 14000;
     const TARGET_LOW_USD = 2000;
-    // Equivalent in SOL
-    const TARGET_HIGH_SOL = TARGET_HIGH_USD / solPrice;
-    const TARGET_LOW_SOL = TARGET_LOW_USD / solPrice;
 
     const ctx = document.getElementById('chart').getContext('2d');
     const chart = new Chart(ctx, {
@@ -470,17 +562,26 @@ async function main() {
         labels: ${JSON.stringify(allDates)},
         datasets: [
           {
-            label: 'Daily Fees',
-            data: solData,
-            backgroundColor: '#22c55e80',
+            label: 'SOL Fees (USD)',
+            data: solInUsd,
+            backgroundColor: '#22c55e',
             borderColor: '#22c55e',
-            borderWidth: 1,
+            borderWidth: 0,
+            stack: 'fees',
           },
           {
-            label: 'Cumulative',
-            data: solCumulative,
-            type: 'line',
+            label: 'USDC Fees',
+            data: usdcData,
+            backgroundColor: '#3b82f6',
             borderColor: '#3b82f6',
+            borderWidth: 0,
+            stack: 'fees',
+          },
+          {
+            label: 'Cumulative USD',
+            data: combinedUsdCumulative,
+            type: 'line',
+            borderColor: '#8b5cf6',
             backgroundColor: 'transparent',
             borderWidth: 2,
             pointRadius: 0,
@@ -502,9 +603,16 @@ async function main() {
             bodyColor: '#fff',
             callbacks: {
               label: (ctx) => {
-                const unit = currentMode === 'sol' ? ' SOL' : '';
-                const prefix = currentMode === 'usd' ? '$' : '';
-                return ctx.dataset.label + ': ' + prefix + ctx.parsed.y.toFixed(2) + unit;
+                return ctx.dataset.label + ': $' + ctx.parsed.y.toFixed(2);
+              },
+              footer: (items) => {
+                const total = items.reduce((sum, item) => {
+                  if (item.dataset.stack === 'fees') {
+                    return sum + item.parsed.y;
+                  }
+                  return sum;
+                }, 0);
+                return 'Total: $' + total.toFixed(2);
               }
             }
           },
@@ -512,8 +620,8 @@ async function main() {
             annotations: {
               lineHigh: {
                 type: 'line',
-                yMin: TARGET_HIGH_SOL,
-                yMax: TARGET_HIGH_SOL,
+                yMin: TARGET_HIGH_USD,
+                yMax: TARGET_HIGH_USD,
                 borderColor: '#ef4444',
                 borderWidth: 2,
                 borderDash: [6, 6],
@@ -521,7 +629,7 @@ async function main() {
                 label: {
                   display: true,
                   content: '$14k/day ($420k/mo)',
-                  position: 'end',
+                  position: 'start',
                   backgroundColor: '#ef4444',
                   color: '#fff',
                   font: { size: 11 }
@@ -529,8 +637,8 @@ async function main() {
               },
               lineLow: {
                 type: 'line',
-                yMin: TARGET_LOW_SOL,
-                yMax: TARGET_LOW_SOL,
+                yMin: TARGET_LOW_USD,
+                yMax: TARGET_LOW_USD,
                 borderColor: '#f97316',
                 borderWidth: 2,
                 borderDash: [6, 6],
@@ -538,7 +646,7 @@ async function main() {
                 label: {
                   display: true,
                   content: '$2k/day ($60k/mo)',
-                  position: 'end',
+                  position: 'start',
                   backgroundColor: '#f97316',
                   color: '#fff',
                   font: { size: 11 }
@@ -552,91 +660,42 @@ async function main() {
             type: 'time',
             time: { unit: 'day', displayFormats: { day: 'MMM d' } },
             grid: { color: '#333' },
-            ticks: { color: '#888', maxTicksLimit: 10 }
+            ticks: { color: '#888', maxTicksLimit: 10 },
+            stacked: true,
           },
           y: {
             position: 'left',
             grid: { color: '#333' },
+            stacked: true,
             ticks: {
               color: '#888',
-              callback: (v) => currentMode === 'sol' ? v + ' SOL' : '$' + v.toFixed(0)
+              callback: (v) => '$' + v.toFixed(0)
             },
-            title: { display: true, text: currentMode === 'sol' ? 'Daily SOL' : 'Daily USD', color: '#888' }
+            title: { display: true, text: 'Daily USD', color: '#888' }
           },
           y1: {
             position: 'right',
             grid: { display: false },
             ticks: {
               color: '#888',
-              callback: (v) => currentMode === 'sol' ? v + ' SOL' : '$' + v.toFixed(0)
+              callback: (v) => '$' + v.toFixed(0)
             },
-            title: { display: true, text: currentMode === 'sol' ? 'Cumulative SOL' : 'Cumulative USD', color: '#888' }
+            title: { display: true, text: 'Cumulative USD', color: '#888' }
           }
         }
       }
     });
 
-    function setMode(mode) {
-      currentMode = mode;
-
-      // Update button states
-      document.getElementById('sol-btn').classList.toggle('active', mode === 'sol');
-      document.getElementById('usd-btn').classList.toggle('active', mode === 'usd');
-
-      // Update chart data
-      chart.data.datasets[0].data = mode === 'sol' ? solData : usdData;
-      chart.data.datasets[1].data = mode === 'sol' ? solCumulative : usdCumulative;
-
-      // Update axis labels
-      chart.options.scales.y.title.text = mode === 'sol' ? 'Daily SOL' : 'Daily USD';
-      chart.options.scales.y1.title.text = mode === 'sol' ? 'Cumulative SOL' : 'Cumulative USD';
-
-      // Update target lines for current mode
-      const highVal = mode === 'sol' ? TARGET_HIGH_SOL : TARGET_HIGH_USD;
-      const lowVal = mode === 'sol' ? TARGET_LOW_SOL : TARGET_LOW_USD;
-      const highLabel = mode === 'sol'
-        ? TARGET_HIGH_SOL.toFixed(1) + ' SOL/day (' + (TARGET_HIGH_SOL * 30).toFixed(0) + ' SOL/mo)'
-        : '$14k/day ($420k/mo)';
-      const lowLabel = mode === 'sol'
-        ? TARGET_LOW_SOL.toFixed(1) + ' SOL/day (' + (TARGET_LOW_SOL * 30).toFixed(0) + ' SOL/mo)'
-        : '$2k/day ($60k/mo)';
-      chart.options.plugins.annotation.annotations.lineHigh.yMin = highVal;
-      chart.options.plugins.annotation.annotations.lineHigh.yMax = highVal;
-      chart.options.plugins.annotation.annotations.lineHigh.label.content = highLabel;
-      chart.options.plugins.annotation.annotations.lineLow.yMin = lowVal;
-      chart.options.plugins.annotation.annotations.lineLow.yMax = lowVal;
-      chart.options.plugins.annotation.annotations.lineLow.label.content = lowLabel;
-
-      chart.update();
-    }
-
     function toggleLine(which) {
-      // Update line values and labels for current mode
-      const highVal = currentMode === 'sol' ? TARGET_HIGH_SOL : TARGET_HIGH_USD;
-      const lowVal = currentMode === 'sol' ? TARGET_LOW_SOL : TARGET_LOW_USD;
-      const highLabel = currentMode === 'sol'
-        ? TARGET_HIGH_SOL.toFixed(1) + ' SOL/day (' + (TARGET_HIGH_SOL * 30).toFixed(0) + ' SOL/mo)'
-        : '$14k/day ($420k/mo)';
-      const lowLabel = currentMode === 'sol'
-        ? TARGET_LOW_SOL.toFixed(1) + ' SOL/day (' + (TARGET_LOW_SOL * 30).toFixed(0) + ' SOL/mo)'
-        : '$2k/day ($60k/mo)';
-
       if (which === 'profit') {
         showProfitLine = !showProfitLine;
         document.getElementById('profit-btn').classList.toggle('active', showProfitLine);
-        chart.options.plugins.annotation.annotations.lineLow.yMin = lowVal;
-        chart.options.plugins.annotation.annotations.lineLow.yMax = lowVal;
-        chart.options.plugins.annotation.annotations.lineLow.label.content = lowLabel;
         chart.options.plugins.annotation.annotations.lineLow.display = showProfitLine;
       } else if (which === 'private') {
         showPrivateLine = !showPrivateLine;
         document.getElementById('private-btn').classList.toggle('active', showPrivateLine);
-        chart.options.plugins.annotation.annotations.lineHigh.yMin = highVal;
-        chart.options.plugins.annotation.annotations.lineHigh.yMax = highVal;
-        chart.options.plugins.annotation.annotations.lineHigh.label.content = highLabel;
         chart.options.plugins.annotation.annotations.lineHigh.display = showPrivateLine;
       }
-
       chart.update();
     }
   </script>
