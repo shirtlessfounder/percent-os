@@ -34,6 +34,7 @@ import { useProjectTVL } from '@/hooks/useProjectTVL';
 import { useRevenueData } from '@/hooks/useRevenueData';
 import { useBuybackData } from '@/hooks/useBuybackData';
 import { useVolumeChartData } from '@/hooks/useVolumeChartData';
+import { useZcMcapHistory } from '@/hooks/useZcMcapHistory';
 import { api } from '@/lib/api';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
@@ -406,6 +407,12 @@ export default function StatsPage() {
     loading: volumeChartLoading,
   } = useVolumeChartData(proposals, fetchDaysBack);
 
+  // Fetch ZC market cap history from GeckoTerminal
+  const {
+    dailyData: mcapDaily,
+    loading: mcapHistoryLoading,
+  } = useZcMcapHistory(fetchDaysBack);
+
   // Calculate current period totals from dailyData
   const totalRevenue = useMemo(() => {
     return revenueDaily
@@ -506,6 +513,11 @@ export default function StatsPage() {
   const volumeChartData = useMemo(() => {
     return volumeChartDaily.map(d => ({ date: d.date, volume: d.volume }));
   }, [volumeChartDaily]);
+
+  // Convert ZC MCap data to chart format
+  const mcapChartData = useMemo(() => {
+    return mcapDaily.map(d => ({ date: d.date, volume: d.mcapUsd }));
+  }, [mcapDaily]);
 
   // Create per-project MCap map (keyed by project name lowercase)
   const projectMcapMap = useMemo(() => {
@@ -680,7 +692,8 @@ export default function StatsPage() {
                   revenueData={revenueChartData}
                   buybackData={buybackChartData}
                   volumeData={volumeChartData}
-                  loading={loading || revenueLoading || volumeChartLoading}
+                  mcapData={mcapChartData}
+                  loading={loading || revenueLoading || volumeChartLoading || mcapHistoryLoading}
                 />
               </div>
             </div>
