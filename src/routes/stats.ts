@@ -72,19 +72,28 @@ router.get('/projects', async (_req, res) => {
 });
 
 /**
- * GET /api/stats/summary?from=&moderatorId=
+ * GET /api/stats/summary?from=&to=&moderatorId=
  * Returns aggregate metrics for the dashboard
  */
 router.get('/summary', async (req, res) => {
   try {
-    const { from, moderatorId } = req.query;
+    const { from, to, moderatorId } = req.query;
 
-    // Parse date
+    // Parse from date
     let fromDate: Date | undefined;
     if (from && typeof from === 'string') {
       fromDate = new Date(from);
       if (isNaN(fromDate.getTime())) {
         return res.status(400).json({ error: 'Invalid from date format' });
+      }
+    }
+
+    // Parse to date
+    let toDate: Date | undefined;
+    if (to && typeof to === 'string') {
+      toDate = new Date(to);
+      if (isNaN(toDate.getTime())) {
+        return res.status(400).json({ error: 'Invalid to date format' });
       }
     }
 
@@ -98,7 +107,7 @@ router.get('/summary', async (req, res) => {
     }
 
     // Check cache
-    const cacheKey = `${fromDate?.toISOString() || 'all'}_${modId || 'all'}`;
+    const cacheKey = `${fromDate?.toISOString() || 'all'}_${toDate?.toISOString() || 'now'}_${modId || 'all'}`;
     if (summaryCache && summaryCache.key === cacheKey && Date.now() - summaryCache.timestamp < SUMMARY_CACHE_TTL) {
       return res.json(summaryCache.data);
     }
@@ -113,6 +122,12 @@ router.get('/summary', async (req, res) => {
     if (fromDate) {
       conditions.push(`created_at >= $${paramIndex}`);
       params.push(fromDate);
+      paramIndex++;
+    }
+
+    if (toDate) {
+      conditions.push(`created_at < $${paramIndex}`);
+      params.push(toDate);
       paramIndex++;
     }
 
@@ -177,6 +192,12 @@ router.get('/summary', async (req, res) => {
     if (fromDate) {
       tradeConditions.push(`timestamp >= $${tradeParamIndex}`);
       tradeParams.push(fromDate);
+      tradeParamIndex++;
+    }
+
+    if (toDate) {
+      tradeConditions.push(`timestamp < $${tradeParamIndex}`);
+      tradeParams.push(toDate);
       tradeParamIndex++;
     }
 

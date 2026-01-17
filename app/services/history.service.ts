@@ -320,6 +320,55 @@ export class HistoryService {
   }
 
   /**
+   * Retrieves daily volume data for a proposal
+   * Uses the same calculation as getTradeVolume but bucketed by day
+   * @param moderatorId - ID of the moderator
+   * @param proposalId - Global proposal ID
+   * @param from - Optional start date
+   * @param to - Optional end date
+   * @returns Array of daily volume data (volume in SOL)
+   */
+  static async getDailyVolume(
+    moderatorId: number,
+    proposalId: number,
+    from?: Date,
+    to?: Date
+  ): Promise<{ date: string; volume: Decimal }[]> {
+    const pool = getPool();
+
+    // Calculate volume in SOL terms (same logic as getTradeVolume):
+    // - Buy (is_base_to_quote = false): user pays SOL, so amount_in is SOL
+    // - Sell (is_base_to_quote = true): user receives SOL, so amount_out is SOL
+    let query = `
+      SELECT
+        DATE(timestamp) as day,
+        SUM(CASE WHEN is_base_to_quote THEN amount_out ELSE amount_in END) as volume
+      FROM qm_trade_history
+      WHERE moderator_id = $1 AND proposal_id = $2
+    `;
+    const params: (number | Date)[] = [moderatorId, proposalId];
+
+    if (from) {
+      params.push(from);
+      query += ` AND timestamp >= $${params.length}`;
+    }
+
+    if (to) {
+      params.push(to);
+      query += ` AND timestamp <= $${params.length}`;
+    }
+
+    query += ` GROUP BY DATE(timestamp) ORDER BY day`;
+
+    const result = await pool.query(query, params);
+
+    return result.rows.map(row => ({
+      date: row.day.toISOString().split('T')[0],
+      volume: new Decimal(row.volume || 0),
+    }));
+  }
+
+  /**
    * Retrieves aggregated chart data for a proposal
    * Combines price and volume data into time-bucketed points for visualization
    * @param moderatorId - ID of the moderator
@@ -398,10 +447,13 @@ export class HistoryService {
     const priceResult = await pool.query(query, params);
 
     // Get trade volume data
+    // Calculate volume in SOL terms:
+    // - Buy (is_base_to_quote = false): user pays SOL, so amount_in is SOL
+    // - Sell (is_base_to_quote = true): user receives SOL, so amount_out is SOL
     let volumeQuery = `
       SELECT
         to_timestamp(floor(extract(epoch from timestamp) / ${intervalSeconds}) * ${intervalSeconds}) as bucket,
-        SUM(amount_in) as volume
+        SUM(CASE WHEN is_base_to_quote THEN amount_out ELSE amount_in END) as volume
       FROM qm_trade_history
       WHERE moderator_id = $1 AND proposal_id = $2
     `;
@@ -830,11 +882,14 @@ export class HistoryService {
     const priceResult = await pool.query(query, params);
 
     // Get trade volume data
+    // Calculate volume in SOL terms:
+    // - Buy (is_base_to_quote = false): user pays SOL, so amount_in is SOL
+    // - Sell (is_base_to_quote = true): user receives SOL, so amount_out is SOL
     let volumeQuery = `
       SELECT
         to_timestamp(floor(extract(epoch from timestamp) / ${intervalSeconds}) * ${intervalSeconds}) as bucket,
         market,
-        SUM(amount_in) as volume
+        SUM(CASE WHEN is_base_to_quote THEN amount_out ELSE amount_in END) as volume
       FROM cmb_trade_history
       WHERE proposal_pda = $1
     `;

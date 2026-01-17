@@ -293,6 +293,88 @@ router.get('/:id/volume', async (req, res, next) => {
 });
 
 /**
+ * Get daily volume data for a proposal
+ * GET /:id/daily-volume?from=&to=
+ *
+ * Query parameters:
+ * - from: ISO date string (optional)
+ * - to: ISO date string (optional)
+ *
+ * Returns volume in USD per day (same calculation as /volume endpoint)
+ */
+router.get('/:id/daily-volume', async (req, res, next) => {
+  try {
+    const proposalId = getProposalId(req);
+    const moderatorId = req.moderatorId;
+
+    const { from, to } = req.query;
+
+    let fromDate: Date | undefined;
+    let toDate: Date | undefined;
+
+    if (from && typeof from === 'string') {
+      fromDate = new Date(from);
+      if (isNaN(fromDate.getTime())) {
+        logger.warn('[GET /:id/daily-volume] Invalid from date format', {
+          proposalId,
+          from
+        });
+        return res.status(400).json({ error: 'Invalid from date format' });
+      }
+    }
+
+    if (to && typeof to === 'string') {
+      toDate = new Date(to);
+      if (isNaN(toDate.getTime())) {
+        logger.warn('[GET /:id/daily-volume] Invalid to date format', {
+          proposalId,
+          to
+        });
+        return res.status(400).json({ error: 'Invalid to date format' });
+      }
+    }
+
+    const dailyData = await HistoryService.getDailyVolume(
+      moderatorId,
+      proposalId,
+      fromDate,
+      toDate
+    );
+
+    // Get current SOL/USD price for USD conversion
+    const { SolPriceService } = await import('../../app/services/sol-price.service');
+    const solPriceService = SolPriceService.getInstance();
+    const solPrice = await solPriceService.getSolPrice();
+
+    logger.info('[GET /:id/daily-volume] Daily volume data retrieved', {
+      proposalId,
+      moderatorId,
+      count: dailyData.length,
+      from: fromDate?.toISOString(),
+      to: toDate?.toISOString()
+    });
+
+    res.json({
+      moderatorId,
+      proposalId,
+      solPrice,
+      count: dailyData.length,
+      data: dailyData.map(d => ({
+        date: d.date,
+        volumeSol: d.volume.toNumber(),
+        volumeUsd: d.volume.times(solPrice).toNumber(),
+      }))
+    });
+  } catch (error) {
+    logger.error('[GET /:id/daily-volume] Failed to get daily volume data', {
+      error: error instanceof Error ? error.message : String(error),
+      proposalId: req.params.id
+    });
+    next(error);
+  }
+});
+
+/**
  * Get chart data for a proposal
  * GET /:id/chart?interval=&from=&to=
  *
@@ -400,6 +482,7 @@ router.get('/:id/chart', async (req, res, next) => {
 
     // Transform data to USD market cap (price × actual supply × SOL price) and ISO strings for JSON serialization
     // Note: Spot prices are already in USD market cap, so don't convert them
+    // Volume is in human-readable SOL (see swap.ts recordTrade), convert to USD
     const formattedData = chartData.map(point => {
       // Spot prices are already market cap USD, other markets need conversion
       const multiplier = point.market === -1 ? 1 : (actualSupply * solPrice);
@@ -411,7 +494,8 @@ router.get('/:id/chart', async (req, res, next) => {
         high: (point.high * multiplier).toString(),
         low: (point.low * multiplier).toString(),
         close: (point.close * multiplier).toString(),
-        volume: point.volume?.toString() || '0'
+        // Volume is in SOL, multiply by solPrice to get USD (same as /volume endpoint)
+        volumeUsd: ((point.volume || 0) * solPrice).toString()
       };
     });
 

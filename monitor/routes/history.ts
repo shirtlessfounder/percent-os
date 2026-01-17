@@ -207,6 +207,11 @@ router.get('/:pda/chart', async (req: Request, res: Response, next: NextFunction
       to
     );
 
+    // Get SOL price for USD conversion
+    const { SolPriceService } = await import('@app/services/sol-price.service');
+    const solPriceService = SolPriceService.getInstance();
+    const solPrice = await solPriceService.getSolPrice();
+
     res.json({
       proposalPda,
       interval,
@@ -218,7 +223,8 @@ router.get('/:pda/chart', async (req: Request, res: Response, next: NextFunction
         high: point.high.toString(),
         low: point.low.toString(),
         close: point.close.toString(),
-        volume: point.volume?.toString() || '0',
+        // Volume is in lamports, convert to SOL then to USD
+        volumeUsd: (((point.volume || 0) / 1e9) * solPrice).toString(),
       })),
     });
   } catch (error) {

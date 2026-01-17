@@ -33,6 +33,7 @@ import { useProjectMarketCaps } from '@/hooks/useProjectMarketCaps';
 import { useProjectTVL } from '@/hooks/useProjectTVL';
 import { useRevenueData } from '@/hooks/useRevenueData';
 import { useBuybackData } from '@/hooks/useBuybackData';
+import { useVolumeChartData } from '@/hooks/useVolumeChartData';
 import { api } from '@/lib/api';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
@@ -167,6 +168,7 @@ const KNOWN_TREASURIES: Record<string, TreasuryConfig> = {
 export default function StatsPage() {
   const [timeframe, setTimeframe] = useState<Timeframe>('all');
   const [summary, setSummary] = useState<StatsSummary | null>(null);
+  const [previousSummary, setPreviousSummary] = useState<StatsSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -342,11 +344,6 @@ export default function StatsPage() {
     return configs;
   }, [activeProjects]);
 
-  // Debug logging for TVL
-  useEffect(() => {
-    console.log('[StatsPage] Treasury configs for TVL lookup:', allTreasuryConfigs);
-  }, [allTreasuryConfigs]);
-
   // Fetch TVL data for all projects (SOL + USDC + native token)
   const { data: tvlData, combinedTvlUsd, loading: tvlLoading } = useProjectTVL(allTreasuryConfigs);
 
@@ -379,13 +376,6 @@ export default function StatsPage() {
     return mints;
   }, [activeProjects, projectBaseMints]);
 
-  // Debug logging for mcap
-  useEffect(() => {
-    console.log('[StatsPage] Active projects:', activeProjects);
-    console.log('[StatsPage] Project baseMints from API:', Object.fromEntries(projectBaseMints));
-    console.log('[StatsPage] All baseMints for mcap lookup:', allBaseMints);
-  }, [activeProjects, projectBaseMints, allBaseMints]);
-
   // Fetch market cap data for all projects
   const { data: mcapData, combinedMcap, loading: mcapLoading } = useProjectMarketCaps(allBaseMints);
 
@@ -409,6 +399,12 @@ export default function StatsPage() {
     dailyData: buybackDaily,
     loading: buybackLoading,
   } = useBuybackData(fetchDaysBack);
+
+  // Fetch volume chart data (daily aggregates for the volume line chart)
+  const {
+    dailyData: volumeChartDaily,
+    loading: volumeChartLoading,
+  } = useVolumeChartData(proposals, fetchDaysBack);
 
   // Calculate current period totals from dailyData
   const totalRevenue = useMemo(() => {
@@ -461,6 +457,33 @@ export default function StatsPage() {
     return ((totalBuybacks - previousBuybacks) / previousBuybacks) * 100;
   }, [totalBuybacks, previousBuybacks, timeframe]);
 
+  // Total volume (computed from daily chart data)
+  const totalVolumeUsd = useMemo(() => {
+    return volumeChartDaily
+      .filter(d => new Date(d.date) >= fromDate)
+      .reduce((sum, d) => sum + d.volume, 0);
+  }, [volumeChartDaily, fromDate]);
+
+  // Previous period volume for percent change
+  const previousTotalVolumeUsd = useMemo(() => {
+    const prevDates = getPreviousTimeframeDates(timeframe);
+    if (!prevDates) return 0;
+
+    return volumeChartDaily
+      .filter(d => {
+        const date = new Date(d.date);
+        return date >= prevDates.from && date < prevDates.to;
+      })
+      .reduce((sum, d) => sum + d.volume, 0);
+  }, [volumeChartDaily, timeframe]);
+
+  // Calculate percent change for total volume
+  const volumePercentChange = useMemo(() => {
+    if (timeframe === 'all') return undefined;
+    if (previousTotalVolumeUsd === 0) return undefined;
+    return ((totalVolumeUsd - previousTotalVolumeUsd) / previousTotalVolumeUsd) * 100;
+  }, [totalVolumeUsd, previousTotalVolumeUsd, timeframe]);
+
   // Calculate dynamic buyback percentage
   const buybackPercent = useMemo(() => {
     if (totalRevenue > 0 && totalBuybacks > 0) {
@@ -478,6 +501,11 @@ export default function StatsPage() {
   const buybackChartData = useMemo(() => {
     return buybackDaily.map(d => ({ date: d.date, volume: d.usdAmount }));
   }, [buybackDaily]);
+
+  // Convert volume chart data to chart format
+  const volumeChartData = useMemo(() => {
+    return volumeChartDaily.map(d => ({ date: d.date, volume: d.volume }));
+  }, [volumeChartDaily]);
 
   // Create per-project MCap map (keyed by project name lowercase)
   const projectMcapMap = useMemo(() => {
@@ -530,7 +558,7 @@ export default function StatsPage() {
     return ((activeProjectsCount - previousActiveProjectsCount) / previousActiveProjectsCount) * 100;
   }, [activeProjectsCount, previousActiveProjectsCount, timeframe]);
 
-  const loading = proposalsLoading || summaryLoading || buybackLoading;
+  const loading = proposalsLoading || summaryLoading || buybackLoading || volumeChartLoading;
 
   const fetchData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -549,6 +577,22 @@ export default function StatsPage() {
         setSummary(data);
       }
 
+      // Fetch previous period summary for percent change
+      const prevDates = getPreviousTimeframeDates(timeframe);
+      if (prevDates) {
+        const prevParams = new URLSearchParams();
+        prevParams.set('from', prevDates.from.toISOString());
+        prevParams.set('to', prevDates.to.toISOString());
+
+        const prevSummaryRes = await fetch(`${API_BASE_URL}/api/stats/summary?${prevParams}`);
+        if (prevSummaryRes.ok) {
+          const prevData = await prevSummaryRes.json();
+          setPreviousSummary(prevData);
+        }
+      } else {
+        setPreviousSummary(null);
+      }
+
       setLastUpdated(new Date());
     } catch (error) {
       console.error('Failed to fetch stats:', error);
@@ -559,7 +603,7 @@ export default function StatsPage() {
         setTimeout(() => setRefreshing(false), 1000);
       }
     }
-  }, [fromDate]);
+  }, [fromDate, timeframe]);
 
   useEffect(() => {
     fetchData();
@@ -635,7 +679,8 @@ export default function StatsPage() {
                 <VolumeChartCard
                   revenueData={revenueChartData}
                   buybackData={buybackChartData}
-                  loading={loading || revenueLoading}
+                  volumeData={volumeChartData}
+                  loading={loading || revenueLoading || volumeChartLoading}
                 />
               </div>
             </div>
@@ -673,10 +718,10 @@ export default function StatsPage() {
               />
               <FlipMetricCard
                 label="Futarchy Volume"
-                value={summary?.averages.volumePerQM || 0}
-                loading={loading}
+                value={totalVolumeUsd}
+                loading={loading || volumeChartLoading}
                 prefix="$"
-                percentChange={undefined}
+                percentChange={volumePercentChange}
                 timeframe={timeframe}
               />
             </div>

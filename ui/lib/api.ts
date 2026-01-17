@@ -599,6 +599,35 @@ class GovernanceAPI {
     }
   }
 
+  async getDailyVolume(
+    proposalId: number,
+    from?: Date,
+    to?: Date,
+    moderatorId?: number | string
+  ): Promise<{
+    data: { date: string; volumeSol: number; volumeUsd: number }[];
+  } | null> {
+    try {
+      const params: Record<string, any> = {};
+      if (from) {
+        params.from = from.toISOString();
+      }
+      if (to) {
+        params.to = to.toISOString();
+      }
+
+      const url = buildApiUrl(API_BASE_URL, `/api/history/${proposalId}/daily-volume`, params, moderatorId);
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error('Failed to fetch daily volume data');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching daily volume data:', error);
+      return null;
+    }
+  }
+
   async getSwapQuote(
     proposalId: number,
     market: number,  // Numeric market index (0-3 for quantum markets)
