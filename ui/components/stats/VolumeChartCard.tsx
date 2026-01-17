@@ -55,7 +55,7 @@ export default function VolumeChartCard({
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRefs = useRef<Map<SeriesKey, ISeriesApi<"Area">>>(new Map());
-  const [activeViews, setActiveViews] = useState<SeriesKey[]>(['revenue']);
+  const [activeViews, setActiveViews] = useState<SeriesKey[]>(['buyback']);
 
   const toggleView = (view: SeriesKey) => {
     setActiveViews(prev =>

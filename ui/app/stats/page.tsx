@@ -499,25 +499,33 @@ export default function StatsPage() {
     return 0;
   }, [totalRevenue, totalBuybacks]);
 
-  // Convert revenue data to chart format
+  // Convert revenue data to chart format (filtered by timeframe)
   const revenueChartData = useMemo(() => {
-    return revenueDaily.map(d => ({ date: d.date, volume: d.usdAmount }));
-  }, [revenueDaily]);
+    return revenueDaily
+      .filter(d => new Date(d.date) >= fromDate)
+      .map(d => ({ date: d.date, volume: d.usdAmount }));
+  }, [revenueDaily, fromDate]);
 
-  // Convert buyback data to chart format (actual buyback amounts from chain)
+  // Convert buyback data to chart format (filtered by timeframe)
   const buybackChartData = useMemo(() => {
-    return buybackDaily.map(d => ({ date: d.date, volume: d.usdAmount }));
-  }, [buybackDaily]);
+    return buybackDaily
+      .filter(d => new Date(d.date) >= fromDate)
+      .map(d => ({ date: d.date, volume: d.usdAmount }));
+  }, [buybackDaily, fromDate]);
 
-  // Convert volume chart data to chart format
+  // Convert volume chart data to chart format (filtered by timeframe)
   const volumeChartData = useMemo(() => {
-    return volumeChartDaily.map(d => ({ date: d.date, volume: d.volume }));
-  }, [volumeChartDaily]);
+    return volumeChartDaily
+      .filter(d => new Date(d.date) >= fromDate)
+      .map(d => ({ date: d.date, volume: d.volume }));
+  }, [volumeChartDaily, fromDate]);
 
-  // Convert ZC MCap data to chart format
+  // Convert ZC MCap data to chart format (filtered by timeframe)
   const mcapChartData = useMemo(() => {
-    return mcapDaily.map(d => ({ date: d.date, volume: d.mcapUsd }));
-  }, [mcapDaily]);
+    return mcapDaily
+      .filter(d => new Date(d.date) >= fromDate)
+      .map(d => ({ date: d.date, volume: d.mcapUsd }));
+  }, [mcapDaily, fromDate]);
 
   // Create per-project MCap map (keyed by project name lowercase)
   const projectMcapMap = useMemo(() => {
