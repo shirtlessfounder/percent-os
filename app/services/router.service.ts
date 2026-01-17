@@ -57,7 +57,7 @@ export function loadPoolAuthorities(logger: LoggerService): Map<string, Keypair>
         const secretKey = bs58.decode(privateKeyBase58);
         const keypair = Keypair.fromSecretKey(secretKey);
         poolAuthorities.set(poolAddress, keypair);
-        logger.info(`Loaded manager keypair for ${ticker}`, {
+        logger.debug(`Loaded manager keypair for ${ticker}`, {
           poolAddress,
           manager: keypair.publicKey.toBase58(),
         });
