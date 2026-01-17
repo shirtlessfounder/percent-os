@@ -145,9 +145,9 @@ export default function ContributionGrid({ data, loading = false, startDate }: C
   }
 
   return (
-    <div className="bg-[#121212] border border-[#191919] rounded-[9px] py-4 px-5 overflow-x-auto">
+    <div className="bg-[#121212] border border-[#191919] rounded-[9px] py-4 px-5">
       {/* Inner border around grid area */}
-      <div className="border border-[#191919] rounded-lg px-3 pt-5 pb-6 flex justify-center">
+      <div className="border border-[#191919] rounded-lg px-3 pt-5 pb-6 overflow-x-auto">
         {/* Wrapper to keep month labels aligned with grid */}
         <div className="inline-block">
           {/* Month labels */}
