@@ -29,6 +29,7 @@ export interface ExploreProposal extends ProposalListItem {
   isFutarchy?: boolean;
   daoPda?: string;
   daoName?: string;
+  tokenMint?: string;
 }
 
 /**

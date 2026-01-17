@@ -32,7 +32,8 @@ export default function TotalQMsCard({ value, loading = false, timeframe, percen
 
   const formatPercentChange = (change: number) => {
     const sign = change >= 0 ? '+' : '';
-    return `${sign}${change.toFixed(1)}%`;
+    const formatted = Number.isInteger(change) ? change.toString() : change.toFixed(1);
+    return `${sign}${formatted}%`;
   };
 
   return (

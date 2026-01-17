@@ -119,7 +119,8 @@ export default function FlipMetricCard({
 
   const formatPercentChange = (change: number) => {
     const sign = change >= 0 ? '+' : '';
-    return `${sign}${change.toFixed(1)}%`;
+    const formatted = Number.isInteger(change) ? change.toString() : change.toFixed(1);
+    return `${sign}${formatted}%`;
   };
 
   const formatTimeframe = (tf: string) => {

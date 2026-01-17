@@ -20,12 +20,14 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { formatUSD } from '@/lib/formatters';
 
 interface Project {
   moderatorId: number;
   name: string;
   ticker: string;
   logo?: string;
+  baseMint?: string;
 }
 
 interface ActiveProjectsCardProps {
@@ -34,6 +36,13 @@ interface ActiveProjectsCardProps {
   loading?: boolean;
   timeframe?: '1d' | '1w' | '1m' | 'all';
   percentChange?: number;
+  combinedMcapUsd?: number;
+  mcapLoading?: boolean;
+  combinedTvlUsd?: number;
+  tvlLoading?: boolean;
+  // Per-project data maps (keyed by project name lowercase)
+  projectTvlMap?: Map<string, number>;
+  projectMcapMap?: Map<string, number>;
 }
 
 export default function ActiveProjectsCard({
@@ -42,12 +51,32 @@ export default function ActiveProjectsCard({
   loading = false,
   timeframe,
   percentChange,
+  combinedMcapUsd,
+  mcapLoading = false,
+  combinedTvlUsd,
+  tvlLoading = false,
+  projectTvlMap,
+  projectMcapMap,
 }: ActiveProjectsCardProps) {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
 
+  // Get metrics for the selected project or combined if none selected
+  const getDisplayMetrics = () => {
+    if (selectedProject) {
+      const key = selectedProject.name.toLowerCase();
+      const tvl = projectTvlMap?.get(key) ?? 0;
+      const mcap = projectMcapMap?.get(key) ?? 0;
+      return { tvl, mcap, isIndividual: true };
+    }
+    return { tvl: combinedTvlUsd ?? 0, mcap: combinedMcapUsd ?? 0, isIndividual: false };
+  };
+
+  const { tvl: displayTvl, mcap: displayMcap, isIndividual } = getDisplayMetrics();
+
   const formatPercentChange = (change: number) => {
     const sign = change >= 0 ? '+' : '';
-    return `${sign}${change.toFixed(1)}%`;
+    const formatted = Number.isInteger(change) ? change.toString() : change.toFixed(1);
+    return `${sign}${formatted}%`;
   };
 
   const handleEscape = useCallback((e: KeyboardEvent) => {
@@ -125,7 +154,19 @@ export default function ActiveProjectsCard({
                   </div>
                 </div>
                 <p className="text-xs font-ibm-plex-mono text-center mt-4" style={{ color: '#6B6E71' }}>
-                  $2.4M TVL Secured  ·  $18M MCap  ·  $12K Revenue Generated
+                  {tvlLoading ? (
+                    <span className="animate-pulse">Loading...</span>
+                  ) : displayTvl > 0 ? (
+                    `${formatUSD(displayTvl, 1)} TVL Secured`
+                  ) : (
+                    '$0 TVL Secured'
+                  )}  ·  {mcapLoading ? (
+                    <span className="animate-pulse">Loading...</span>
+                  ) : displayMcap > 0 ? (
+                    `${formatUSD(displayMcap, 1)} MCap`
+                  ) : (
+                    '$0 MCap'
+                  )}
                 </p>
               </>
             ) : projects.length > 0 ? (
@@ -161,7 +202,19 @@ export default function ActiveProjectsCard({
                   ))}
                 </div>
                 <p className="text-xs font-ibm-plex-mono text-center mt-4" style={{ color: '#6B6E71' }}>
-                  $2.4M TVL Secured  ·  $18M Combined MCap
+                  {tvlLoading ? (
+                    <span className="animate-pulse">Loading...</span>
+                  ) : displayTvl > 0 ? (
+                    `${formatUSD(displayTvl, 1)} TVL Secured`
+                  ) : (
+                    '$0 TVL Secured'
+                  )}  ·  {mcapLoading ? (
+                    <span className="animate-pulse">Loading...</span>
+                  ) : displayMcap > 0 ? (
+                    `${formatUSD(displayMcap, 1)} ${isIndividual ? 'MCap' : 'Combined MCap'}`
+                  ) : (
+                    `$0 ${isIndividual ? 'MCap' : 'Combined MCap'}`
+                  )}
                 </p>
               </>
             ) : (

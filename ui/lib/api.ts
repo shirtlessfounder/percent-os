@@ -110,6 +110,7 @@ class GovernanceAPI {
     isFutarchy?: boolean;
     daoPda?: string;
     daoName?: string;
+    tokenMint?: string;
   }>> {
     // Fetch from both systems in parallel
     const [oldSystemProposals, futarchyProposals] = await Promise.all([
@@ -159,6 +160,7 @@ class GovernanceAPI {
     moderatorId: number;
     tokenTicker: string;
     tokenIcon: string | null;
+    tokenMint: string;
     isFutarchy: true;
     daoPda: string;
     daoName: string;
@@ -217,6 +219,7 @@ class GovernanceAPI {
           moderatorId: 0, // Not applicable for futarchy
           tokenTicker: p.daoName,
           tokenIcon: p.tokenIcon,
+          tokenMint: p.tokenMint,
           isFutarchy: true as const,
           daoPda: p.daoPda,
           daoName: p.daoName,

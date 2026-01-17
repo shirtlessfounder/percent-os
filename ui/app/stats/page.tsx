@@ -29,6 +29,9 @@ import TotalQMsCard from '@/components/stats/TotalQMsCard';
 import ContributionGrid from '@/components/stats/ContributionGrid';
 import VolumeChartCard from '@/components/stats/VolumeChartCard';
 import { useAllProposals } from '@/hooks/useAllProposals';
+import { useProjectMarketCaps } from '@/hooks/useProjectMarketCaps';
+import { useProjectTVL } from '@/hooks/useProjectTVL';
+import { api } from '@/lib/api';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
@@ -99,6 +102,48 @@ function getPreviousTimeframeDates(timeframe: Timeframe): { from: Date; to: Date
       return null;
   }
 }
+
+/**
+ * Map moderatorId to token slug for pool lookup (old system)
+ */
+function getTokenSlug(moderatorId: number): string {
+  const mapping: Record<number, string> = {
+    2: 'zc',
+    3: 'oogway',
+    6: 'surf',
+  };
+  return mapping[moderatorId] || 'zc';
+}
+
+interface StatsProject {
+  moderatorId: number;
+  name: string;
+  ticker: string;
+  logo?: string;
+  isFutarchy: boolean;
+  baseMint?: string;
+  daoPda?: string;
+}
+
+// Treasury vault configuration for known projects
+// Includes treasury address and native token mint for TVL calculation
+interface TreasuryConfig {
+  treasuryVault: string;
+  tokenMint: string;
+}
+
+const KNOWN_TREASURIES: Record<string, TreasuryConfig> = {
+  // SURF (old system, moderatorId 6)
+  'surf': {
+    treasuryVault: 'BmfaxQCRqf4xZFmQa5GswShBZhRBf4bED7hadFkpgBC3',
+    tokenMint: 'SurfwRjQQFV6P7JdhxSptf4CjWU8sb88rUiaLCystar',
+  },
+  // STAR (futarchy)
+  'star': {
+    treasuryVault: 'EtdhMR3yYHsUP3cm36X83SpvnL5jB48p5b653pqLC23C',
+    tokenMint: 'StargWr5r6r8gZSjmEKGZ1dmvKWkj79r2z1xqjFstar',
+  },
+};
 
 export default function StatsPage() {
   const [timeframe, setTimeframe] = useState<Timeframe>('all');
@@ -190,8 +235,8 @@ export default function StatsPage() {
   }, [totalQMs, previousQMs, timeframe]);
 
   // Extract unique active projects from proposals with QMs in the selected timeframe
-  const activeProjects = useMemo(() => {
-    const projectMap = new Map<string, { moderatorId: number; name: string; ticker: string; logo?: string }>();
+  const activeProjects = useMemo((): StatsProject[] => {
+    const projectMap = new Map<string, StatsProject>();
 
     for (const p of proposals) {
       // Only count finalized proposals (not pending/live ones)
@@ -201,16 +246,22 @@ export default function StatsPage() {
       const date = new Date(p.finalizedAt);
       if (date < fromDate) continue;
 
-      const key = p.isFutarchy
+      const isFutarchy = p.isFutarchy ?? false;
+      const key = isFutarchy
         ? (p.daoName?.toLowerCase() || '')
         : p.moderatorId.toString();
 
       if (!projectMap.has(key)) {
         projectMap.set(key, {
           moderatorId: p.moderatorId,
-          name: p.isFutarchy ? (p.daoName || '') : p.tokenTicker,
+          name: isFutarchy ? (p.daoName || '') : p.tokenTicker,
           ticker: p.tokenTicker,
           logo: p.tokenIcon || undefined,
+          isFutarchy,
+          // For futarchy, tokenMint is available directly
+          baseMint: isFutarchy ? p.tokenMint : undefined,
+          // daoPda is available on futarchy proposals
+          daoPda: isFutarchy ? p.daoPda : undefined,
         });
       }
     }
@@ -218,7 +269,157 @@ export default function StatsPage() {
     return Array.from(projectMap.values());
   }, [proposals, fromDate]);
 
+  // State for baseMints fetched from API (for old system projects)
+  const [projectBaseMints, setProjectBaseMints] = useState<Map<number, string>>(new Map());
+
+  // Fetch baseMints for old system projects
+  useEffect(() => {
+    const fetchBaseMints = async () => {
+      const oldSystemProjects = activeProjects.filter(p => !p.isFutarchy && !p.baseMint);
+      if (oldSystemProjects.length === 0) return;
+
+      const newMints = new Map<number, string>();
+
+      await Promise.all(
+        oldSystemProjects.map(async (project) => {
+          try {
+            const tokenSlug = getTokenSlug(project.moderatorId);
+            const poolData = await api.getPoolByName(tokenSlug);
+            if (poolData?.pool?.baseMint) {
+              newMints.set(project.moderatorId, poolData.pool.baseMint);
+            }
+          } catch (err) {
+            console.error(`Failed to fetch baseMint for ${project.ticker}:`, err);
+          }
+        })
+      );
+
+      if (newMints.size > 0) {
+        setProjectBaseMints(prev => {
+          const updated = new Map(prev);
+          for (const [id, mint] of newMints) {
+            updated.set(id, mint);
+          }
+          return updated;
+        });
+      }
+    };
+
+    fetchBaseMints();
+  }, [activeProjects]);
+
+  // Collect treasury configs only for projects that are currently shown as active
+  const allTreasuryConfigs = useMemo(() => {
+    const configs: typeof KNOWN_TREASURIES[keyof typeof KNOWN_TREASURIES][] = [];
+
+    for (const project of activeProjects) {
+      // Check if this project has a known treasury config
+      const key = project.name.toLowerCase();
+      if (KNOWN_TREASURIES[key]) {
+        configs.push(KNOWN_TREASURIES[key]);
+      }
+    }
+
+    return configs;
+  }, [activeProjects]);
+
+  // Debug logging for TVL
+  useEffect(() => {
+    console.log('[StatsPage] Treasury configs for TVL lookup:', allTreasuryConfigs);
+  }, [allTreasuryConfigs]);
+
+  // Fetch TVL data for all projects (SOL + USDC + native token)
+  const { data: tvlData, combinedTvlUsd, loading: tvlLoading } = useProjectTVL(allTreasuryConfigs);
+
+  // Create per-project TVL map (keyed by project name lowercase)
+  const projectTvlMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const project of activeProjects) {
+      const key = project.name.toLowerCase();
+      const treasuryConfig = KNOWN_TREASURIES[key];
+      if (treasuryConfig) {
+        const tvlEntry = tvlData.get(treasuryConfig.treasuryVault);
+        if (tvlEntry) {
+          map.set(key, tvlEntry.tvlUsd);
+        }
+      }
+    }
+    return map;
+  }, [activeProjects, tvlData]);
+
+  // Collect all baseMints for market cap lookup
+  const allBaseMints = useMemo(() => {
+    const mints: string[] = [];
+    for (const project of activeProjects) {
+      if (project.baseMint) {
+        mints.push(project.baseMint);
+      } else if (!project.isFutarchy && projectBaseMints.has(project.moderatorId)) {
+        mints.push(projectBaseMints.get(project.moderatorId)!);
+      }
+    }
+    return mints;
+  }, [activeProjects, projectBaseMints]);
+
+  // Debug logging for mcap
+  useEffect(() => {
+    console.log('[StatsPage] Active projects:', activeProjects);
+    console.log('[StatsPage] Project baseMints from API:', Object.fromEntries(projectBaseMints));
+    console.log('[StatsPage] All baseMints for mcap lookup:', allBaseMints);
+  }, [activeProjects, projectBaseMints, allBaseMints]);
+
+  // Fetch market cap data for all projects
+  const { data: mcapData, combinedMcap, loading: mcapLoading } = useProjectMarketCaps(allBaseMints);
+
+  // Create per-project MCap map (keyed by project name lowercase)
+  const projectMcapMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const project of activeProjects) {
+      const key = project.name.toLowerCase();
+      // Get the baseMint for this project
+      let baseMint = project.baseMint;
+      if (!baseMint && !project.isFutarchy) {
+        baseMint = projectBaseMints.get(project.moderatorId);
+      }
+      if (baseMint) {
+        const mcapEntry = mcapData.get(baseMint);
+        if (mcapEntry?.mcapUsd !== null && mcapEntry?.mcapUsd !== undefined) {
+          map.set(key, mcapEntry.mcapUsd);
+        }
+      }
+    }
+    return map;
+  }, [activeProjects, mcapData, projectBaseMints]);
+
   const activeProjectsCount = activeProjects.length;
+
+  // Previous timeframe active projects count (for % change calculation)
+  const previousActiveProjectsCount = useMemo(() => {
+    const prevDates = getPreviousTimeframeDates(timeframe);
+    if (!prevDates) return null;
+
+    const projectMap = new Map<string, boolean>();
+
+    for (const p of proposals) {
+      if (p.status === 'Pending') continue;
+
+      const date = new Date(p.finalizedAt);
+      if (date >= prevDates.from && date < prevDates.to) {
+        const key = p.isFutarchy
+          ? (p.daoName?.toLowerCase() || '')
+          : p.moderatorId.toString();
+        projectMap.set(key, true);
+      }
+    }
+
+    return projectMap.size;
+  }, [proposals, timeframe]);
+
+  // Calculate % change for active projects
+  const activeProjectsPercentChange = useMemo(() => {
+    if (timeframe === 'all' || previousActiveProjectsCount === null) return undefined;
+    if (previousActiveProjectsCount === 0) return undefined;
+    return ((activeProjectsCount - previousActiveProjectsCount) / previousActiveProjectsCount) * 100;
+  }, [activeProjectsCount, previousActiveProjectsCount, timeframe]);
 
   const loading = proposalsLoading || summaryLoading;
 
@@ -336,14 +537,20 @@ export default function StatsPage() {
                 projects={activeProjects}
                 loading={loading}
                 timeframe={timeframe}
-                percentChange={0}
+                percentChange={activeProjectsPercentChange}
+                combinedMcapUsd={combinedMcap}
+                mcapLoading={mcapLoading}
+                combinedTvlUsd={combinedTvlUsd}
+                tvlLoading={tvlLoading}
+                projectTvlMap={projectTvlMap}
+                projectMcapMap={projectMcapMap}
               />
               <FlipMetricCard
                 label="Buybacks · 90% of revenue"
                 value={summary?.averages.volumePerQM || 0}
                 loading={loading}
                 prefix="$"
-                percentChange={0}
+                percentChange={undefined}
                 timeframe={timeframe}
               />
               <FlipMetricCard
@@ -351,7 +558,7 @@ export default function StatsPage() {
                 value={summary?.averages.volumePerQM || 0}
                 loading={loading}
                 prefix="$"
-                percentChange={0}
+                percentChange={undefined}
                 timeframe={timeframe}
               />
               <FlipMetricCard
@@ -359,7 +566,7 @@ export default function StatsPage() {
                 value={summary?.averages.volumePerQM || 0}
                 loading={loading}
                 prefix="$"
-                percentChange={0}
+                percentChange={undefined}
                 timeframe={timeframe}
               />
             </div>
