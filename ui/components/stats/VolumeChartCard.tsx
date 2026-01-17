@@ -39,8 +39,8 @@ interface VolumeChartCardProps {
 const SERIES_COLORS = {
   buyback: { line: '#BEE8FC', top: 'rgba(190, 232, 252, 0.1)', bottom: 'transparent' },
   revenue: { line: '#5a9aba', top: 'rgba(90, 154, 186, 0.1)', bottom: 'transparent' },
-  volume: { line: '#1a3a4a', top: 'rgba(26, 58, 74, 0.1)', bottom: 'transparent' },
-  mcap: { line: '#2a6a8a', top: 'rgba(42, 106, 138, 0.1)', bottom: 'transparent' },
+  volume: { line: '#2a6a8a', top: 'rgba(42, 106, 138, 0.1)', bottom: 'transparent' },
+  mcap: { line: '#1a3a4a', top: 'rgba(26, 58, 74, 0.1)', bottom: 'transparent' },
 };
 
 type SeriesKey = keyof typeof SERIES_COLORS;
@@ -268,7 +268,7 @@ export default function VolumeChartCard({
             onClick={() => toggleView('volume')}
             className="px-3 py-1 rounded-full text-xs font-medium transition cursor-pointer font-ibm-plex-mono"
             style={activeViews.includes('volume')
-              ? { backgroundColor: '#1a3a4a', color: '#ffffff' }
+              ? { backgroundColor: '#2a6a8a', color: '#ffffff' }
               : { backgroundColor: 'transparent', color: '#6B6E71' }}
           >
             Futarchy Vol
@@ -277,7 +277,7 @@ export default function VolumeChartCard({
             onClick={() => toggleView('mcap')}
             className="px-3 py-1 rounded-full text-xs font-medium transition cursor-pointer font-ibm-plex-mono"
             style={activeViews.includes('mcap')
-              ? { backgroundColor: '#2a6a8a', color: '#ffffff' }
+              ? { backgroundColor: '#1a3a4a', color: '#ffffff' }
               : { backgroundColor: 'transparent', color: '#6B6E71' }}
           >
             ZC MCap
