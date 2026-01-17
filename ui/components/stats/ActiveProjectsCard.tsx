@@ -43,6 +43,7 @@ interface ActiveProjectsCardProps {
   // Per-project data maps (keyed by project name lowercase)
   projectTvlMap?: Map<string, number>;
   projectMcapMap?: Map<string, number>;
+  className?: string;
 }
 
 export default function ActiveProjectsCard({
@@ -57,6 +58,7 @@ export default function ActiveProjectsCard({
   tvlLoading = false,
   projectTvlMap,
   projectMcapMap,
+  className,
 }: ActiveProjectsCardProps) {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
 
@@ -94,7 +96,7 @@ export default function ActiveProjectsCard({
 
   return (
     <div
-      className="rounded-[9px] border py-4 px-5 h-full flex flex-col"
+      className={`rounded-[9px] border py-4 px-5 h-full flex flex-col ${className || ''}`}
       style={{
         backgroundColor: '#121212',
         borderColor: '#191919',
@@ -119,13 +121,13 @@ export default function ActiveProjectsCard({
       </div>
 
       {/* Grid Area with inner border */}
-      <div className="flex-1 flex items-center justify-center">
+      <div className="flex-1 flex">
         {loading ? (
-          <div className="border border-[#191919] rounded-lg p-4 w-full h-full">
+          <div className="border border-[#191919] rounded-lg p-4 w-full flex-1">
             <div className="w-full h-full rounded animate-pulse bg-[#292929]" />
           </div>
         ) : (
-          <div className="border border-[#191919] rounded-lg p-4 w-full h-full flex flex-col justify-center overflow-hidden">
+          <div className="border border-[#191919] rounded-lg p-4 w-full flex-1 flex flex-col justify-center overflow-hidden">
             {selectedProject ? (
               // Show enlarged selected project
               <>
@@ -171,7 +173,7 @@ export default function ActiveProjectsCard({
               </>
             ) : projects.length > 0 ? (
               <>
-                <div className="grid gap-3 justify-center content-center flex-1"
+                <div className="grid gap-3 justify-center content-center flex-1 py-12 md:py-0"
                   style={{
                     gridTemplateColumns: `repeat(auto-fit, minmax(64px, max-content))`,
                   }}

@@ -172,7 +172,6 @@ export default function StatsPage() {
   const [previousSummary, setPreviousSummary] = useState<StatsSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   // Fetch all proposals using the same hook as markets page
   const { proposals: allProposals, loading: proposalsLoading, refetch: refetchProposals } = useAllProposals();
@@ -613,7 +612,6 @@ export default function StatsPage() {
         setPreviousSummary(null);
       }
 
-      setLastUpdated(new Date());
     } catch (error) {
       console.error('Failed to fetch stats:', error);
     } finally {
@@ -646,11 +644,6 @@ export default function StatsPage() {
               <h1 className="text-2xl font-bold" style={{ color: '#E9E9E3' }}>
                 Combinator Stats
               </h1>
-              {lastUpdated && (
-                <p className="text-xs mt-1" style={{ color: '#6B6E71' }}>
-                  Last updated: {lastUpdated.toLocaleTimeString()}
-                </p>
-              )}
             </div>
 
             <div className="flex items-center gap-4">
@@ -680,7 +673,7 @@ export default function StatsPage() {
             {/* Left 2/3 area - cards can be 1/3 or 2/3 of this area */}
             <div className="md:col-span-2 flex flex-col gap-4">
               {/* Total QMs (1/3) + QM Grid (2/3) */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="h-full">
                   <TotalQMsCard
                     value={totalQMs}
@@ -689,10 +682,26 @@ export default function StatsPage() {
                     percentChange={qmPercentChange}
                   />
                 </div>
-                <div className="col-span-2">
+                <div className="md:col-span-2">
                   <ContributionGrid data={contributions} loading={loading} startDate={fromDate} />
                 </div>
               </div>
+
+              {/* Mobile only - ActiveProjectsCard appears here (between grid and chart) */}
+              <ActiveProjectsCard
+                count={activeProjectsCount}
+                projects={activeProjects}
+                loading={loading}
+                timeframe={timeframe}
+                percentChange={activeProjectsPercentChange}
+                combinedMcapUsd={combinedMcap}
+                mcapLoading={mcapLoading}
+                combinedTvlUsd={combinedTvlUsd}
+                tvlLoading={tvlLoading}
+                projectTvlMap={projectTvlMap}
+                projectMcapMap={projectMcapMap}
+                className="md:hidden"
+              />
 
               {/* Volume Chart (full width, own section) */}
               <div>
@@ -708,6 +717,7 @@ export default function StatsPage() {
 
             {/* Right 1/3 area - Stacked metric cards */}
             <div className="flex flex-col gap-4">
+              {/* Desktop only - ActiveProjectsCard in right column */}
               <ActiveProjectsCard
                 count={activeProjectsCount}
                 projects={activeProjects}
@@ -720,6 +730,7 @@ export default function StatsPage() {
                 tvlLoading={tvlLoading}
                 projectTvlMap={projectTvlMap}
                 projectMcapMap={projectMcapMap}
+                className="hidden md:flex"
               />
               <FlipMetricCard
                 label={buybackPercent > 0 ? `Buybacks · ${buybackPercent}% of revenue` : 'Buybacks'}

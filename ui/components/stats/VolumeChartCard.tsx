@@ -214,7 +214,7 @@ export default function VolumeChartCard({
         className="rounded-[9px] border flex flex-col"
         style={{ backgroundColor: '#121212', borderColor: '#191919' }}
       >
-        <div className="px-5 pt-4 pb-4 flex items-center justify-between">
+        <div className="px-5 pt-4 pb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-0">
           <span
             className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] uppercase"
             style={{ color: '#DDDDD7' }}
@@ -236,7 +236,7 @@ export default function VolumeChartCard({
       style={{ backgroundColor: '#121212', borderColor: '#191919' }}
     >
       {/* Title and Toggle */}
-      <div className="px-5 pt-4 pb-4 flex items-center justify-between">
+      <div className="px-5 pt-4 pb-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 md:gap-0">
         <span
           className="text-sm font-semibold font-ibm-plex-mono tracking-[0.2em] uppercase"
           style={{ color: '#DDDDD7' }}
@@ -245,7 +245,7 @@ export default function VolumeChartCard({
         </span>
 
         {/* Multi-select Toggle */}
-        <div className="flex items-center gap-[2px] p-[3px] border border-[#191919] rounded-full">
+        <div className="flex items-center gap-[2px] p-[3px] border border-[#191919] rounded-full w-fit">
           <button
             onClick={() => toggleView('buyback')}
             className="px-3 py-1 rounded-full text-xs font-medium transition cursor-pointer font-ibm-plex-mono"
