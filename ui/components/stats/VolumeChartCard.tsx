@@ -22,23 +22,42 @@
 import { useEffect, useRef, useMemo, useState } from 'react';
 import { createChart, IChartApi, ISeriesApi, AreaData, Time, AreaSeries } from 'lightweight-charts';
 
-interface VolumeDataPoint {
+export interface VolumeDataPoint {
   date: string;
   volume: number;
 }
 
 interface VolumeChartCardProps {
-  data: VolumeDataPoint[];
+  revenueData?: VolumeDataPoint[];       // Daily revenue
+  buybackData?: VolumeDataPoint[];       // Buybacks (90% of revenue)
+  volumeData?: VolumeDataPoint[];        // Futarchy volume
+  mcapData?: VolumeDataPoint[];          // ZC market cap history
   loading?: boolean;
 }
 
-export default function VolumeChartCard({ data, loading = false }: VolumeChartCardProps) {
+// Series color configuration
+const SERIES_COLORS = {
+  buyback: { line: '#BEE8FC', top: 'rgba(190, 232, 252, 0.1)', bottom: 'transparent' },
+  revenue: { line: '#5a9aba', top: 'rgba(90, 154, 186, 0.1)', bottom: 'transparent' },
+  volume: { line: '#1a3a4a', top: 'rgba(26, 58, 74, 0.1)', bottom: 'transparent' },
+  mcap: { line: '#2a6a8a', top: 'rgba(42, 106, 138, 0.1)', bottom: 'transparent' },
+};
+
+type SeriesKey = keyof typeof SERIES_COLORS;
+
+export default function VolumeChartCard({
+  revenueData,
+  buybackData,
+  volumeData,
+  mcapData,
+  loading = false,
+}: VolumeChartCardProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const seriesRef = useRef<ISeriesApi<"Area"> | null>(null);
-  const [activeViews, setActiveViews] = useState<string[]>(['buyback']);
+  const seriesRefs = useRef<Map<SeriesKey, ISeriesApi<"Area">>>(new Map());
+  const [activeViews, setActiveViews] = useState<SeriesKey[]>(['revenue']);
 
-  const toggleView = (view: string) => {
+  const toggleView = (view: SeriesKey) => {
     setActiveViews(prev =>
       prev.includes(view)
         ? prev.filter(v => v !== view)
@@ -46,13 +65,18 @@ export default function VolumeChartCard({ data, loading = false }: VolumeChartCa
     );
   };
 
-  // Convert data to lightweight-charts format
-  const chartData = useMemo(() => {
-    return data.map(d => ({
-      time: d.date as Time,
-      value: d.volume,
-    }));
-  }, [data]);
+  // Convert data arrays to chart format
+  const chartDataSets = useMemo(() => {
+    const convert = (data?: VolumeDataPoint[]) =>
+      data?.map(d => ({ time: d.date as Time, value: d.volume })) || [];
+
+    return {
+      buyback: convert(buybackData),
+      revenue: convert(revenueData),
+      volume: convert(volumeData),
+      mcap: convert(mcapData),
+    };
+  }, [buybackData, revenueData, volumeData, mcapData]);
 
   // Initialize chart
   useEffect(() => {
@@ -105,29 +129,7 @@ export default function VolumeChartCard({ data, loading = false }: VolumeChartCa
       },
     });
 
-    // Add area series (v5 API) - using #5a9aba blue accent, no shading
-    const areaSeries = chart.addSeries(AreaSeries, {
-      lineColor: '#5a9aba',
-      topColor: 'transparent',
-      bottomColor: 'transparent',
-      lineWidth: 2,
-      priceLineVisible: false,
-      lastValueVisible: false,
-      crosshairMarkerVisible: true,
-      crosshairMarkerRadius: 4,
-      crosshairMarkerBackgroundColor: '#5a9aba',
-      crosshairMarkerBorderColor: '#ffffff',
-      crosshairMarkerBorderWidth: 2,
-    });
-
     chartRef.current = chart;
-    seriesRef.current = areaSeries;
-
-    // Set data
-    if (chartData.length > 0) {
-      areaSeries.setData(chartData as AreaData<Time>[]);
-      chart.timeScale().fitContent();
-    }
 
     // Handle resize
     const handleResize = () => {
@@ -150,18 +152,61 @@ export default function VolumeChartCard({ data, loading = false }: VolumeChartCa
       if (chartRef.current) {
         chartRef.current.remove();
         chartRef.current = null;
-        seriesRef.current = null;
+        seriesRefs.current.clear();
       }
     };
   }, [loading]);
 
-  // Update data when it changes
+  // Update series based on activeViews and data
   useEffect(() => {
-    if (seriesRef.current && chartData.length > 0) {
-      seriesRef.current.setData(chartData as AreaData<Time>[]);
-      chartRef.current?.timeScale().fitContent();
+    const chart = chartRef.current;
+    if (!chart || loading) return;
+
+    const allSeriesKeys: SeriesKey[] = ['buyback', 'revenue', 'volume', 'mcap'];
+
+    for (const key of allSeriesKeys) {
+      const data = chartDataSets[key];
+      const isActive = activeViews.includes(key);
+      const existingSeries = seriesRefs.current.get(key);
+
+      if (isActive && data.length > 0) {
+        if (!existingSeries) {
+          // Create series
+          const colors = SERIES_COLORS[key];
+          const series = chart.addSeries(AreaSeries, {
+            lineColor: colors.line,
+            topColor: colors.top,
+            bottomColor: colors.bottom,
+            lineWidth: 2,
+            priceLineVisible: false,
+            lastValueVisible: false,
+            crosshairMarkerVisible: true,
+            crosshairMarkerRadius: 4,
+            crosshairMarkerBackgroundColor: colors.line,
+            crosshairMarkerBorderColor: '#ffffff',
+            crosshairMarkerBorderWidth: 2,
+          });
+          series.setData(data as AreaData<Time>[]);
+          seriesRefs.current.set(key, series);
+        } else {
+          // Update data
+          existingSeries.setData(data as AreaData<Time>[]);
+        }
+      } else if (!isActive && existingSeries) {
+        // Remove series
+        chart.removeSeries(existingSeries);
+        seriesRefs.current.delete(key);
+      }
     }
-  }, [chartData]);
+
+    // Fit content when data changes
+    chart.timeScale().fitContent();
+  }, [activeViews, chartDataSets, loading]);
+
+  // Check if we have any data to display
+  const hasData = useMemo(() => {
+    return Object.values(chartDataSets).some(data => data.length > 0);
+  }, [chartDataSets]);
 
   if (loading) {
     return (
@@ -245,7 +290,15 @@ export default function VolumeChartCard({ data, loading = false }: VolumeChartCa
         <div
           ref={chartContainerRef}
           className="w-full h-[480px] rounded-lg border border-[#191919]"
-        />
+        >
+          {!hasData && (
+            <div className="w-full h-full flex items-center justify-center">
+              <span className="text-sm font-ibm-plex-mono" style={{ color: '#6B6E71' }}>
+                No data available for selected views
+              </span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

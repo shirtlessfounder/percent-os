@@ -31,6 +31,8 @@ import VolumeChartCard from '@/components/stats/VolumeChartCard';
 import { useAllProposals } from '@/hooks/useAllProposals';
 import { useProjectMarketCaps } from '@/hooks/useProjectMarketCaps';
 import { useProjectTVL } from '@/hooks/useProjectTVL';
+import { useRevenueData } from '@/hooks/useRevenueData';
+import { useBuybackData } from '@/hooks/useBuybackData';
 import { api } from '@/lib/api';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
@@ -74,6 +76,23 @@ function getTimeframeDate(timeframe: Timeframe): Date {
     case 'all':
     default:
       return ALL_TIME_START;
+  }
+}
+
+function getTimeframeDaysBack(timeframe: Timeframe): number {
+  switch (timeframe) {
+    case '1d':
+      return 1;
+    case '1w':
+      return 7;
+    case '1m':
+      return 30;
+    case 'all':
+    default:
+      // Calculate days from ALL_TIME_START to now
+      const now = new Date();
+      const diffMs = now.getTime() - ALL_TIME_START.getTime();
+      return Math.ceil(diffMs / (24 * 60 * 60 * 1000));
   }
 }
 
@@ -370,6 +389,96 @@ export default function StatsPage() {
   // Fetch market cap data for all projects
   const { data: mcapData, combinedMcap, loading: mcapLoading } = useProjectMarketCaps(allBaseMints);
 
+  // Calculate days back based on timeframe for chart data
+  const chartDaysBack = useMemo(() => getTimeframeDaysBack(timeframe), [timeframe]);
+
+  // Fetch 2x days to have data for both current and previous periods
+  const fetchDaysBack = useMemo(() => {
+    if (timeframe === 'all') return chartDaysBack;
+    return chartDaysBack * 2;
+  }, [timeframe, chartDaysBack]);
+
+  // Fetch revenue data from chain (fee wallets)
+  const {
+    dailyData: revenueDaily,
+    loading: revenueLoading,
+  } = useRevenueData(fetchDaysBack);
+
+  // Fetch buyback data from chain (burns + staking vault transfers)
+  const {
+    dailyData: buybackDaily,
+    loading: buybackLoading,
+  } = useBuybackData(fetchDaysBack);
+
+  // Calculate current period totals from dailyData
+  const totalRevenue = useMemo(() => {
+    return revenueDaily
+      .filter(d => new Date(d.date) >= fromDate)
+      .reduce((sum, d) => sum + d.usdAmount, 0);
+  }, [revenueDaily, fromDate]);
+
+  const totalBuybacks = useMemo(() => {
+    return buybackDaily
+      .filter(d => new Date(d.date) >= fromDate)
+      .reduce((sum, d) => sum + d.usdAmount, 0);
+  }, [buybackDaily, fromDate]);
+
+  // Calculate previous period totals for percent change
+  const previousRevenue = useMemo(() => {
+    const prevDates = getPreviousTimeframeDates(timeframe);
+    if (!prevDates) return null;
+
+    return revenueDaily
+      .filter(d => {
+        const date = new Date(d.date);
+        return date >= prevDates.from && date < prevDates.to;
+      })
+      .reduce((sum, d) => sum + d.usdAmount, 0);
+  }, [revenueDaily, timeframe]);
+
+  const previousBuybacks = useMemo(() => {
+    const prevDates = getPreviousTimeframeDates(timeframe);
+    if (!prevDates) return null;
+
+    return buybackDaily
+      .filter(d => {
+        const date = new Date(d.date);
+        return date >= prevDates.from && date < prevDates.to;
+      })
+      .reduce((sum, d) => sum + d.usdAmount, 0);
+  }, [buybackDaily, timeframe]);
+
+  // Calculate percent changes
+  const revenuePercentChange = useMemo(() => {
+    if (timeframe === 'all' || previousRevenue === null) return undefined;
+    if (previousRevenue === 0) return undefined;
+    return ((totalRevenue - previousRevenue) / previousRevenue) * 100;
+  }, [totalRevenue, previousRevenue, timeframe]);
+
+  const buybackPercentChange = useMemo(() => {
+    if (timeframe === 'all' || previousBuybacks === null) return undefined;
+    if (previousBuybacks === 0) return undefined;
+    return ((totalBuybacks - previousBuybacks) / previousBuybacks) * 100;
+  }, [totalBuybacks, previousBuybacks, timeframe]);
+
+  // Calculate dynamic buyback percentage
+  const buybackPercent = useMemo(() => {
+    if (totalRevenue > 0 && totalBuybacks > 0) {
+      return Math.round((totalBuybacks / totalRevenue) * 100);
+    }
+    return 0;
+  }, [totalRevenue, totalBuybacks]);
+
+  // Convert revenue data to chart format
+  const revenueChartData = useMemo(() => {
+    return revenueDaily.map(d => ({ date: d.date, volume: d.usdAmount }));
+  }, [revenueDaily]);
+
+  // Convert buyback data to chart format (actual buyback amounts from chain)
+  const buybackChartData = useMemo(() => {
+    return buybackDaily.map(d => ({ date: d.date, volume: d.usdAmount }));
+  }, [buybackDaily]);
+
   // Create per-project MCap map (keyed by project name lowercase)
   const projectMcapMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -421,7 +530,7 @@ export default function StatsPage() {
     return ((activeProjectsCount - previousActiveProjectsCount) / previousActiveProjectsCount) * 100;
   }, [activeProjectsCount, previousActiveProjectsCount, timeframe]);
 
-  const loading = proposalsLoading || summaryLoading;
+  const loading = proposalsLoading || summaryLoading || buybackLoading;
 
   const fetchData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -524,8 +633,9 @@ export default function StatsPage() {
               {/* Volume Chart (full width, own section) */}
               <div>
                 <VolumeChartCard
-                  data={contributions.map(c => ({ date: c.date, volume: c.count }))}
-                  loading={loading}
+                  revenueData={revenueChartData}
+                  buybackData={buybackChartData}
+                  loading={loading || revenueLoading}
                 />
               </div>
             </div>
@@ -546,19 +656,19 @@ export default function StatsPage() {
                 projectMcapMap={projectMcapMap}
               />
               <FlipMetricCard
-                label="Buybacks · 90% of revenue"
-                value={summary?.averages.volumePerQM || 0}
-                loading={loading}
+                label={buybackPercent > 0 ? `Buybacks · ${buybackPercent}% of revenue` : 'Buybacks'}
+                value={totalBuybacks}
+                loading={loading || buybackLoading}
                 prefix="$"
-                percentChange={undefined}
+                percentChange={buybackPercentChange}
                 timeframe={timeframe}
               />
               <FlipMetricCard
                 label="Revenue"
-                value={summary?.averages.volumePerQM || 0}
-                loading={loading}
+                value={totalRevenue}
+                loading={loading || revenueLoading}
                 prefix="$"
-                percentChange={undefined}
+                percentChange={revenuePercentChange}
                 timeframe={timeframe}
               />
               <FlipMetricCard
