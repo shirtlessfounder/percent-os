@@ -63,14 +63,18 @@ export function useBuybackData(daysBack: number = 31): UseBuybackDataResult {
 
   const fetchBuybackData = useCallback(async () => {
     const cacheKey = `buyback-${daysBack}`;
-
-    // Check cache first
     const cached = cache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+
+    // Stale-while-revalidate: show cached data immediately if available
+    if (cached) {
       if (mountedRef.current) {
         setResult(cached.data);
       }
-      return;
+      // If cache is fresh, don't refetch
+      if (Date.now() - cached.timestamp < CACHE_TTL_MS) {
+        return;
+      }
+      // Cache is stale - continue to refetch in background (no loading state)
     }
 
     try {

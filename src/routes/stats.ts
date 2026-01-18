@@ -602,9 +602,6 @@ const FEE_WALLET = 'FEEnkcCNE2623LYCPtLf63LFzXpCFigBLTu4qZovRGZC';
 // ZC mint address
 const ZC_MINT = 'GVvPZpC6ymCoiHzYJ7CWZ8LhVn9tL2AUpRjSAsLh6jZC';
 
-// Staking vault program ID
-const STAKING_VAULT_PROGRAM_ID = '47rZ1jgK7zU6XAgffAfXkDX1JkiiRi4HRPBytossWR12';
-
 // Buyback cache (5 minute TTL)
 let buybackCache: { data: BuybackResponse; key: string; timestamp: number } | null = null;
 const BUYBACK_CACHE_TTL = 300000; // 5 minutes
