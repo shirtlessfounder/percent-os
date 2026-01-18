@@ -594,4 +594,239 @@ async function getStakingMetrics(): Promise<{
   }
 }
 
+// === Buyback Data ===
+
+// Fee wallet address (buyback source)
+const FEE_WALLET = 'FEEnkcCNE2623LYCPtLf63LFzXpCFigBLTu4qZovRGZC';
+
+// ZC mint address
+const ZC_MINT = 'GVvPZpC6ymCoiHzYJ7CWZ8LhVn9tL2AUpRjSAsLh6jZC';
+
+// Staking vault program ID
+const STAKING_VAULT_PROGRAM_ID = '47rZ1jgK7zU6XAgffAfXkDX1JkiiRi4HRPBytossWR12';
+
+// Buyback cache (5 minute TTL)
+let buybackCache: { data: BuybackResponse; key: string; timestamp: number } | null = null;
+const BUYBACK_CACHE_TTL = 300000; // 5 minutes
+
+interface HeliusTokenTransfer {
+  fromTokenAccount: string;
+  toTokenAccount: string;
+  fromUserAccount: string;
+  toUserAccount: string;
+  tokenAmount: number;
+  mint: string;
+  tokenStandard: string;
+}
+
+interface HeliusTransaction {
+  signature: string;
+  timestamp: number;
+  type: string;
+  source: string;
+  fee: number;
+  tokenTransfers?: HeliusTokenTransfer[];
+  accountData?: Array<{
+    account: string;
+    nativeBalanceChange: number;
+    tokenBalanceChanges: Array<{
+      userAccount: string;
+      tokenAccount: string;
+      rawTokenAmount: {
+        tokenAmount: string;
+        decimals: number;
+      };
+      mint: string;
+    }>;
+  }>;
+}
+
+interface DailyBuyback {
+  date: string;
+  zcAmount: number;
+  usdAmount: number;
+}
+
+interface BuybackResponse {
+  dailyData: DailyBuyback[];
+  totalZc: number;
+  totalUsd: number;
+}
+
+/**
+ * Fetch transactions from fee wallet using Helius API
+ */
+async function fetchFeeWalletTransactions(
+  startTime: number,
+  endTime: number
+): Promise<HeliusTransaction[]> {
+  const heliusApiKey = process.env.HELIUS_API_KEY;
+  if (!heliusApiKey) {
+    console.warn('[buybacks] HELIUS_API_KEY not configured');
+    return [];
+  }
+
+  const allTxs: HeliusTransaction[] = [];
+  let beforeSignature: string | undefined;
+  let keepFetching = true;
+
+  while (keepFetching) {
+    const url = new URL(`https://api.helius.xyz/v0/addresses/${FEE_WALLET}/transactions`);
+    url.searchParams.set('api-key', heliusApiKey);
+    if (beforeSignature) {
+      url.searchParams.set('before', beforeSignature);
+    }
+
+    const response = await fetch(url.toString());
+    if (!response.ok) {
+      throw new Error(`Helius API error: ${response.status} ${response.statusText}`);
+    }
+
+    const transactions = await response.json() as HeliusTransaction[];
+
+    if (transactions.length === 0) {
+      break;
+    }
+
+    for (const tx of transactions) {
+      const txTime = tx.timestamp * 1000;
+
+      // Stop if we've gone past the start time
+      if (txTime < startTime) {
+        keepFetching = false;
+        break;
+      }
+
+      // Include if within range
+      if (txTime <= endTime) {
+        allTxs.push(tx);
+      }
+    }
+
+    // Set cursor for next page
+    beforeSignature = transactions[transactions.length - 1].signature;
+
+    // Rate limiting
+    await new Promise(r => setTimeout(r, 100));
+  }
+
+  return allTxs;
+}
+
+/**
+ * Detect buyback amounts from transactions
+ * Buybacks = ZC purchases (ZC flowing INTO the fee wallet)
+ */
+function detectBuybacks(transactions: HeliusTransaction[]): Map<string, number> {
+  const dailyBuybacks = new Map<string, number>();
+
+  for (const tx of transactions) {
+    const date = new Date(tx.timestamp * 1000).toISOString().split('T')[0];
+    let zcAmount = 0;
+
+    // Method 1: Check token transfers where fee wallet RECEIVES ZC
+    if (tx.tokenTransfers) {
+      for (const transfer of tx.tokenTransfers) {
+        if (transfer.mint === ZC_MINT && transfer.toUserAccount === FEE_WALLET) {
+          zcAmount += transfer.tokenAmount;
+        }
+      }
+    }
+
+    // Method 2: Check accountData for POSITIVE ZC balance changes (inflows)
+    if (tx.accountData) {
+      for (const account of tx.accountData) {
+        if (account.account === FEE_WALLET && account.tokenBalanceChanges) {
+          for (const change of account.tokenBalanceChanges) {
+            if (change.mint === ZC_MINT) {
+              const rawAmount = parseFloat(change.rawTokenAmount.tokenAmount);
+              // Positive balance change = ZC received (buyback)
+              if (rawAmount > 0) {
+                zcAmount = Math.max(zcAmount, rawAmount / Math.pow(10, change.rawTokenAmount.decimals));
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (zcAmount > 0) {
+      dailyBuybacks.set(date, (dailyBuybacks.get(date) || 0) + zcAmount);
+    }
+  }
+
+  return dailyBuybacks;
+}
+
+/**
+ * GET /api/stats/buybacks?daysBack=31
+ * Returns buyback data from fee wallet transactions
+ */
+router.get('/buybacks', async (req, res) => {
+  try {
+    const { daysBack: daysBackParam } = req.query;
+    const daysBack = daysBackParam ? parseInt(daysBackParam as string) : 31;
+
+    if (isNaN(daysBack) || daysBack < 1 || daysBack > 365) {
+      return res.status(400).json({ error: 'Invalid daysBack parameter (1-365)' });
+    }
+
+    // Check cache
+    const cacheKey = `buybacks-${daysBack}`;
+    if (buybackCache && buybackCache.key === cacheKey && Date.now() - buybackCache.timestamp < BUYBACK_CACHE_TTL) {
+      return res.json(buybackCache.data);
+    }
+
+    const endTime = Date.now();
+    const startTime = endTime - daysBack * 24 * 60 * 60 * 1000;
+
+    // Generate all dates in range
+    const allDates: string[] = [];
+    for (let d = new Date(startTime); d <= new Date(endTime); d.setDate(d.getDate() + 1)) {
+      allDates.push(d.toISOString().split('T')[0]);
+    }
+
+    // Fetch transactions from Helius
+    const transactions = await fetchFeeWalletTransactions(startTime, endTime);
+
+    // Detect buybacks
+    const dailyBuybacks = detectBuybacks(transactions);
+
+    // Fetch ZC price
+    const zcPrice = await ZcPriceService.getInstance().getZcPrice();
+
+    // Calculate totals
+    let totalZc = 0;
+    for (const amount of dailyBuybacks.values()) {
+      totalZc += amount;
+    }
+
+    // Build daily data with USD values
+    const dailyData: DailyBuyback[] = allDates.map(date => {
+      const zcAmount = dailyBuybacks.get(date) || 0;
+      return {
+        date,
+        zcAmount,
+        usdAmount: zcAmount * zcPrice,
+      };
+    });
+
+    const totalUsd = totalZc * zcPrice;
+
+    const responseData: BuybackResponse = {
+      dailyData,
+      totalZc,
+      totalUsd,
+    };
+
+    // Update cache
+    buybackCache = { data: responseData, key: cacheKey, timestamp: Date.now() };
+
+    res.json(responseData);
+  } catch (error) {
+    console.error('Failed to fetch buyback data:', error);
+    res.status(500).json({ error: 'Failed to fetch buyback data' });
+  }
+});
+
 export default router;
