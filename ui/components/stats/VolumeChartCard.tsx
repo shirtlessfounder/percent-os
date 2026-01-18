@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2025 Spice Finance Inc.
+ * Copyright (C) 2026 Spice Finance Inc.
  *
  * This file is part of Z Combinator.
  *
