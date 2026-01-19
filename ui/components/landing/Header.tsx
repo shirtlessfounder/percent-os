@@ -69,7 +69,7 @@ export default function Header() {
               <span className="hidden sm:inline text-sm">Docs</span>
             </a>
             <a
-              href="https://jup.ag/tokens/GVvPZpC6ymCoiHzYJ7CWZ8LhVn9tL2AUpRjSAsLh6jZC"
+              href="https://x.com/combinatortrade/status/2013040967150878775"
               target="_blank"
               rel="noopener noreferrer"
               className="text-gray-400 hover:text-white transition-colors"

@@ -162,7 +162,7 @@ export default function ExploreHeader({ activeTab: activeTabProp }: ExploreHeade
         {/* Right side: Links */}
         <nav className="flex items-center gap-3 sm:gap-6">
           <a
-            href="https://jup.ag/tokens/GVvPZpC6ymCoiHzYJ7CWZ8LhVn9tL2AUpRjSAsLh6jZC"
+            href="https://x.com/combinatortrade/status/2013040967150878775"
             target="_blank"
             rel="noopener noreferrer"
             className="transition-colors"

@@ -206,7 +206,7 @@ export default function Header({ walletAddress, authenticated, solBalance, baseT
         {/* Current token link */}
         {baseMint && (
           <a
-            href={`https://jup.ag/tokens/${baseMint}`}
+            href={tokenSymbol === 'ZC' ? 'https://x.com/combinatortrade/status/2013040967150878775' : `https://jup.ag/tokens/${baseMint}`}
             target="_blank"
             rel="noopener noreferrer"
             className="transition-colors"
